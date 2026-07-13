@@ -1,3 +1,4 @@
+import { Repeat } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import type { Transaction } from './types'
 
@@ -59,8 +60,11 @@ export function TransactionList({ transactions, onSelect }: TransactionListProps
                 className="flex items-center justify-between gap-3 border-b p-3 text-left last:border-b-0 hover:bg-accent"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {tx.merchant || tx.category?.name || 'Uncategorized'}
+                  <p className="flex items-center gap-1 truncate text-sm font-medium">
+                    {tx.source === 'recurring' && (
+                      <Repeat className="size-3 shrink-0 text-muted-foreground" aria-label="Recurring" />
+                    )}
+                    <span className="truncate">{tx.merchant || tx.category?.name || 'Uncategorized'}</span>
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {tx.category?.name ?? 'Uncategorized'}

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
-import { BarChart3, Camera, MessageCircle, Plus, Users } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
+import { Camera, MessageCircle, Plus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase/client'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -154,11 +155,6 @@ export function LedgerPage() {
           <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)} aria-label="Chat with Penda">
             <MessageCircle className="size-5" />
           </Button>
-          <Button variant="ghost" size="icon" asChild>
-            <Link to="/analytics" aria-label="Analytics">
-              <BarChart3 className="size-5" />
-            </Link>
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => setWalletSheetOpen(true)} aria-label="Wallet members">
             <Users className="size-5" />
           </Button>
@@ -177,7 +173,7 @@ export function LedgerPage() {
       <Button
         onClick={openAddForm}
         size="icon"
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg"
+        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-lg"
         aria-label="Add transaction"
       >
         <Plus className="size-6" />
@@ -201,6 +197,8 @@ export function LedgerPage() {
       <p className="text-center text-xs text-muted-foreground">
         Signed in as {session?.user.email}
       </p>
+
+      <BottomNav />
     </div>
   )
 }

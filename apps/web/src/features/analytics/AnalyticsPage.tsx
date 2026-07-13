@@ -1,8 +1,8 @@
-import { ArrowLeft, Bell, BellRing } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Bell, BellRing } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
@@ -40,13 +40,8 @@ export function AnalyticsPage() {
   if (!wallet) return null
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-12">
-      <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" asChild>
-          <Link to="/" aria-label="Back">
-            <ArrowLeft className="size-5" />
-          </Link>
-        </Button>
+    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+      <header>
         <h1 className="text-xl font-semibold">Analytics</h1>
       </header>
 
@@ -90,6 +85,8 @@ export function AnalyticsPage() {
           <InsightsList insights={insights} onDismiss={(id) => dismissInsight.mutate(id)} />
         </CardContent>
       </Card>
+
+      <BottomNav />
     </div>
   )
 }

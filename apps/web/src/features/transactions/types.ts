@@ -1,7 +1,7 @@
 import type { Category } from '@/features/categories/types'
 
 export type TransactionType = 'expense' | 'income' | 'transfer'
-export type TransactionSource = 'manual' | 'chat' | 'voice' | 'receipt'
+export type TransactionSource = 'manual' | 'chat' | 'voice' | 'receipt' | 'recurring'
 
 export interface Transaction {
   id: string
