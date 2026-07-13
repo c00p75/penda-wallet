@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { Mic, Square } from 'lucide-react'
+import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSendChatMessage } from './hooks'
+import { useVoiceRecorder } from './useVoiceRecorder'
 import type { ChatMessage } from './types'
 
 interface ChatSheetProps {
@@ -19,6 +22,11 @@ export function ChatSheet({ open, onOpenChange, walletId }: ChatSheetProps) {
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [input, setInput] = useState('')
   const sendMessage = useSendChatMessage(walletId)
+
+  const voice = useVoiceRecorder(
+    (transcript) => setInput((prev) => (prev ? `${prev} ${transcript}` : transcript)),
+    (message) => toast.error(message),
+  )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -54,7 +62,8 @@ export function ChatSheet({ open, onOpenChange, walletId }: ChatSheetProps) {
         <div className="flex-1 overflow-y-auto px-4">
           {messages.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Tell me about a purchase or payment — "spent $12 on coffee at Blue Bottle".
+              Tell me about a purchase or payment — "spent $12 on coffee at Blue Bottle", or tap the
+              mic to say it instead.
             </p>
           )}
           <div className="flex flex-col gap-3 pb-4">
@@ -75,6 +84,11 @@ export function ChatSheet({ open, onOpenChange, walletId }: ChatSheetProps) {
                 Thinking…
               </div>
             )}
+            {voice.state === 'transcribing' && (
+              <div className="mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                Transcribing…
+              </div>
+            )}
           </div>
         </div>
 
@@ -82,9 +96,19 @@ export function ChatSheet({ open, onOpenChange, walletId }: ChatSheetProps) {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="I spent $12 on coffee..."
+            placeholder={voice.state === 'recording' ? 'Listening…' : 'I spent $12 on coffee...'}
             autoComplete="off"
           />
+          <Button
+            type="button"
+            variant={voice.state === 'recording' ? 'destructive' : 'outline'}
+            size="icon"
+            disabled={voice.state === 'transcribing'}
+            onClick={voice.state === 'recording' ? voice.stop : voice.start}
+            aria-label={voice.state === 'recording' ? 'Stop recording' : 'Record a voice message'}
+          >
+            {voice.state === 'recording' ? <Square className="size-4" /> : <Mic className="size-4" />}
+          </Button>
           <Button type="submit" disabled={sendMessage.isPending}>
             Send
           </Button>
