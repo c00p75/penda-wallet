@@ -33,3 +33,42 @@ registerRoute(
   async ({ request }) => fetch(request),
   'POST',
 )
+
+interface PushPayload {
+  title: string
+  body: string
+  url?: string
+}
+
+self.addEventListener('push', (event) => {
+  let payload: PushPayload = { title: 'Penda', body: 'You have a new insight.' }
+  try {
+    if (event.data) payload = event.data.json()
+  } catch {
+    // fall back to default payload above
+  }
+  console.log('[sw] push received', payload)
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: payload.url ?? '/' },
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const targetUrl = (event.notification.data as { url?: string } | undefined)?.url ?? '/'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.includes(targetUrl) && 'focus' in client) return client.focus()
+      }
+      return self.clients.openWindow(targetUrl)
+    }),
+  )
+})

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
-import { Camera, MessageCircle, Plus } from 'lucide-react'
+import { Link, Navigate } from 'react-router-dom'
+import { BarChart3, Camera, MessageCircle, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
@@ -127,6 +127,11 @@ export function LedgerPage() {
           />
           <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)} aria-label="Chat with Penda">
             <MessageCircle className="size-5" />
+          </Button>
+          <Button variant="ghost" size="icon" asChild>
+            <Link to="/analytics" aria-label="Analytics">
+              <BarChart3 className="size-5" />
+            </Link>
           </Button>
           <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()}>
             Sign out

@@ -34,6 +34,16 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Sequential blue ramp (magnitude encoding — charts & calendar heatmap) */
+  --viz-seq-100: #cde2fb;
+  --viz-seq-150: #b7d3f6;
+  --viz-seq-200: #9ec5f4;
+  --viz-seq-300: #6da7ec;
+  --viz-seq-450: #2a78d6;
+  --viz-seq-550: #1c5cab;
+  --viz-seq-650: #104281;
+  --viz-muted-ink: #898781;
+  --viz-gridline: #e1e0d9;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -124,6 +134,15 @@ body {
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --viz-seq-100: #17324f;
+  --viz-seq-150: #1c3c5e;
+  --viz-seq-200: #21486f;
+  --viz-seq-300: #2c5f92;
+  --viz-seq-450: #3987e5;
+  --viz-seq-550: #5a9deb;
+  --viz-seq-650: #86b6ef;
+  --viz-muted-ink: #898781;
+  --viz-gridline: #2c2c2a;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
