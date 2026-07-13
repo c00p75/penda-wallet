@@ -6,3 +6,13 @@ export interface Wallet {
   created_by: string
   created_at: string
 }
+
+export type WalletRole = 'owner' | 'editor' | 'viewer'
+
+export interface WalletMember {
+  user_id: string
+  email: string
+  display_name: string | null
+  role: WalletRole
+  joined_at: string
+}

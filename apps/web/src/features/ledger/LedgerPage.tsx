@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { BarChart3, Camera, MessageCircle, Plus } from 'lucide-react'
+import { BarChart3, Camera, MessageCircle, Plus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase/client'
-import { useDefaultWallet } from '@/features/wallets/hooks'
+import { useCurrentWallet } from '@/features/wallets/hooks'
+import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
+import { useWalletPresence } from '@/features/wallets/useWalletPresence'
+import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { useCategories } from '@/features/categories/hooks'
 import {
   useCreateTransaction,
@@ -23,7 +26,7 @@ import { BalanceSummary } from './BalanceSummary'
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
-  const { data: wallet, isLoading: isWalletLoading } = useDefaultWallet()
+  const { data: wallet, isLoading: isWalletLoading } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
 
@@ -35,7 +38,11 @@ export function LedgerPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [walletSheetOpen, setWalletSheetOpen] = useState(false)
   const receiptInputRef = useRef<HTMLInputElement>(null)
+
+  useWalletRealtime(wallet?.id)
+  const present = useWalletPresence(wallet?.id, session?.user.id, session?.user.email ?? '')
 
   function openAddForm() {
     setEditing(null)
@@ -51,7 +58,7 @@ export function LedgerPage() {
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
-        await updateTransaction.mutateAsync({ id: editing.id, input })
+        await updateTransaction.mutateAsync({ id: editing.id, input, version: editing.version })
         toast(wasDraft ? 'Receipt confirmed.' : 'Transaction updated.')
       } else {
         await createTransaction.mutateAsync(input)
@@ -106,7 +113,26 @@ export function LedgerPage() {
   return (
     <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Penda</h1>
+        <button
+          type="button"
+          onClick={() => setWalletSheetOpen(true)}
+          className="flex items-center gap-2 text-left"
+        >
+          <h1 className="text-xl font-semibold">{wallet.name}</h1>
+          {present.length > 1 && (
+            <span className="flex -space-x-1.5">
+              {present.slice(0, 3).map((p) => (
+                <span
+                  key={p.userId}
+                  title={p.label}
+                  className="flex size-5 items-center justify-center rounded-full border-2 border-background bg-primary text-[9px] font-medium text-primary-foreground"
+                >
+                  {p.label.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+            </span>
+          )}
+        </button>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -132,6 +158,9 @@ export function LedgerPage() {
             <Link to="/analytics" aria-label="Analytics">
               <BarChart3 className="size-5" />
             </Link>
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setWalletSheetOpen(true)} aria-label="Wallet members">
+            <Users className="size-5" />
           </Button>
           <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()}>
             Sign out
@@ -166,6 +195,8 @@ export function LedgerPage() {
       />
 
       <ChatSheet open={chatOpen} onOpenChange={setChatOpen} walletId={wallet.id} />
+
+      <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
 
       <p className="text-center text-xs text-muted-foreground">
         Signed in as {session?.user.email}

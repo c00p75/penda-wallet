@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuthStore } from '@/store/authStore'
-import { useDefaultWallet } from '@/features/wallets/hooks'
+import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { usePushSubscriptionStatus, useSubscribeToPush } from '@/features/notifications/hooks'
 import { useDismissInsight, useInsights } from './hooks'
@@ -14,7 +14,7 @@ import { InsightsList } from './InsightsList'
 
 export function AnalyticsPage() {
   const session = useAuthStore((s) => s.session)
-  const { data: wallet } = useDefaultWallet()
+  const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: insights = [] } = useInsights(wallet?.id)
   const dismissInsight = useDismissInsight(wallet?.id)

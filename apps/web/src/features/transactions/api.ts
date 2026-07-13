@@ -3,6 +3,13 @@ import type { Transaction, TransactionInput } from './types'
 
 const SELECT_WITH_CATEGORY = '*, category:categories(id, name, icon, color)'
 
+export class ConflictError extends Error {
+  constructor() {
+    super('Someone else already updated this transaction. It has been refreshed with their changes.')
+    this.name = 'ConflictError'
+  }
+}
+
 export async function fetchTransactions(walletId: string): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
@@ -40,15 +47,18 @@ export async function createTransaction(
 export async function updateTransaction(
   id: string,
   input: TransactionInput,
+  expectedVersion: number,
 ): Promise<Transaction> {
   const { data, error } = await supabase
     .from('transactions')
-    .update({ ...input, user_confirmed: true })
+    .update({ ...input, user_confirmed: true, version: expectedVersion + 1 })
     .eq('id', id)
+    .eq('version', expectedVersion)
     .select(SELECT_WITH_CATEGORY)
-    .single()
+    .maybeSingle()
 
   if (error) throw error
+  if (!data) throw new ConflictError()
   return data as unknown as Transaction
 }
 

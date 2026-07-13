@@ -29,9 +29,10 @@ export function useUpdateTransaction(walletId: string | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: TransactionInput }) =>
-      updateTransaction(id, input),
+    mutationFn: ({ id, input, version }: { id: string; input: TransactionInput; version: number }) =>
+      updateTransaction(id, input, version),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
+    onError: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
   })
 }
 

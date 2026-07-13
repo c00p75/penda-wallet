@@ -1,17 +1,15 @@
 import { supabase } from '@/lib/supabase/client'
-import type { Wallet } from './types'
+import type { Wallet, WalletMember, WalletRole } from './types'
 
-async function fetchFirstWallet(userId: string): Promise<Wallet | null> {
+export async function fetchWallets(userId: string): Promise<Wallet[]> {
   const { data, error } = await supabase
     .from('wallet_members')
-    .select('wallets(*)')
+    .select('joined_at, wallets(*)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
 
   if (error) throw error
-  return (data?.wallets as unknown as Wallet) ?? null
+  return (data ?? []).map((row) => row.wallets as unknown as Wallet)
 }
 
 async function createDefaultWallet(): Promise<Wallet> {
@@ -23,8 +21,41 @@ async function createDefaultWallet(): Promise<Wallet> {
   return data as Wallet
 }
 
-export async function fetchOrCreateDefaultWallet(userId: string): Promise<Wallet> {
-  const existing = await fetchFirstWallet(userId)
-  if (existing) return existing
-  return createDefaultWallet()
+export async function fetchOrCreateWallets(userId: string): Promise<Wallet[]> {
+  const existing = await fetchWallets(userId)
+  if (existing.length > 0) return existing
+  return [await createDefaultWallet()]
+}
+
+export async function createWallet(name: string, baseCurrency: string): Promise<Wallet> {
+  const { data, error } = await supabase
+    .rpc('create_wallet_with_owner', { p_name: name, p_base_currency: baseCurrency })
+    .single()
+
+  if (error) throw error
+  return data as Wallet
+}
+
+export async function fetchWalletMembers(walletId: string): Promise<WalletMember[]> {
+  const { data, error } = await supabase.rpc('get_wallet_members', { p_wallet_id: walletId })
+  if (error) throw error
+  return data as WalletMember[]
+}
+
+export async function inviteWalletMember(walletId: string, email: string, role: WalletRole): Promise<void> {
+  const { error } = await supabase.rpc('invite_wallet_member', {
+    p_wallet_id: walletId,
+    p_email: email,
+    p_role: role,
+  })
+  if (error) throw error
+}
+
+export async function removeWalletMember(walletId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('wallet_members')
+    .delete()
+    .eq('wallet_id', walletId)
+    .eq('user_id', userId)
+  if (error) throw error
 }
