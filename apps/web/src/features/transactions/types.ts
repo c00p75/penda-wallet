@@ -15,6 +15,7 @@ export interface Transaction {
   description: string | null
   transaction_date: string
   source: TransactionSource
+  receipt_storage_path: string | null
   user_confirmed: boolean
   version: number
   deleted_at: string | null

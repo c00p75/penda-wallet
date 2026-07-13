@@ -22,6 +22,7 @@ import {
 import type { Category } from '@/features/categories/types'
 import type { Transaction, TransactionInput, TransactionType } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { getReceiptImageUrl } from '@/features/receipts/api'
 
 interface TransactionFormProps {
   open: boolean
@@ -52,6 +53,17 @@ export function TransactionForm({
   const [merchant, setMerchant] = useState('')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState(today())
+  const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null)
+
+  const isReceiptDraft = !!transaction && transaction.source === 'receipt' && !transaction.user_confirmed
+
+  useEffect(() => {
+    if (!open || !transaction?.receipt_storage_path) {
+      setReceiptImageUrl(null)
+      return
+    }
+    getReceiptImageUrl(transaction.receipt_storage_path).then(setReceiptImageUrl)
+  }, [open, transaction?.receipt_storage_path])
 
   useEffect(() => {
     if (!open) return
@@ -93,10 +105,20 @@ export function TransactionForm({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{transaction ? 'Edit transaction' : 'Add transaction'}</SheetTitle>
+          <SheetTitle>
+            {isReceiptDraft ? 'Confirm receipt' : transaction ? 'Edit transaction' : 'Add transaction'}
+          </SheetTitle>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">
+          {receiptImageUrl && (
+            <img
+              src={receiptImageUrl}
+              alt="Receipt"
+              className="max-h-48 w-full rounded-lg border object-contain"
+            />
+          )}
+
           <ToggleGroup
             type="single"
             value={type}
@@ -176,7 +198,7 @@ export function TransactionForm({
           <SheetFooter className="flex-row gap-2 px-0">
             {transaction && onDelete && (
               <Button type="button" variant="destructive" onClick={onDelete} className="flex-1">
-                Delete
+                {isReceiptDraft ? 'Discard' : 'Delete'}
               </Button>
             )}
             <SheetClose asChild>
@@ -185,7 +207,7 @@ export function TransactionForm({
               </Button>
             </SheetClose>
             <Button type="submit" disabled={isSubmitting} className="flex-1">
-              {transaction ? 'Save' : 'Add'}
+              {isReceiptDraft ? 'Confirm' : transaction ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>
         </form>

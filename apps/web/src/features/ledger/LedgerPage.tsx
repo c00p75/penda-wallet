@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { MessageCircle, Plus } from 'lucide-react'
+import { Camera, MessageCircle, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
@@ -17,6 +17,7 @@ import { TransactionForm } from '@/features/transactions/TransactionForm'
 import { TransactionList } from '@/features/transactions/TransactionList'
 import type { Transaction, TransactionInput } from '@/features/transactions/types'
 import { ChatSheet } from '@/features/chat/ChatSheet'
+import { useUploadReceipt } from '@/features/receipts/hooks'
 import { BalanceSummary } from './BalanceSummary'
 
 export function LedgerPage() {
@@ -29,10 +30,12 @@ export function LedgerPage() {
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
   const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const uploadReceipt = useUploadReceipt(wallet?.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const receiptInputRef = useRef<HTMLInputElement>(null)
 
   function openAddForm() {
     setEditing(null)
@@ -47,8 +50,9 @@ export function LedgerPage() {
   async function handleSubmit(input: TransactionInput) {
     try {
       if (editing) {
+        const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
         await updateTransaction.mutateAsync({ id: editing.id, input })
-        toast('Transaction updated.')
+        toast(wasDraft ? 'Receipt confirmed.' : 'Transaction updated.')
       } else {
         await createTransaction.mutateAsync(input)
         toast('Transaction added.')
@@ -60,12 +64,30 @@ export function LedgerPage() {
 
   async function handleDelete() {
     if (!editing) return
+    const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
     try {
       await deleteTransaction.mutateAsync(editing.id)
-      toast('Transaction deleted.')
+      toast(wasDraft ? 'Receipt discarded.' : 'Transaction deleted.')
       setFormOpen(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const toastId = toast.loading('Scanning receipt…')
+    try {
+      const draft = await uploadReceipt.mutateAsync(file)
+      toast.dismiss(toastId)
+      setEditing(draft)
+      setFormOpen(true)
+    } catch (error) {
+      toast.dismiss(toastId)
+      toast.error(error instanceof Error ? error.message : 'Could not read that receipt.')
     }
   }
 
@@ -86,6 +108,23 @@ export function LedgerPage() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Penda</h1>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => receiptInputRef.current?.click()}
+            aria-label="Scan a receipt"
+            disabled={uploadReceipt.isPending}
+          >
+            <Camera className="size-5" />
+          </Button>
+          <input
+            ref={receiptInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleReceiptSelected}
+          />
           <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)} aria-label="Chat with Penda">
             <MessageCircle className="size-5" />
           </Button>

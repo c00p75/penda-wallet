@@ -8,6 +8,7 @@ export async function fetchTransactions(walletId: string): Promise<Transaction[]
     .from('transactions')
     .select(SELECT_WITH_CATEGORY)
     .eq('wallet_id', walletId)
+    .eq('user_confirmed', true)
     .is('deleted_at', null)
     .order('transaction_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -42,7 +43,7 @@ export async function updateTransaction(
 ): Promise<Transaction> {
   const { data, error } = await supabase
     .from('transactions')
-    .update(input)
+    .update({ ...input, user_confirmed: true })
     .eq('id', id)
     .select(SELECT_WITH_CATEGORY)
     .single()
