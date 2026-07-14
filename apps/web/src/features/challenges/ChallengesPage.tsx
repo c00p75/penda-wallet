@@ -113,7 +113,7 @@ export function ChallengesPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Challenges</h1>
         <Button variant="outline" size="sm" onClick={() => setJoinOpen(true)}>
@@ -204,6 +204,6 @@ export function ChallengesPage() {
       />
 
       <BottomNav />
-    </div>
+    </main>
   )
 }

@@ -171,7 +171,7 @@ export function LedgerPage() {
   ]
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-36">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-36">
       <header className="flex items-center justify-between">
         <button
           type="button"
@@ -307,6 +307,6 @@ export function LedgerPage() {
       <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
 
       <BottomNav />
-    </div>
+    </main>
   )
 }

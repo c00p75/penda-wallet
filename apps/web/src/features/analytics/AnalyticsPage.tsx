@@ -43,7 +43,7 @@ export function AnalyticsPage() {
   if (!wallet) return null
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header>
         <h1 className="text-xl font-semibold">Analytics</h1>
       </header>
@@ -101,6 +101,6 @@ export function AnalyticsPage() {
       </Card>
 
       <BottomNav />
-    </div>
+    </main>
   )
 }

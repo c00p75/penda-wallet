@@ -50,7 +50,7 @@ export function SettingsPage() {
     (displayName !== (profile.display_name ?? '') || personality !== profile.ai_personality)
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header>
         <h1 className="text-xl font-semibold">Settings</h1>
       </header>
@@ -165,6 +165,6 @@ export function SettingsPage() {
       </Button>
 
       <BottomNav />
-    </div>
+    </main>
   )
 }
