@@ -7,3 +7,8 @@ export interface Category {
   parent_category_id: string | null
   is_system: boolean
 }
+
+export interface CategoryInput {
+  name: string
+  color: string | null
+}

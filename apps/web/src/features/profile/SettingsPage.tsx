@@ -1,19 +1,29 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Check, Download, Share, Smartphone, Sparkles } from 'lucide-react'
+import { Check, Download, Monitor, Moon, Share, Smartphone, Sparkles, Sun } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
+import { useThemeStore, type ThemeMode } from '@/store/themeStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
 import { useEntitlement } from '@/features/entitlements/hooks'
+import { useCurrentWallet } from '@/features/wallets/hooks'
+import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PERSONALITIES, type AiPersonality } from './types'
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+]
 
 export function SettingsPage() {
   const session = useAuthStore((s) => s.session)
@@ -22,6 +32,9 @@ export function SettingsPage() {
   const updateProfile = useUpdateProfile(userId)
   const install = useInstallPrompt()
   const { isPremium } = useEntitlement(userId)
+  const { data: wallet } = useCurrentWallet()
+  const themeMode = useThemeStore((s) => s.mode)
+  const setThemeMode = useThemeStore((s) => s.setMode)
 
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
@@ -95,6 +108,36 @@ export function SettingsPage() {
             />
           </div>
           <p className="text-xs text-muted-foreground">Signed in as {session.user.email}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Appearance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ToggleGroup
+            type="single"
+            value={themeMode}
+            onValueChange={(v) => v && setThemeMode(v as ThemeMode)}
+            className="w-full"
+          >
+            {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <ToggleGroupItem key={value} value={value} className="flex-1 gap-1.5">
+                <Icon className="size-4" />
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Categories</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CategoryManager walletId={wallet?.id} />
         </CardContent>
       </Card>
 

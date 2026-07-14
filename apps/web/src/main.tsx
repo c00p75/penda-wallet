@@ -8,16 +8,21 @@ import './index.css'
 import App from './App.tsx'
 import { Toaster } from '@/components/ui/sonner'
 import { useAuthStore } from '@/store/authStore'
+import { useThemeStore } from '@/store/themeStore'
 
 const queryClient = new QueryClient()
 
-// Follow the system color scheme — the .dark class drives all theme tokens.
+// The .dark class drives every theme token. Mode 'system' follows the OS
+// setting live; 'light'/'dark' pin it regardless of the OS.
 const darkMedia = window.matchMedia('(prefers-color-scheme: dark)')
-function applyColorScheme() {
-  document.documentElement.classList.toggle('dark', darkMedia.matches)
+function applyTheme() {
+  const { mode } = useThemeStore.getState()
+  const isDark = mode === 'dark' || (mode === 'system' && darkMedia.matches)
+  document.documentElement.classList.toggle('dark', isDark)
 }
-applyColorScheme()
-darkMedia.addEventListener('change', applyColorScheme)
+applyTheme()
+darkMedia.addEventListener('change', applyTheme)
+useThemeStore.subscribe(applyTheme)
 
 const updateSW = registerSW({
   onNeedRefresh() {

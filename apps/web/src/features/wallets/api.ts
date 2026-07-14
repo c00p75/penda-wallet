@@ -36,6 +36,21 @@ export async function createWallet(name: string, baseCurrency: string): Promise<
   return data as Wallet
 }
 
+export async function updateWallet(
+  id: string,
+  input: { name: string; baseCurrency: string },
+): Promise<Wallet> {
+  const { data, error } = await supabase
+    .from('wallets')
+    .update({ name: input.name, base_currency: input.baseCurrency })
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as Wallet
+}
+
 export async function fetchWalletMembers(walletId: string): Promise<WalletMember[]> {
   const { data, error } = await supabase.rpc('get_wallet_members', { p_wallet_id: walletId })
   if (error) throw error

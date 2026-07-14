@@ -7,6 +7,7 @@ import {
   fetchWalletMembers,
   inviteWalletMember,
   removeWalletMember,
+  updateWallet,
 } from './api'
 import type { Wallet, WalletRole } from './types'
 
@@ -35,6 +36,17 @@ export function useCreateWallet() {
   return useMutation({
     mutationFn: ({ name, baseCurrency }: { name: string; baseCurrency: string }) =>
       createWallet(name, baseCurrency),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wallets', userId] }),
+  })
+}
+
+export function useUpdateWallet() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, name, baseCurrency }: { id: string; name: string; baseCurrency: string }) =>
+      updateWallet(id, { name, baseCurrency }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wallets', userId] }),
   })
 }
