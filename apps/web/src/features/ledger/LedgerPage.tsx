@@ -25,8 +25,12 @@ import { useWalletPresence } from '@/features/wallets/useWalletPresence'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { useCategories } from '@/features/categories/hooks'
+import { useBudgets } from '@/features/budgets/hooks'
+import { useSavingsGoals } from '@/features/goals/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
+import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
+import { CoachingCard } from '@/features/coaching/CoachingCard'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
 import {
@@ -54,6 +58,8 @@ export function LedgerPage() {
   const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
+  const { data: budgets = [] } = useBudgets(wallet?.id)
+  const { data: goals = [] } = useSavingsGoals(wallet?.id)
 
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
@@ -207,6 +213,15 @@ export function LedgerPage() {
       ? `You’ve spent ${formatMoney(last7Spent, wallet.base_currency)} in the last 7 days.`
       : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
 
+  // Proactive coaching leads when Penda has something worth saying; otherwise
+  // fall back to the plain weekly read.
+  const topInsight = detectCoachingInsights({
+    transactions,
+    budgets,
+    goals,
+    currency: wallet.base_currency,
+  })[0]
+
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
     { icon: CalendarRange, label: 'Cashflow timeline', onTap: () => navigate('/cashflow') },
@@ -290,7 +305,7 @@ export function LedgerPage() {
         <BalanceSummary transactions={transactions} currency={wallet.base_currency} />
       </section>
 
-      <AiInsight>{weekInsight}</AiInsight>
+      {topInsight ? <CoachingCard insight={topInsight} /> : <AiInsight>{weekInsight}</AiInsight>}
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         {suggestions.map(({ icon: Icon, label, onTap }) => (
