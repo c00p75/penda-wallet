@@ -16,6 +16,7 @@ import { BudgetForm } from './BudgetForm'
 import { BudgetProgressCard } from './BudgetProgressCard'
 import { BudgetSuggestionsSheet } from './BudgetSuggestionsSheet'
 import { suggestBudgets, type BudgetSuggestion } from './suggestBudgets'
+import { SpendingPlanCard } from '@/features/planning/SpendingPlanCard'
 import type { Budget, BudgetInput } from './types'
 import {
   useCreateRecurringTransaction,
@@ -179,6 +180,10 @@ export function BudgetsPage() {
           Recurring
         </ToggleGroupItem>
       </ToggleGroup>
+
+      {tab === 'budgets' && (
+        <SpendingPlanCard walletId={wallet.id} currency={wallet.base_currency} transactions={transactions} />
+      )}
 
       {tab === 'budgets' && suggestions.length > 0 && (
         <Button
