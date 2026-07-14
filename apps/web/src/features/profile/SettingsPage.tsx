@@ -18,6 +18,7 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PERSONALITIES, type AiPersonality } from './types'
+import { PROFILE_MODES, type ProfileMode } from './modes'
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -38,11 +39,13 @@ export function SettingsPage() {
 
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
+  const [mode, setMode] = useState<ProfileMode>('individual')
 
   useEffect(() => {
     if (!profile) return
     setDisplayName(profile.display_name ?? '')
     setPersonality(profile.ai_personality)
+    setMode(profile.mode)
   }, [profile])
 
   if (!session) return <Navigate to="/login" replace />
@@ -52,6 +55,7 @@ export function SettingsPage() {
       await updateProfile.mutateAsync({
         display_name: displayName.trim() || null,
         ai_personality: personality,
+        mode,
       })
       toast('Settings saved.')
     } catch (error) {
@@ -61,7 +65,9 @@ export function SettingsPage() {
 
   const dirty =
     !!profile &&
-    (displayName !== (profile.display_name ?? '') || personality !== profile.ai_personality)
+    (displayName !== (profile.display_name ?? '') ||
+      personality !== profile.ai_personality ||
+      mode !== profile.mode)
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
@@ -91,6 +97,40 @@ export function SettingsPage() {
             </p>
           </CardContent>
         )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Mode</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            Changes the wording and how Penda frames advice — the same money, seen your way.
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {PROFILE_MODES.map((m) => {
+              const active = mode === m.value
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setMode(m.value)}
+                  aria-pressed={active}
+                  className={
+                    'flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center ' +
+                    (active ? 'border-primary bg-accent' : 'border-border')
+                  }
+                >
+                  <m.icon className={'size-5 ' + (active ? 'text-primary' : 'text-muted-foreground')} />
+                  <span className="text-xs font-medium">{m.label}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {PROFILE_MODES.find((m) => m.value === mode)?.description}
+          </p>
+        </CardContent>
       </Card>
 
       <Card>

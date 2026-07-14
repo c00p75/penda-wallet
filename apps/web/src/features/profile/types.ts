@@ -11,6 +11,7 @@ import {
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
+import type { ProfileMode } from './modes'
 
 export type AiPersonality =
   | 'balanced_coach'
@@ -30,12 +31,14 @@ export interface Profile {
   avatar_url: string | null
   default_currency: string
   ai_personality: AiPersonality
+  mode: ProfileMode
   created_at: string
 }
 
 export interface ProfileInput {
   display_name: string | null
   ai_personality: AiPersonality
+  mode: ProfileMode
 }
 
 export interface PersonalityMeta {

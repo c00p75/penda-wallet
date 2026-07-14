@@ -306,7 +306,7 @@ export function LedgerPage() {
           </h1>
         </div>
 
-        <BalanceSummary transactions={transactions} currency={wallet.base_currency} />
+        <BalanceSummary transactions={transactions} currency={wallet.base_currency} mode={profile?.mode} />
       </section>
 
       {topInsight ? <CoachingCard insight={topInsight} /> : <AiInsight>{weekInsight}</AiInsight>}
