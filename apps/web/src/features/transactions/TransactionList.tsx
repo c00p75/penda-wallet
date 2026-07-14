@@ -34,6 +34,13 @@ function formatDateHeading(dateStr: string) {
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+// Icon chip tint by transaction type — income reads mint, spend reads iris.
+function chipStyle(type: Transaction['type']) {
+  if (type === 'income') return { background: 'var(--mint-soft)', color: 'var(--mint)' }
+  if (type === 'transfer') return { background: 'var(--accent)', color: 'var(--accent-foreground)' }
+  return { background: 'var(--iris-soft)', color: 'var(--iris)' }
+}
+
 export function TransactionList({ transactions, onSelect }: TransactionListProps) {
   if (transactions.length === 0) {
     return (
@@ -45,44 +52,46 @@ export function TransactionList({ transactions, onSelect }: TransactionListProps
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {groupByDate(transactions).map(([date, txs]) => (
-        <div key={date}>
-          <h3 className="mb-2 text-xs font-medium text-muted-foreground">
+        <div key={date} className="flex flex-col gap-1">
+          <h3 className="mb-1 px-1 font-mono text-[0.68rem] font-medium uppercase tracking-[0.1em] text-muted-foreground">
             {formatDateHeading(date)}
           </h3>
-          <div className="flex flex-col overflow-hidden rounded-lg border">
-            {txs.map((tx) => (
+          {txs.map((tx) => {
+            const label = tx.merchant || tx.category?.name || 'Uncategorized'
+            return (
               <button
                 key={tx.id}
                 type="button"
                 onClick={() => onSelect(tx)}
-                className="flex items-center justify-between gap-3 border-b p-3 text-left last:border-b-0 hover:bg-accent"
+                className="flex items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-accent"
               >
-                <div className="min-w-0">
+                <span
+                  className="grid size-10 shrink-0 place-items-center rounded-full text-sm font-semibold uppercase"
+                  style={chipStyle(tx.type)}
+                >
+                  {label.slice(0, 1)}
+                </span>
+                <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-sm font-medium">
                     {tx.source === 'recurring' && (
                       <Repeat className="size-3 shrink-0 text-muted-foreground" aria-label="Recurring" />
                     )}
-                    <span className="truncate">{tx.merchant || tx.category?.name || 'Uncategorized'}</span>
+                    <span className="truncate">{label}</span>
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {tx.category?.name ?? 'Uncategorized'}
-                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{tx.category?.name ?? 'Uncategorized'}</p>
                 </div>
                 <span
-                  className={
-                    tx.type === 'income'
-                      ? 'shrink-0 font-medium text-emerald-600 dark:text-emerald-400'
-                      : 'shrink-0 font-medium'
-                  }
+                  className="shrink-0 font-medium tabular-nums"
+                  style={tx.type === 'income' ? { color: 'var(--mint)' } : undefined}
                 >
-                  {tx.type === 'income' ? '+' : '-'}
+                  {tx.type === 'income' ? '+' : '−'}
                   {formatMoney(tx.amount_minor, tx.currency)}
                 </span>
               </button>
-            ))}
-          </div>
+            )
+          })}
         </div>
       ))}
     </div>

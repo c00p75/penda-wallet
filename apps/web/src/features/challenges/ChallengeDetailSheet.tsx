@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 import { useLeaderboard } from './hooks'
 import { TYPE_LABELS, daysLeft, formatTarget, formatValue, hasEnded, hasMetTarget } from './challengeMeta'
 import type { Challenge } from './types'
@@ -37,6 +38,13 @@ export function ChallengeDetailSheet({
 
   const isCreator = challenge.creator_id === currentUserId
   const ended = hasEnded(challenge)
+  const myIndex = leaderboard.findIndex((e) => e.user_id === currentUserId)
+  const ordinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd']
+    const v = n % 100
+    return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`
+  }
+  const AVATAR_TINTS = ['var(--iris)', 'var(--apricot)', 'var(--mint)', 'var(--rose)', 'var(--hero-glow)']
 
   async function copyInviteCode() {
     if (!challenge) return
@@ -63,32 +71,61 @@ export function ChallengeDetailSheet({
           <Separator />
 
           <div className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">Leaderboard</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Leaderboard</h3>
+              {myIndex >= 0 && !ended && (
+                <span
+                  className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                  style={{ background: 'var(--iris-soft)', color: 'var(--iris)' }}
+                >
+                  You’re {ordinal(myIndex + 1)} of {leaderboard.length}
+                </span>
+              )}
+            </div>
             {isLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : leaderboard.length === 0 ? (
               <p className="text-sm text-muted-foreground">No participants yet.</p>
             ) : (
-              <ol className="flex flex-col overflow-hidden rounded-lg border">
+              <ol className="flex flex-col gap-1.5">
                 {leaderboard.map((entry, index) => {
                   const isMe = entry.user_id === currentUserId
                   const met = hasMetTarget(challenge, entry.value)
+                  const tint = AVATAR_TINTS[index % AVATAR_TINTS.length]
                   return (
                     <li
                       key={entry.user_id}
-                      className={`flex items-center justify-between gap-3 border-b p-3 last:border-b-0 ${isMe ? 'bg-accent/50' : ''}`}
+                      className={cn(
+                        'flex items-center gap-3 rounded-2xl px-3 py-2.5',
+                        !isMe && 'bg-card',
+                      )}
+                      style={
+                        isMe
+                          ? { background: 'var(--iris-soft)', boxShadow: '0 0 0 1px var(--iris)' }
+                          : undefined
+                      }
                     >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="w-5 shrink-0 text-center text-sm font-semibold text-muted-foreground">
-                          {index === 0 ? <Crown className="size-4 text-[var(--status-warning)]" /> : index + 1}
-                        </span>
-                        <p className="truncate text-sm font-medium">
-                          {entry.display_name}
-                          {isMe && <span className="text-muted-foreground"> (you)</span>}
-                        </p>
-                      </div>
+                      <span className="grid w-5 shrink-0 place-items-center text-sm font-semibold text-muted-foreground">
+                        {index === 0 ? (
+                          <Crown className="size-4" style={{ color: 'var(--apricot)' }} />
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
                       <span
-                        className={`shrink-0 text-sm font-medium ${met ? 'text-[var(--status-good)]' : ''}`}
+                        className="grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
+                        style={{ background: tint }}
+                        aria-hidden
+                      >
+                        {(entry.display_name || '?').slice(0, 1).toUpperCase()}
+                      </span>
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {entry.display_name}
+                        {isMe && <span className="text-muted-foreground"> (you)</span>}
+                      </p>
+                      <span
+                        className="shrink-0 text-sm font-semibold tabular-nums"
+                        style={met ? { color: 'var(--mint)' } : undefined}
                       >
                         {formatValue(challenge, entry.value)}
                       </span>
