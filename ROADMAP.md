@@ -8,6 +8,14 @@ Last updated: 2026-07-14 (rev 8)
 
 ---
 
+## 🔒 Near-term — committed, shipping next
+
+Not someday-maybe. Real exposure or table-stakes gaps we take on before the bold bets below.
+
+- **App lock** — biometric / PIN gate on open (and on reveal of exact balances). Shipping a money app with no lock screen is a live exposure the day we have users on shared or lost phones; this is near-term, not backlog.
+
+---
+
 ## ✅ Recently shipped — the AI-native design pass
 
 A visual + interaction pass that gave the whole app one language and put the AI
@@ -34,6 +42,7 @@ coordinated passes (each is more than a UI change).
 The AI cannot manage money it cannot see. In a MoMo-heavy market, manual entry is where finance apps die. Penda needs to read transactions exactly where they happen—in the SMS text—so the data flows automatically.
 - **Why:** Removes the highest friction point and guarantees data liquidity.
 - **Scope:** Android native wrapper (TWA/Capacitor) for `READ_SMS` parsing of Airtel Money, MTN MoMo, and banks. iOS/Web fallback via a persistent "📋 Paste Copied MoMo Text" chip. Ambient real-time processing toasts and a transparent Activity Log.
+  - **Action provenance across the app:** Every record knows its origin (manual / voice / SMS / AI-chat) and the UI badges non-manual entries ("auto-added by Penda"). Generalizes the transaction `source` tagging (migration 0017) to all record types — provenance is what makes the audit trail and undo legible.
 
 ### 2. Planning & Accountability Rituals · **the retention engine**
 Shift from reactive tracking to a proactive behavior-change loop (plan → act → reflect). Penda reaches out, sets intentions with the user, and reviews them on a cadence.
@@ -43,6 +52,7 @@ Shift from reactive tracking to a proactive behavior-change loop (plan → act �
   - **Spending Plan Object:** A top-level period intention (e.g., "This month I intend to spend K12k") tracked against actuals.
   - **Commitment Pacts:** "No takeout this week"—Penda holds you to it.
   - **Reflection Prompts:** "What felt worth it this week?" (optionally mood-tag spending).
+  - **Balance reconciliation — the trust anchor:** The evening reconcile isn't just reflective; it's a truth-check. A lightweight *"Penda has K3,240 — does that match your MoMo? [Yes / Fix]"* keeps computed balance from silently drifting from reality. Everything downstream (Safe Spending Radar, the cashflow timeline, the simulation engine) is only as trustworthy as this match.
 
 ### 3. Profile Modes: Context, not Code Forks · **the architecture shift**
 Treat Individual, Family, and Business accounts as a context layer over the same core engine, not three separate apps.
@@ -58,6 +68,8 @@ The AI must act like an infallible assistant. It cannot silently fail, and it mu
 - **Scope:** 
   - **Multi-tool chains:** E.g., intent `borrowed_money` triggers both `Wallet_Increase` AND `Debt_Create`.
   - **The Clarification Fallback:** If the AI is unsure how to categorize a transaction or goal, it halts and asks the user directly in the ambient chat rather than doing nothing.
+  - **Full CRUD with tiered confirmation:** Expand the agent's tools beyond create-only to cover the app's domains (transactions, debts, budgets, goals, wallets, categories). Reads and creates flow freely; **updates and deletes always surface a confirmation request before executing** (e.g. *"Delete the K450 groceries entry from Tuesday?"*). Destructive bulk/structural ops (deleting a wallet, mass-deleting transactions) stay forbidden to the agent regardless. This capability matrix is a hard guardrail in the tool layer, distinct from the user-facing consent controls (see Intelligence & Trust).
+  - **Atomic multi-tool chains:** A chain must be all-or-nothing. If one step of a `Wallet_Increase` + `Debt_Create` chain fails, the whole chain rolls back (or self-repairs) rather than leaving the ledger half-updated — a silent partial write is exactly the failure this bet promises to prevent.
 
 ### 5. The Living Cashflow Timeline · **the paradigm shift**
 Replace the traditional static month-to-month budget with a forward-looking timeline based on known income, recurring bills, and average spending.
@@ -121,9 +133,17 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **Multi-currency & FX** — per-wallet currency conversion.
 
 ### Intelligence & Trust
+- **AI Autonomy & Consent Controls** — a plain-language surface for what Penda may do unprompted (auto-log SMS, act without confirming, parsing on/off) and what it must always ask about. The control layer that makes bets #1 and #4 safe to ship. Paired with an editable view of AI memory (#10) rather than a settings tree.
+- **AI Action Audit Trail & One-Tap Undo** — every AI-initiated create/update/delete lands in a reviewable "Penda did this" trail, each entry reversible in one tap. Guards the *after* where confirmation only guards the *before*. Infra is half-built already (soft-delete via `deleted_at`, the `user_confirmed` flag). Reversibility is what lets confirmations safely loosen over time — a future *graduated-trust* calibration (the AI earns looser confirmations as it proves accurate) depends on this shipping first.
+- **"Teach Penda" correction loop** — when Penda miscategorizes, correcting it makes the fix *stick*. The edge function already applies categorization rules server-side, but there's no user-facing way to teach it; close the loop so a correction becomes a durable rule. Turns every AI mistake into learning (ties into AI memory, #10).
 - **Context-Aware "Local Market" Intelligence** — plug into physical reality (*"Fuel goes up tonight—filling up today saves K120"*).
 - **Ghost Expenses & "Phantom Leak" Detection** — catch compounding behavioral leaks (e.g., peer-to-peer sending fees).
 - **Dynamic Financial Missions** — AI-generated missions (*"Five no-spend days starting now"*).
 - **Blind Budgeting / "Out of Sight" Mode** — hide exact low balances behind ambient health indicators (green/amber auras) to reduce anxiety.
 - **Financial Confidence Score** — replace the generic credit score with a holistic metric based on cash flow, savings runway, and stability.
 - **Every gate is a live preview** — let users feel the magic once before hitting the paywall.
+
+### Security & Data Control
+*Table stakes for a money app, and a trust play — hardens who can open the app, complementing the AI-action guardrails that harden what the AI can do. (App lock has been promoted to Near-term above.)*
+- **Data export** — let users download their full financial history (CSV/JSON). Ownership builds trust; also an app-store/privacy expectation.
+- **Account & data deletion** — a real self-serve delete path. Compliance requirement the moment we publish.

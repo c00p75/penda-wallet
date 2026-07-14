@@ -1,4 +1,16 @@
-import { Compass, Flame, HeartHandshake, ShieldAlert, Smile, type LucideIcon } from 'lucide-react'
+import {
+  Calculator,
+  Compass,
+  Flame,
+  HeartHandshake,
+  Laugh,
+  ShieldAlert,
+  Smile,
+  Sparkles,
+  Sprout,
+  TrendingUp,
+  type LucideIcon,
+} from 'lucide-react'
 
 export type AiPersonality =
   | 'balanced_coach'
@@ -6,6 +18,11 @@ export type AiPersonality =
   | 'wise_mentor'
   | 'chill_friend'
   | 'drill_sergeant'
+  | 'funny_comedian'
+  | 'gen_z'
+  | 'hustler'
+  | 'gogo'
+  | 'analyst'
 
 export interface Profile {
   id: string
@@ -73,5 +90,45 @@ export const PERSONALITIES: PersonalityMeta[] = [
     preview: 'K600 left. That’s the line. Do not cross it. Move.',
     accent: 'oklch(0.6 0.09 250)',
     icon: ShieldAlert,
+  },
+  {
+    value: 'funny_comedian',
+    label: 'Funny comedian',
+    description: 'Cracks jokes, still gets the point across.',
+    preview: 'K600 left and payday’s Friday? That’s not a budget, that’s a hostage situation. We’ll make it. 😄',
+    accent: 'oklch(0.8 0.16 70)',
+    icon: Laugh,
+  },
+  {
+    value: 'gen_z',
+    label: 'Gen-Z bestie',
+    description: 'Very online, hype, keeps it real.',
+    preview: 'K600 ahead?? okay we don’t claim broke behavior in this house 💅 financial icon fr.',
+    accent: 'oklch(0.68 0.2 350)',
+    icon: Sparkles,
+  },
+  {
+    value: 'hustler',
+    label: 'The hustler',
+    description: 'Growth mindset — earn more, not just spend less.',
+    preview: 'K600 left is fine. Real question: what’s bringing more in? What did you sell this week?',
+    accent: 'oklch(0.64 0.15 155)',
+    icon: TrendingUp,
+  },
+  {
+    value: 'gogo',
+    label: 'Gogo',
+    description: 'A grandmother’s frugal wisdom, never rushed.',
+    preview: 'Eh, you have K600? Put half away before it grows legs. A little saved often becomes a lot.',
+    accent: 'oklch(0.6 0.09 45)',
+    icon: Sprout,
+  },
+  {
+    value: 'analyst',
+    label: 'The analyst',
+    description: 'Just the numbers — precise, no fluff.',
+    preview: 'K600 remaining, 5 days to payday: K120/day. Current average: K185/day. Overshoot risk ~K325.',
+    accent: 'oklch(0.58 0.03 250)',
+    icon: Calculator,
   },
 ]

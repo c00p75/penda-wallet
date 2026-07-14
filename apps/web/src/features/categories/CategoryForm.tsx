@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { EmojiPicker } from '@/components/EmojiPicker'
+import { EmojiPicker, type EmojiGroup } from '@/components/EmojiPicker'
 import { cn } from '@/lib/utils'
 import type { Category, CategoryInput } from './types'
 
@@ -34,10 +34,46 @@ const COLOR_SWATCHES: (string | null)[] = [
   '#d946ef', // fuchsia
 ]
 
-const ICON_CHOICES = [
-  '🍔', '🚗', '🏠', '💊', '🛍️', '🎬', '💡', '💰', '🔄', '📦',
-  '🐾', '🎓', '✈️', '🎁', '👶', '💪', '☕', '🛒', '📱', '🛡️',
-  '⛽', '🎮', '📚', '💇',
+// A broad, grouped set so almost any category has a fitting icon without
+// forcing the user to hunt in the system emoji keyboard (still available via
+// the free-text fallback in EmojiPicker).
+const ICON_GROUPS: EmojiGroup[] = [
+  {
+    label: 'Food & drink',
+    emojis: ['🍔', '🍕', '🍜', '🍱', '🥗', '🍿', '🍺', '🍷', '☕', '🧋', '🍰', '🛒', '🥦', '🍦'],
+  },
+  {
+    label: 'Transport',
+    emojis: ['🚗', '⛽', '🚕', '🚌', '🚆', '✈️', '🚲', '🛵', '🚢', '🅿️', '🛺', '🚧'],
+  },
+  {
+    label: 'Home & bills',
+    emojis: ['🏠', '💡', '💧', '🔥', '🪑', '🧹', '🧺', '🔧', '📶', '📺', '🗑️', '🏢'],
+  },
+  {
+    label: 'Shopping',
+    emojis: ['🛍️', '👕', '👟', '👗', '💄', '👜', '⌚', '💍', '🧸', '🎀', '🕶️'],
+  },
+  {
+    label: 'Health & personal',
+    emojis: ['💊', '🏥', '🩺', '💪', '🧘', '💇', '💆', '🦷', '👓', '🧴', '🩹'],
+  },
+  {
+    label: 'Fun & leisure',
+    emojis: ['🎬', '🎮', '🎵', '🎨', '⚽', '🎳', '🎤', '🎟️', '🏖️', '🎧', '📷', '🎲'],
+  },
+  {
+    label: 'Money & work',
+    emojis: ['💰', '💵', '💳', '🏦', '📈', '💼', '🧾', '🔄', '🎁', '🪙', '📊', '🤝'],
+  },
+  {
+    label: 'Family & education',
+    emojis: ['👶', '🐾', '🎓', '📚', '✏️', '🏫', '👪', '💒', '🎒', '🍼', '🧑‍🏫'],
+  },
+  {
+    label: 'Tech & misc',
+    emojis: ['📱', '💻', '🖨️', '🔌', '🛡️', '📦', '🌍', '⛪', '📝', '🎯', '⭐', '❓'],
+  },
 ]
 
 interface CategoryFormProps {
@@ -89,7 +125,7 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
 
           <div className="flex flex-col gap-1.5">
             <Label>Icon</Label>
-            <EmojiPicker emojis={ICON_CHOICES} value={icon} onChange={setIcon} />
+            <EmojiPicker groups={ICON_GROUPS} value={icon} onChange={setIcon} />
           </div>
 
           <div className="flex flex-col gap-1.5">

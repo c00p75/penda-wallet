@@ -11,12 +11,40 @@ const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ITERATIONS = 4
 
+// Symbols for the currencies the app offers (mirrors apps/web/src/lib/currencies.ts).
+// Used only to help the model speak money in the wallet's currency; falls back to the code.
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', INR: '₹', CAD: '$', AUD: '$',
+  CHF: 'CHF', ZAR: 'R', NGN: '₦', KES: 'KSh', GHS: 'GH₵', ZMW: 'K', EGP: 'E£',
+  MAD: 'MAD', BRL: 'R$', MXN: '$', ARS: '$', SGD: '$', HKD: '$', AED: 'AED',
+  SAR: 'SAR', ILS: '₪', TRY: '₺', RUB: '₽', KRW: '₩', IDR: 'Rp', MYR: 'RM',
+  THB: '฿', PHP: '₱', VND: '₫', PLN: 'zł', SEK: 'kr', NOK: 'kr', DKK: 'kr', NZD: '$',
+}
+
 const PERSONALITY_PROMPTS: Record<string, string> = {
   balanced_coach: 'Your tone is warm, encouraging, and balanced — a supportive financial coach.',
   angry_mom: "Your tone is exasperated but loving, like a mom who's tired of seeing money wasted on takeout.",
   wise_mentor: 'Your tone is calm and reflective, offering perspective rather than judgment.',
   chill_friend: "Your tone is casual and easygoing, like a friend who's just keeping you honest.",
   drill_sergeant: 'Your tone is blunt and no-nonsense, pushing for discipline and accountability.',
+  funny_comedian:
+    'Your tone is playful and funny — a stand-up comedian who lands a quick joke or witty aside, ' +
+    'then still gives real, useful guidance. Keep it light, never mean, and never let the joke ' +
+    'get in the way of logging the transaction correctly.',
+  gen_z:
+    'Your tone is a very-online Gen-Z best friend — high energy, casual slang, and genuine hype ' +
+    'when the user does well. Celebrate wins loudly and keep it real, but never let the vibe get ' +
+    'in the way of accurate, useful guidance. Emoji are fine; keep them sparing.',
+  hustler:
+    'Your tone is that of an entrepreneurial hustler with a growth mindset. You frame money as ' +
+    'something to grow, not just protect — nudging toward earning more, side income, and reinvesting, ' +
+    'while still respecting the budget. Motivating and pragmatic, never reckless.',
+  gogo:
+    'Your tone is that of a warm grandmother (gogo) — unhurried, wise, and frugal, fond of a short ' +
+    'proverb and a save-for-the-rainy-day mindset. Gentle and encouraging, never nagging.',
+  analyst:
+    'Your tone is that of a precise financial analyst: cold, quantitative, and to the point. Lead ' +
+    'with the numbers — figures, rates, and projections — and skip emotional framing. No fluff.',
 }
 
 interface ChatRequestBody {
@@ -95,9 +123,10 @@ Deno.serve(async (req) => {
     const categories = await fetchCategories(supabase, body.walletId)
     const rules = await fetchCategorizationRules(supabase, body.walletId)
     const personality = await fetchPersonality(supabase, user.id)
+    const currency = await fetchWalletCurrency(supabase, body.walletId)
 
     const tools = buildTools(categories)
-    const systemInstruction = buildSystemInstruction(personality)
+    const systemInstruction = buildSystemInstruction(personality, currency)
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -368,13 +397,24 @@ async function fetchPersonality(supabase: SupabaseClient, userId: string): Promi
   return data?.ai_personality ?? 'balanced_coach'
 }
 
-function buildSystemInstruction(personality: string): string {
+async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): Promise<string> {
+  const { data } = await supabase.from('wallets').select('base_currency').eq('id', walletId).maybeSingle()
+  return data?.base_currency ?? 'USD'
+}
+
+function buildSystemInstruction(personality: string, currency: string): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? currency
   const houseRules = `You are Penda, an AI assistant embedded in a personal finance app. Your job in this
 conversation is to help the user log transactions by talking naturally — you are not a generic
 chatbot, you are the primary way this user records spending and income.
 
-When the user describes a purchase, payment, or income (e.g. "I spent $12 on coffee at Blue Bottle",
-"got paid $2000"), call the create_transaction tool with your best judgment for amount, type,
+This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
+everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
+(e.g. ${symbol}12, ${symbol}2000). Never use "$" or any other currency's symbol unless "${symbol}"
+literally is "$". The user only ever types plain numbers; the currency is always ${currency}.
+
+When the user describes a purchase, payment, or income (e.g. "I spent 12 on coffee at Blue Bottle",
+"got paid 2000"), call the create_transaction tool with your best judgment for amount, type,
 category, merchant, and date.
 
 Some messages imply more than one action — reason about what actually happened to the money and
