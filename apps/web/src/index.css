@@ -199,3 +199,15 @@ body {
     @apply font-sans;
   }
 }
+
+/* Penda AI orb — gently rotates while the assistant is thinking */
+@keyframes penda-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .penda-orb-spin {
+    animation: penda-orb-spin 7s linear infinite;
+  }
+}

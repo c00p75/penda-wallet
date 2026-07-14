@@ -9,6 +9,8 @@ import { useTransactions } from '@/features/transactions/hooks'
 import { usePushSubscriptionStatus, useSubscribeToPush } from '@/features/notifications/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { FEATURE_COPY } from '@/features/entitlements/types'
+import { formatMoney } from '@/lib/money'
+import { AiInsight } from '@/components/AiInsight'
 import { useDismissInsight, useInsights } from './hooks'
 import { CategoryBarChart } from './CategoryBarChart'
 import { SpendingCalendar } from './SpendingCalendar'
@@ -42,11 +44,32 @@ export function AnalyticsPage() {
 
   if (!wallet) return null
 
+  // AI speaks first: lead with the newest insight (Premium) or, failing that, a
+  // grounded fact computed from this month's own data — never a fabricated line.
+  const latestInsight = isPremium ? insights[0] : undefined
+  const monthSpentMinor = monthTransactions
+    .filter((tx) => tx.type === 'expense')
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header>
-        <h1 className="text-xl font-semibold">Analytics</h1>
+        <h1 className="text-xl font-semibold">What happened?</h1>
       </header>
+
+      <AiInsight tone={latestInsight?.type === 'anomaly' ? 'attention' : 'default'}>
+        {latestInsight ? (
+          latestInsight.content.text
+        ) : monthSpentMinor > 0 ? (
+          <>
+            You’ve spent{' '}
+            <b className="font-semibold">{formatMoney(monthSpentMinor, wallet.base_currency)}</b> so far
+            this month. Here’s where it went.
+          </>
+        ) : (
+          <>No spending logged this month yet — add a few and I’ll start spotting patterns for you.</>
+        )}
+      </AiInsight>
 
       <Card>
         <CardHeader>
