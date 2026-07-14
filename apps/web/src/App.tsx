@@ -14,6 +14,9 @@ const ChallengesPage = lazy(() =>
   import('@/features/challenges/ChallengesPage').then((m) => ({ default: m.ChallengesPage })),
 )
 const SettingsPage = lazy(() => import('@/features/profile/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const CashflowPage = lazy(() =>
+  import('@/features/cashflow/CashflowPage').then((m) => ({ default: m.CashflowPage })),
+)
 
 function App() {
   return (
@@ -26,6 +29,7 @@ function App() {
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/challenges" element={<ChallengesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/cashflow" element={<CashflowPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

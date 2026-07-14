@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
+  CalendarRange,
   Camera,
   ClipboardPaste,
   CloudOff,
@@ -48,6 +49,7 @@ import { BalanceSummary } from './BalanceSummary'
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
+  const navigate = useNavigate()
   const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
@@ -213,6 +215,7 @@ export function LedgerPage() {
 
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
+    { icon: CalendarRange, label: 'Cashflow timeline', onTap: () => navigate('/cashflow') },
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
     {
       icon: Camera,
