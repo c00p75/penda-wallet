@@ -123,10 +123,19 @@ Deno.serve(async (req) => {
 
       const toolResultParts: NeutralPart[] = []
       for (const call of turn.toolCalls) {
-        if (call.name !== 'create_transaction') continue
-        const result = await handleCreateTransaction(supabase, body.walletId, user.id, categories, rules, call.args)
-        createdTransaction = result.transaction
-        toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: result.summary })
+        let summary: string
+        if (call.name === 'create_transaction') {
+          const result = await handleCreateTransaction(supabase, body.walletId, user.id, categories, rules, call.args)
+          createdTransaction = result.transaction
+          summary = result.summary
+        } else if (call.name === 'create_debt') {
+          summary = (await handleCreateDebt(supabase, body.walletId, call.args)).summary
+        } else {
+          summary = `Unknown tool "${call.name}" — no action taken.`
+        }
+        // Every tool call must get a matching result, or the provider's next
+        // turn breaks (unbalanced function-call / function-response pairs).
+        toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
       }
 
       const toolResultMessage: NeutralMessage = { role: 'user', parts: toolResultParts }
@@ -366,10 +375,23 @@ chatbot, you are the primary way this user records spending and income.
 
 When the user describes a purchase, payment, or income (e.g. "I spent $12 on coffee at Blue Bottle",
 "got paid $2000"), call the create_transaction tool with your best judgment for amount, type,
-category, merchant, and date. Only ask a clarifying question if the amount is genuinely ambiguous
-— otherwise make a reasonable call and let the user correct it afterward.
+category, merchant, and date.
 
-After the tool result comes back, reply with a short, natural confirmation. Do not restate every
+Some messages imply more than one action — reason about what actually happened to the money and
+fire EVERY action a single message implies, in the same turn:
+- Borrowing ("I borrowed K500 from Amara", "took a loan"): the wallet goes UP, so call
+  create_transaction (type income) AND create_debt (direction i_owe).
+- Lending / being owed ("I lent Tich K200", "Tich owes me K200"): the wallet goes DOWN, so call
+  create_transaction (type expense) AND create_debt (direction owed_to_me).
+- If money was only promised and hasn't moved yet, record just the debt.
+Never record only one half of a two-sided event.
+
+If you are genuinely unsure how to record something — the type is ambiguous, you can't tell whether
+it's a debt, or no category fits — ask ONE short clarifying question instead of guessing or doing
+nothing. A quick question beats a wrong entry or silence. (A merely uncertain amount is the
+exception: make a reasonable call there and let the user correct it.)
+
+After the tool result(s) come back, reply with a short, natural confirmation. Do not restate every
 field back at the user like a receipt — just confirm briefly in your own voice.`
 
   const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
@@ -398,6 +420,28 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           },
         },
         required: ['type', 'amount', 'category', 'transaction_date'],
+      },
+    },
+    {
+      name: 'create_debt',
+      description:
+        'Record a debt. Use when the user borrows money (direction "i_owe") or lends money / is owed ' +
+        'money (direction "owed_to_me"). When money actually changes hands, call this ALONGSIDE ' +
+        'create_transaction in the same turn: borrowing also increases the wallet (income), lending ' +
+        'also decreases it (expense).',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Short label, e.g. "Loan from Amara" or "Lent to Tich".',
+          },
+          direction: { type: 'string', enum: ['i_owe', 'owed_to_me'] },
+          amount: { type: 'number', description: 'Principal amount as a decimal, e.g. 500.' },
+          counterparty: { type: 'string', description: 'Who the debt is with, if mentioned.' },
+          due_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD when it is due.' },
+        },
+        required: ['name', 'direction', 'amount'],
       },
     },
   ]
@@ -450,6 +494,49 @@ async function handleCreateTransaction(
   }
 
   return { transaction: data, summary: `Saved: ${JSON.stringify(data)}` }
+}
+
+async function handleCreateDebt(
+  supabase: SupabaseClient,
+  walletId: string,
+  input: Record<string, unknown>,
+): Promise<{ summary: string }> {
+  const amount = Number(input.amount)
+  if (!amount || amount <= 0) {
+    return { summary: 'Debt amount must be a positive number.' }
+  }
+
+  const direction = input.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe'
+  const name =
+    typeof input.name === 'string' && input.name.trim()
+      ? input.name.trim()
+      : direction === 'i_owe'
+        ? 'Money I borrowed'
+        : 'Money owed to me'
+  const counterparty = typeof input.counterparty === 'string' ? input.counterparty : null
+  const dueDate = typeof input.due_date === 'string' ? input.due_date : null
+  const principalMinor = Math.round(amount * 100)
+
+  const { data, error } = await supabase
+    .from('debts')
+    .insert({
+      wallet_id: walletId,
+      name,
+      direction,
+      counterparty,
+      principal_minor: principalMinor,
+      balance_minor: principalMinor,
+      interest_rate: null,
+      due_date: dueDate,
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    return { summary: `Failed to save debt: ${error.message}` }
+  }
+
+  return { summary: `Saved debt: ${JSON.stringify(data)}` }
 }
 
 function today(): string {
