@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -10,9 +10,12 @@ import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
+import { useTransactions } from '@/features/transactions/hooks'
 import { useBudgetProgress, useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from './hooks'
 import { BudgetForm } from './BudgetForm'
 import { BudgetProgressCard } from './BudgetProgressCard'
+import { BudgetSuggestionsSheet } from './BudgetSuggestionsSheet'
+import { suggestBudgets, type BudgetSuggestion } from './suggestBudgets'
 import type { Budget, BudgetInput } from './types'
 import {
   useCreateRecurringTransaction,
@@ -32,6 +35,7 @@ export function BudgetsPage() {
 
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: progress = [] } = useBudgetProgress(wallet?.id)
+  const { data: transactions = [] } = useTransactions(wallet?.id)
   const createBudget = useCreateBudget(wallet?.id)
   const updateBudget = useUpdateBudget(wallet?.id)
   const deleteBudget = useDeleteBudget(wallet?.id)
@@ -45,8 +49,17 @@ export function BudgetsPage() {
   const [tab, setTab] = useState<'budgets' | 'recurring'>('budgets')
   const [budgetFormOpen, setBudgetFormOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
+  const [suggestOpen, setSuggestOpen] = useState(false)
   const [recurringFormOpen, setRecurringFormOpen] = useState(false)
   const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null)
+
+  const suggestions = useMemo(
+    () =>
+      suggestBudgets(transactions, {
+        existingCategoryIds: budgets.map((b) => b.category_id).filter((id): id is string => !!id),
+      }),
+    [transactions, budgets],
+  )
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
@@ -71,6 +84,23 @@ export function BudgetsPage() {
       await deleteBudget.mutateAsync(editingBudget.id)
       toast('Budget deleted.')
       setBudgetFormOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleCreateSuggested(selected: BudgetSuggestion[]) {
+    try {
+      for (const s of selected) {
+        await createBudget.mutateAsync({
+          category_id: s.categoryId,
+          amount_minor: s.suggestedAmountMinor,
+          period: 'monthly',
+          rollover: false,
+        })
+      }
+      setSuggestOpen(false)
+      toast(`Created ${selected.length} budget${selected.length === 1 ? '' : 's'}.`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -150,6 +180,17 @@ export function BudgetsPage() {
         </ToggleGroupItem>
       </ToggleGroup>
 
+      {tab === 'budgets' && suggestions.length > 0 && (
+        <Button
+          variant="outline"
+          onClick={() => setSuggestOpen(true)}
+          className="justify-start gap-2 border-dashed"
+        >
+          <Sparkles className="size-4 text-primary" />
+          Suggest {suggestions.length} budget{suggestions.length === 1 ? '' : 's'} from your spending
+        </Button>
+      )}
+
       {tab === 'budgets' ? (
         budgets.length === 0 ? (
           <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
@@ -213,6 +254,15 @@ export function BudgetsPage() {
         onSubmit={handleBudgetSubmit}
         onDelete={editingBudget ? handleBudgetDelete : undefined}
         isSubmitting={createBudget.isPending || updateBudget.isPending}
+      />
+
+      <BudgetSuggestionsSheet
+        open={suggestOpen}
+        onOpenChange={setSuggestOpen}
+        suggestions={suggestions}
+        currency={wallet.base_currency}
+        onCreate={handleCreateSuggested}
+        isCreating={createBudget.isPending}
       />
 
       <RecurringForm

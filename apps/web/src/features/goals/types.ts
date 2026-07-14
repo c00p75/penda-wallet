@@ -6,6 +6,7 @@ export interface SavingsGoal {
   target_amount_minor: number
   current_amount_minor: number
   target_date: string | null
+  motivation: string | null
   created_at: string
   updated_at: string
 }
@@ -15,6 +16,7 @@ export interface SavingsGoalInput {
   icon: string | null
   target_amount_minor: number
   target_date: string | null
+  motivation: string | null
 }
 
 export interface SavingsContribution {

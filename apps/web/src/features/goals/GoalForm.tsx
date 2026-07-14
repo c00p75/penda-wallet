@@ -10,9 +10,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { EmojiPicker } from '@/components/EmojiPicker'
 import type { SavingsGoal, SavingsGoalInput } from './types'
-import { fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { monthlyContributionMinor } from './dreamBuilder'
 
 const ICON_CHOICES = [
   '🏖️', '✈️', '🚗', '🏠', '🎓', '💍', '👶', '🎉',
@@ -35,6 +37,7 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
   const [targetAmount, setTargetAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
   const [alreadySaved, setAlreadySaved] = useState('')
+  const [motivation, setMotivation] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -44,18 +47,27 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
       setTargetAmount(fromMinorUnits(goal.target_amount_minor).toString())
       setTargetDate(goal.target_date ?? '')
       setAlreadySaved('')
+      setMotivation(goal.motivation ?? '')
     } else {
       setName('')
       setIcon(null)
       setTargetAmount('')
       setTargetDate('')
       setAlreadySaved('')
+      setMotivation('')
     }
   }, [open, goal])
 
+  // Dream Builder: show what it'll take per month to hit the goal on time.
+  const targetNumber = Number(targetAmount)
+  const savedNumber = goal ? goal.current_amount_minor : toMinorUnits(Number(alreadySaved) || 0)
+  const perMonth =
+    targetNumber > 0 && targetDate
+      ? monthlyContributionMinor(toMinorUnits(targetNumber), savedNumber, targetDate)
+      : null
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const targetNumber = Number(targetAmount)
     if (!name.trim() || !targetNumber || targetNumber <= 0) return
 
     await onSubmit(
@@ -64,6 +76,7 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
         icon,
         target_amount_minor: toMinorUnits(targetNumber),
         target_date: targetDate || null,
+        motivation: motivation.trim() || null,
       },
       toMinorUnits(Number(alreadySaved) || 0),
     )
@@ -133,6 +146,27 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
             />
+          </div>
+
+          {perMonth !== null && perMonth > 0 && (
+            <p className="rounded-lg bg-accent px-3 py-2 text-sm">
+              💪 Save <span className="font-semibold">{formatMoney(perMonth, currency)}/month</span> to
+              reach this on time.
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="goal-motivation">Why does this matter?</Label>
+            <Textarea
+              id="goal-motivation"
+              value={motivation}
+              onChange={(e) => setMotivation(e.target.value)}
+              rows={2}
+              placeholder="A safety net so I stop stressing about surprise bills."
+            />
+            <p className="text-xs text-muted-foreground">
+              I’ll remember this and nudge you toward it — the “why” is what keeps a goal alive.
+            </p>
           </div>
 
           <p className="text-xs text-muted-foreground">Amounts are in {currency}.</p>
