@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Category } from '@/features/categories/types'
-import type { Transaction, TransactionInput, TransactionType } from './types'
+import type { Transaction, TransactionDraft, TransactionInput, TransactionType } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
 import { getReceiptImageUrl } from '@/features/receipts/api'
 
@@ -30,6 +30,8 @@ interface TransactionFormProps {
   categories: Category[]
   currency: string
   transaction?: Transaction | null
+  /** Pre-fill for a new transaction (parsed MoMo/SMS). Ignored when editing. */
+  draft?: TransactionDraft | null
   onSubmit: (input: TransactionInput) => Promise<void>
   onDelete?: () => Promise<void>
   isSubmitting?: boolean
@@ -43,6 +45,7 @@ export function TransactionForm({
   categories,
   currency,
   transaction,
+  draft,
   onSubmit,
   onDelete,
   isSubmitting,
@@ -74,6 +77,13 @@ export function TransactionForm({
       setMerchant(transaction.merchant ?? '')
       setDescription(transaction.description ?? '')
       setDate(transaction.transaction_date)
+    } else if (draft) {
+      setType(draft.type)
+      setAmount(fromMinorUnits(draft.amount_minor).toString())
+      setCategoryId('')
+      setMerchant(draft.merchant ?? '')
+      setDescription(draft.description ?? '')
+      setDate(draft.transaction_date)
     } else {
       setType('expense')
       setAmount('')
@@ -82,7 +92,7 @@ export function TransactionForm({
       setDescription('')
       setDate(today())
     }
-  }, [open, transaction])
+  }, [open, transaction, draft])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -97,6 +107,8 @@ export function TransactionForm({
       merchant: merchant || null,
       description: description || null,
       transaction_date: date,
+      // Preserve provenance (e.g. 'sms') for a new draft; edits keep their row's source.
+      ...(!transaction && draft?.source ? { source: draft.source } : {}),
     })
     onOpenChange(false)
   }
@@ -106,7 +118,13 @@ export function TransactionForm({
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {isReceiptDraft ? 'Confirm receipt' : transaction ? 'Edit transaction' : 'Add transaction'}
+            {isReceiptDraft
+              ? 'Confirm receipt'
+              : transaction
+                ? 'Edit transaction'
+                : draft
+                  ? 'Confirm transaction'
+                  : 'Add transaction'}
           </SheetTitle>
         </SheetHeader>
 
@@ -208,7 +226,7 @@ export function TransactionForm({
               </Button>
             </SheetClose>
             <Button type="submit" disabled={isSubmitting} className="flex-1">
-              {isReceiptDraft ? 'Confirm' : transaction ? 'Save' : 'Add'}
+              {isReceiptDraft ? 'Confirm' : transaction ? 'Save' : draft ? 'Confirm' : 'Add'}
             </Button>
           </SheetFooter>
         </form>

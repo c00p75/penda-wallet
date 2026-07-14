@@ -12,21 +12,6 @@ export async function fetchWallets(userId: string): Promise<Wallet[]> {
   return (data ?? []).map((row) => row.wallets as unknown as Wallet)
 }
 
-async function createDefaultWallet(): Promise<Wallet> {
-  const { data, error } = await supabase
-    .rpc('create_wallet_with_owner', { p_name: 'My Wallet', p_base_currency: 'USD' })
-    .single()
-
-  if (error) throw error
-  return data as Wallet
-}
-
-export async function fetchOrCreateWallets(userId: string): Promise<Wallet[]> {
-  const existing = await fetchWallets(userId)
-  if (existing.length > 0) return existing
-  return [await createDefaultWallet()]
-}
-
 export async function createWallet(name: string, baseCurrency: string): Promise<Wallet> {
   const { data, error } = await supabase
     .rpc('create_wallet_with_owner', { p_name: name, p_base_currency: baseCurrency })

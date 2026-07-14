@@ -7,13 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { BottomNav } from '@/components/BottomNav'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -21,8 +14,7 @@ import { useThemeStore, type ThemeMode } from '@/store/themeStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
 import { useEntitlement } from '@/features/entitlements/hooks'
-import { useCurrentWallet, useUpdateWallet, useWalletMembers } from '@/features/wallets/hooks'
-import { CURRENCIES } from '@/lib/currencies'
+import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PERSONALITIES, type AiPersonality } from './types'
@@ -41,41 +33,17 @@ export function SettingsPage() {
   const install = useInstallPrompt()
   const { isPremium } = useEntitlement(userId)
   const { data: wallet } = useCurrentWallet()
-  const { data: walletMembers = [] } = useWalletMembers(wallet?.id)
-  const updateWallet = useUpdateWallet()
   const themeMode = useThemeStore((s) => s.mode)
   const setThemeMode = useThemeStore((s) => s.setMode)
 
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
-  const [walletName, setWalletName] = useState('')
-  const [walletCurrency, setWalletCurrency] = useState('USD')
 
   useEffect(() => {
     if (!profile) return
     setDisplayName(profile.display_name ?? '')
     setPersonality(profile.ai_personality)
   }, [profile])
-
-  useEffect(() => {
-    if (!wallet) return
-    setWalletName(wallet.name)
-    setWalletCurrency(wallet.base_currency)
-  }, [wallet])
-
-  const isWalletOwner = walletMembers.find((m) => m.user_id === userId)?.role === 'owner'
-  const walletDirty =
-    !!wallet && (walletName.trim() !== wallet.name || walletCurrency !== wallet.base_currency)
-
-  async function handleSaveWallet() {
-    if (!wallet || !walletName.trim()) return
-    try {
-      await updateWallet.mutateAsync({ id: wallet.id, name: walletName.trim(), baseCurrency: walletCurrency })
-      toast('Wallet updated.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
-    }
-  }
 
   if (!session) return <Navigate to="/login" replace />
 
@@ -142,54 +110,6 @@ export function SettingsPage() {
           <p className="text-xs text-muted-foreground">Signed in as {session.user.email}</p>
         </CardContent>
       </Card>
-
-      {wallet && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Wallet</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {isWalletOwner ? (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="wallet-name">Name</Label>
-                  <Input id="wallet-name" value={walletName} onChange={(e) => setWalletName(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="wallet-currency">Currency</Label>
-                  <Select value={walletCurrency} onValueChange={setWalletCurrency}>
-                    <SelectTrigger id="wallet-currency" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.symbol} {c.code} — {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {walletDirty && (
-                  <>
-                    <p className="text-xs text-muted-foreground">
-                      Changing currency only relabels amounts going forward — it won't convert
-                      past entries.
-                    </p>
-                    <Button size="sm" className="self-start" onClick={handleSaveWallet} disabled={updateWallet.isPending}>
-                      Save
-                    </Button>
-                  </>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {wallet.name} · {wallet.base_currency} — only the wallet owner can change these.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>

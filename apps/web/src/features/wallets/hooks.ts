@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import {
   createWallet,
-  fetchOrCreateWallets,
+  fetchWallets,
   fetchWalletMembers,
   inviteWalletMember,
   removeWalletMember,
@@ -16,7 +16,7 @@ export function useWallets() {
 
   return useQuery({
     queryKey: ['wallets', userId],
-    queryFn: () => fetchOrCreateWallets(userId!),
+    queryFn: () => fetchWallets(userId!),
     enabled: !!userId,
   })
 }

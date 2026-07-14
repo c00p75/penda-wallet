@@ -1,7 +1,7 @@
 import type { Category } from '@/features/categories/types'
 
 export type TransactionType = 'expense' | 'income' | 'transfer'
-export type TransactionSource = 'manual' | 'chat' | 'voice' | 'receipt' | 'recurring'
+export type TransactionSource = 'manual' | 'chat' | 'voice' | 'receipt' | 'recurring' | 'sms'
 
 export interface Transaction {
   id: string
@@ -32,4 +32,16 @@ export interface TransactionInput {
   merchant: string | null
   description: string | null
   transaction_date: string
+  /** Defaults to 'manual' server-side when omitted. */
+  source?: TransactionSource
+}
+
+/** Pre-fill for a brand-new transaction (e.g. from a parsed MoMo message). */
+export interface TransactionDraft {
+  type: TransactionType
+  amount_minor: number
+  merchant: string | null
+  description: string | null
+  transaction_date: string
+  source?: TransactionSource
 }

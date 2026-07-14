@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom'
 import {
   BarChart3,
   Camera,
+  ClipboardPaste,
   CloudOff,
   MessageCircle,
   Mic,
@@ -21,6 +22,7 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { useWalletPresence } from '@/features/wallets/useWalletPresence'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
+import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { useCategories } from '@/features/categories/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
@@ -34,7 +36,9 @@ import {
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
 import { TransactionList } from '@/features/transactions/TransactionList'
-import type { Transaction, TransactionInput } from '@/features/transactions/types'
+import { MoMoPasteSheet, parsedToDraft } from '@/features/transactions/MoMoPasteSheet'
+import { parseMoMoText } from '@/features/transactions/momoParser'
+import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
 import { ChatSheet } from '@/features/chat/ChatSheet'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { AiInsight } from '@/components/AiInsight'
@@ -44,7 +48,7 @@ import { BalanceSummary } from './BalanceSummary'
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
-  const { data: wallet, isLoading: isWalletLoading } = useCurrentWallet()
+  const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
 
@@ -58,6 +62,9 @@ export function LedgerPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteInitialText, setPasteInitialText] = useState('')
   const [chatOpen, setChatOpen] = useState(false)
   const [chatPrefill, setChatPrefill] = useState('')
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
@@ -70,7 +77,29 @@ export function LedgerPage() {
 
   function openAddForm() {
     setEditing(null)
+    setMomoDraft(null)
     setFormOpen(true)
+  }
+
+  // Tapping the paste chip first tries the clipboard silently; if that yields a
+  // parseable MoMo message we skip straight to the confirm form. Otherwise we
+  // open the paste sheet (prefilled with whatever was on the clipboard).
+  async function openPaste() {
+    let clip = ''
+    try {
+      clip = (await navigator.clipboard?.readText()) ?? ''
+    } catch {
+      // Clipboard read blocked (permissions / unsupported) — fall back to paste.
+    }
+    const parsed = clip ? parseMoMoText(clip) : null
+    if (parsed) {
+      setEditing(null)
+      setMomoDraft(parsedToDraft(parsed))
+      setFormOpen(true)
+      return
+    }
+    setPasteInitialText(clip)
+    setPasteOpen(true)
   }
 
   function openChat(prefill = '') {
@@ -80,6 +109,7 @@ export function LedgerPage() {
 
   function openEditForm(tx: Transaction) {
     setEditing(tx)
+    setMomoDraft(null)
     setFormOpen(true)
   }
 
@@ -155,7 +185,15 @@ export function LedgerPage() {
     return <Navigate to="/login" replace />
   }
 
-  if (isWalletLoading || !wallet) {
+  if (isWalletLoading) {
+    return null
+  }
+
+  if (wallets.length === 0) {
+    return <OnboardingScreen />
+  }
+
+  if (!wallet) {
     return null
   }
 
@@ -174,6 +212,7 @@ export function LedgerPage() {
       : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
 
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
+    { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
     {
       icon: Camera,
@@ -304,6 +343,7 @@ export function LedgerPage() {
         categories={categories}
         currency={wallet.base_currency}
         transaction={editing}
+        draft={momoDraft}
         onSubmit={handleSubmit}
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
@@ -316,6 +356,22 @@ export function LedgerPage() {
         initialInput={chatPrefill}
         isVoicePremium={isPremium}
         onRequireVoicePremium={() => setPaywallFeature('voice')}
+      />
+
+      <MoMoPasteSheet
+        open={pasteOpen}
+        onOpenChange={setPasteOpen}
+        initialText={pasteInitialText}
+        onParsed={(draft) => {
+          setPasteOpen(false)
+          setEditing(null)
+          setMomoDraft(draft)
+          setFormOpen(true)
+        }}
+        onFallbackToAi={(text) => {
+          setPasteOpen(false)
+          openChat(text)
+        }}
       />
 
       <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />

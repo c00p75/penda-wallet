@@ -34,8 +34,8 @@ export async function createTransaction(
     .insert({
       wallet_id: walletId,
       created_by: userId,
-      source: 'manual',
       ...input,
+      source: input.source ?? 'manual',
     })
     .select(SELECT_WITH_CATEGORY)
     .single()

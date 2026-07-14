@@ -14,6 +14,8 @@ export default defineConfig({
     },
   },
   plugins: [react()],
+  // Use the automatic JSX runtime so component tests don't need React in scope.
+  esbuild: { jsx: 'automatic' },
   test: {
     globals: true,
     environment: 'jsdom',

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -12,14 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
-import { CURRENCIES } from '@/lib/currencies'
 import {
   useCreateWallet,
   useInviteWalletMember,
   useRemoveWalletMember,
+  useUpdateWallet,
   useWalletMembers,
   useWallets,
 } from './hooks'
@@ -41,15 +42,37 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
   const inviteMember = useInviteWalletMember(wallet?.id)
   const removeMember = useRemoveWalletMember(wallet?.id)
   const createWallet = useCreateWallet()
+  const updateWallet = useUpdateWallet()
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<WalletRole>('editor')
   const [newWalletName, setNewWalletName] = useState('')
   const [newWalletCurrency, setNewWalletCurrency] = useState('USD')
   const [showSharedWalletsPaywall, setShowSharedWalletsPaywall] = useState(false)
+  const [settingsName, setSettingsName] = useState('')
+  const [settingsCurrency, setSettingsCurrency] = useState('USD')
 
   const myRole = members.find((m) => m.user_id === session?.user.id)?.role
   const isOwner = myRole === 'owner'
+
+  useEffect(() => {
+    if (!wallet) return
+    setSettingsName(wallet.name)
+    setSettingsCurrency(wallet.base_currency)
+  }, [wallet])
+
+  const walletSettingsDirty =
+    !!wallet && (settingsName.trim() !== wallet.name || settingsCurrency !== wallet.base_currency)
+
+  async function handleSaveWalletSettings() {
+    if (!wallet || !settingsName.trim()) return
+    try {
+      await updateWallet.mutateAsync({ id: wallet.id, name: settingsName.trim(), baseCurrency: settingsCurrency })
+      toast('Wallet updated.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -130,6 +153,29 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
             </Select>
           </div>
 
+          {isOwner && wallet && (
+            <div className="flex flex-col gap-2 rounded-lg border p-3">
+              <Label>Wallet settings</Label>
+              <Input
+                value={settingsName}
+                onChange={(e) => setSettingsName(e.target.value)}
+                placeholder="Wallet name"
+              />
+              <CurrencyCombobox value={settingsCurrency} onChange={setSettingsCurrency} />
+              {walletSettingsDirty && (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Changing currency only affects how amounts are labeled going forward — it
+                    won't convert past entries.
+                  </p>
+                  <Button size="sm" onClick={handleSaveWalletSettings} disabled={updateWallet.isPending}>
+                    Save
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
           <Separator />
 
           <div className="flex flex-col gap-2">
@@ -192,30 +238,16 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
 
           <form onSubmit={handleCreateWallet} className="flex flex-col gap-2">
             <Label htmlFor="new-wallet-name">Create a new wallet</Label>
-            <div className="flex gap-2">
-              <Input
-                id="new-wallet-name"
-                value={newWalletName}
-                onChange={(e) => setNewWalletName(e.target.value)}
-                placeholder="Household"
-                className="flex-1"
-              />
-              <Select value={newWalletCurrency} onValueChange={setNewWalletCurrency}>
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.code}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="submit" disabled={createWallet.isPending}>
-                Create
-              </Button>
-            </div>
+            <Input
+              id="new-wallet-name"
+              value={newWalletName}
+              onChange={(e) => setNewWalletName(e.target.value)}
+              placeholder="Household"
+            />
+            <CurrencyCombobox value={newWalletCurrency} onChange={setNewWalletCurrency} />
+            <Button type="submit" disabled={createWallet.isPending}>
+              Create
+            </Button>
           </form>
         </div>
       </SheetContent>
