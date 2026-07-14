@@ -12,6 +12,7 @@ import {
   PiggyBank,
   Plus,
   Settings,
+  Sparkles,
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -227,6 +228,7 @@ export function LedgerPage() {
     { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
     { icon: CalendarRange, label: 'Cashflow timeline', onTap: () => navigate('/cashflow') },
     { icon: NotebookPen, label: 'Journal', onTap: () => navigate('/journal') },
+    { icon: Sparkles, label: 'What if…', onTap: () => navigate('/simulator') },
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
     {
       icon: Camera,

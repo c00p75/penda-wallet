@@ -21,6 +21,9 @@ const CashflowPage = lazy(() =>
 const JournalPage = lazy(() =>
   import('@/features/memory/JournalPage').then((m) => ({ default: m.JournalPage })),
 )
+const SimulatorPage = lazy(() =>
+  import('@/features/simulator/SimulatorPage').then((m) => ({ default: m.SimulatorPage })),
+)
 
 function App() {
   return (
@@ -36,6 +39,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/cashflow" element={<CashflowPage />} />
         <Route path="/journal" element={<JournalPage />} />
+        <Route path="/simulator" element={<SimulatorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
