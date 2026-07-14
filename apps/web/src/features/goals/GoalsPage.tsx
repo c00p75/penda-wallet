@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
+import { AiInsight } from '@/components/AiInsight'
+import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import {
@@ -144,11 +146,54 @@ export function GoalsPage() {
     }
   }
 
+  // AI speaks first: a real read of savings pace or debt balances, tab-aware.
+  const insight: { tone: 'default' | 'warm' | 'attention'; text: string } | null =
+    tab === 'goals'
+      ? goals.length === 0
+        ? null
+        : (() => {
+            const reached = goals.find(
+              (g) => g.target_amount_minor > 0 && g.current_amount_minor >= g.target_amount_minor,
+            )
+            if (reached)
+              return { tone: 'warm', text: `You hit ${reached.name} 🎉 — ready to set the next one?` }
+            const nearest = goals
+              .filter((g) => g.target_amount_minor > 0)
+              .map((g) => ({ name: g.name, pct: g.current_amount_minor / g.target_amount_minor }))
+              .sort((a, b) => b.pct - a.pct)[0]
+            if (!nearest) return null
+            return {
+              tone: 'warm',
+              text: `You’re ${Math.round(nearest.pct * 100)}% of the way to ${nearest.name}. Keep going.`,
+            }
+          })()
+      : debts.length === 0
+        ? null
+        : (() => {
+            const owe = debts
+              .filter((d) => d.direction === 'i_owe')
+              .reduce((s, d) => s + d.balance_minor, 0)
+            const owed = debts
+              .filter((d) => d.direction === 'owed_to_me')
+              .reduce((s, d) => s + d.balance_minor, 0)
+            if (owe > 0)
+              return {
+                tone: 'default',
+                text: `You’re paying down ${formatMoney(owe, wallet.base_currency)} across your debts. One payment at a time.`,
+              }
+            return {
+              tone: 'default',
+              text: `${formatMoney(owed, wallet.base_currency)} is owed to you — I’ll help you keep track.`,
+            }
+          })()
+
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header>
-        <h1 className="text-xl font-semibold">Goals</h1>
+        <h1 className="text-xl font-semibold">{tab === 'goals' ? 'Will I make it?' : 'What do I owe?'}</h1>
       </header>
+
+      {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
         <ToggleGroupItem value="goals" className="flex-1">

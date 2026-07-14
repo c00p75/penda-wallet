@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
+import { AiInsight } from '@/components/AiInsight'
+import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
@@ -99,11 +101,45 @@ export function BudgetsPage() {
     }
   }
 
+  // AI speaks first: a real read of this page's own data, tab-aware.
+  const insight: { tone: 'default' | 'warm' | 'attention'; text: string } | null =
+    tab === 'budgets'
+      ? progress.length === 0
+        ? null
+        : (() => {
+            const worst = progress
+              .map((p) => ({
+                name: categories.find((c) => c.id === p.category_id)?.name ?? 'Overall',
+                pct: p.amount_minor > 0 ? p.spent_minor / p.amount_minor : 0,
+                remaining: p.amount_minor - p.spent_minor,
+              }))
+              .sort((a, b) => b.pct - a.pct)[0]
+            if (worst.pct >= 1)
+              return { tone: 'attention', text: `${worst.name} is over budget — want me to help you rebalance?` }
+            if (worst.pct >= 0.8)
+              return {
+                tone: 'warm',
+                text: `${worst.name} is running warm — ${formatMoney(worst.remaining, wallet.base_currency)} left.`,
+              }
+            return {
+              tone: 'default',
+              text: `You’re comfortable across all ${progress.length} budget${progress.length === 1 ? '' : 's'}. Nice work.`,
+            }
+          })()
+      : recurring.length === 0
+        ? null
+        : {
+            tone: 'default',
+            text: `${recurring.length} recurring ${recurring.length === 1 ? 'transaction posts' : 'transactions post'} automatically — that’s ${recurring.length === 1 ? 'one bill' : 'that many bills'} you’ll never forget.`,
+          }
+
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header>
-        <h1 className="text-xl font-semibold">Budgets</h1>
+        <h1 className="text-xl font-semibold">How am I doing?</h1>
       </header>
+
+      {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
         <ToggleGroupItem value="budgets" className="flex-1">
