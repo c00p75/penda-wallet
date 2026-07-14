@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Check, Download, Share, Smartphone } from 'lucide-react'
+import { Check, Download, Share, Smartphone, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +10,7 @@ import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
+import { useEntitlement } from '@/features/entitlements/hooks'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PERSONALITIES, type AiPersonality } from './types'
 
@@ -19,6 +20,7 @@ export function SettingsPage() {
   const { data: profile } = useProfile(userId)
   const updateProfile = useUpdateProfile(userId)
   const install = useInstallPrompt()
+  const { isPremium } = useEntitlement(userId)
 
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
@@ -52,6 +54,30 @@ export function SettingsPage() {
       <header>
         <h1 className="text-xl font-semibold">Settings</h1>
       </header>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Plan</CardTitle>
+          <span
+            className={
+              isPremium
+                ? 'flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground'
+                : 'rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground'
+            }
+          >
+            {isPremium && <Sparkles className="size-3" />}
+            {isPremium ? 'Premium' : 'Free'}
+          </span>
+        </CardHeader>
+        {!isPremium && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Premium unlocks voice entry, receipt scanning, weekly AI insights, and unlimited
+              shared wallet members. Not available to purchase yet — check back soon.
+            </p>
+          </CardContent>
+        )}
+      </Card>
 
       <Card>
         <CardHeader>

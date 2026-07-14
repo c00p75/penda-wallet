@@ -23,6 +23,9 @@ import { useWalletPresence } from '@/features/wallets/useWalletPresence'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { useCategories } from '@/features/categories/hooks'
 import { useProfile } from '@/features/profile/hooks'
+import { useEntitlement } from '@/features/entitlements/hooks'
+import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
+import type { PremiumFeature } from '@/features/entitlements/types'
 import {
   useCreateTransaction,
   useDeleteTransaction,
@@ -49,12 +52,14 @@ export function LedgerPage() {
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
   const { data: profile } = useProfile(session?.user.id)
+  const { isPremium } = useEntitlement(session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatPrefill, setChatPrefill] = useState('')
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
+  const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useWalletRealtime(wallet?.id)
@@ -156,7 +161,11 @@ export function LedgerPage() {
 
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
-    { icon: Camera, label: 'Scan a receipt', onTap: () => receiptInputRef.current?.click() },
+    {
+      icon: Camera,
+      label: 'Scan a receipt',
+      onTap: () => (isPremium ? receiptInputRef.current?.click() : setPaywallFeature('receipt-scan')),
+    },
     { icon: BarChart3, label: 'What did I spend this week?', onTap: () => openChat('What did I spend this week?') },
     { icon: PiggyBank, label: 'How are my budgets?', onTap: () => openChat('How are my budgets doing?') },
   ]
@@ -289,9 +298,13 @@ export function LedgerPage() {
         onOpenChange={setChatOpen}
         walletId={wallet.id}
         initialInput={chatPrefill}
+        isVoicePremium={isPremium}
+        onRequireVoicePremium={() => setPaywallFeature('voice')}
       />
 
       <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
+
+      <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
 
       <BottomNav />
     </div>

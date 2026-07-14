@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
+import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import {
   useCreateWallet,
   useInviteWalletMember,
@@ -29,6 +30,8 @@ interface WalletSheetProps {
   wallet: Wallet | undefined
 }
 
+const PREMIUM_REQUIRED_PREFIX = 'PREMIUM_REQUIRED:'
+
 export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
   const session = useAuthStore((s) => s.session)
   const { data: wallets = [] } = useWallets()
@@ -41,6 +44,7 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<WalletRole>('editor')
   const [newWalletName, setNewWalletName] = useState('')
+  const [showSharedWalletsPaywall, setShowSharedWalletsPaywall] = useState(false)
 
   const myRole = members.find((m) => m.user_id === session?.user.id)?.role
   const isOwner = myRole === 'owner'
@@ -53,7 +57,12 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
       toast(`Invited ${inviteEmail.trim()}.`)
       setInviteEmail('')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not invite that email.')
+      const message = error instanceof Error ? error.message : 'Could not invite that email.'
+      if (message.startsWith(PREMIUM_REQUIRED_PREFIX)) {
+        setShowSharedWalletsPaywall(true)
+      } else {
+        toast.error(message)
+      }
     }
   }
 
@@ -91,6 +100,7 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
         <SheetHeader>
@@ -192,5 +202,11 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
         </div>
       </SheetContent>
     </Sheet>
+
+    <PaywallSheet
+      feature={showSharedWalletsPaywall ? 'shared-wallets' : null}
+      onOpenChange={(open) => !open && setShowSharedWalletsPaywall(false)}
+    />
+    </>
   )
 }

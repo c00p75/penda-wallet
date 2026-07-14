@@ -31,6 +31,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Invalid or expired session' }, 401)
     }
 
+    const { data: isPremium, error: entitlementError } = await supabase.rpc('is_premium', {
+      p_user_id: user.id,
+    })
+    if (entitlementError) throw entitlementError
+    if (!isPremium) {
+      return jsonResponse(
+        { error: 'premium_required', message: 'Voice entry is a Penda Premium feature.' },
+        402,
+      )
+    }
+
     const incomingForm = await req.formData()
     const audio = incomingForm.get('audio')
     if (!(audio instanceof File)) {

@@ -115,7 +115,13 @@ async function generateForWallet(
 
   const content = { text: digestText, total_spent_minor: totalSpentMinor, total_income_minor: totalIncomeMinor, top_categories: topCategories }
 
+  // AI insights are a Premium feature — skip members on the free plan
+  // entirely rather than generating content they can't see.
+  let notified = 0
   for (const member of members ?? []) {
+    const { data: isPremium } = await supabase.rpc('is_premium', { p_user_id: member.user_id })
+    if (!isPremium) continue
+
     await supabase.from('ai_insights').insert({
       wallet_id: walletId,
       user_id: member.user_id,
@@ -126,9 +132,10 @@ async function generateForWallet(
     })
 
     await notifyMember(supabase, member.user_id, digestText)
+    notified++
   }
 
-  return { totalSpentMinor, totalIncomeMinor, topCategories, digestText, notified: members?.length ?? 0 }
+  return { totalSpentMinor, totalIncomeMinor, topCategories, digestText, notified }
 }
 
 async function notifyMember(supabase: SupabaseClient, userId: string, digestText: string) {

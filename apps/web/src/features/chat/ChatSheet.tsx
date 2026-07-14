@@ -13,12 +13,21 @@ interface ChatSheetProps {
   onOpenChange: (open: boolean) => void
   walletId: string | undefined
   initialInput?: string
+  isVoicePremium: boolean
+  onRequireVoicePremium: () => void
 }
 
 let messageIdCounter = 0
 const nextId = () => `msg-${++messageIdCounter}`
 
-export function ChatSheet({ open, onOpenChange, walletId, initialInput }: ChatSheetProps) {
+export function ChatSheet({
+  open,
+  onOpenChange,
+  walletId,
+  initialInput,
+  isVoicePremium,
+  onRequireVoicePremium,
+}: ChatSheetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [input, setInput] = useState('')
@@ -109,7 +118,15 @@ export function ChatSheet({ open, onOpenChange, walletId, initialInput }: ChatSh
             variant={voice.state === 'recording' ? 'destructive' : 'outline'}
             size="icon"
             disabled={voice.state === 'transcribing'}
-            onClick={voice.state === 'recording' ? voice.stop : voice.start}
+            onClick={() => {
+              if (voice.state === 'recording') {
+                voice.stop()
+              } else if (!isVoicePremium) {
+                onRequireVoicePremium()
+              } else {
+                voice.start()
+              }
+            }}
             aria-label={voice.state === 'recording' ? 'Stop recording' : 'Record a voice message'}
           >
             {voice.state === 'recording' ? <Square className="size-4" /> : <Mic className="size-4" />}

@@ -1,4 +1,4 @@
-import { Bell, BellRing } from 'lucide-react'
+import { Bell, BellRing, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { usePushSubscriptionStatus, useSubscribeToPush } from '@/features/notifications/hooks'
+import { useEntitlement } from '@/features/entitlements/hooks'
+import { FEATURE_COPY } from '@/features/entitlements/types'
 import { useDismissInsight, useInsights } from './hooks'
 import { CategoryBarChart } from './CategoryBarChart'
 import { SpendingCalendar } from './SpendingCalendar'
@@ -20,6 +22,7 @@ export function AnalyticsPage() {
   const dismissInsight = useDismissInsight(wallet?.id)
   const { data: isSubscribed } = usePushSubscriptionStatus()
   const subscribeToPush = useSubscribeToPush()
+  const { isPremium } = useEntitlement(session?.user.id)
 
   const now = new Date()
   const monthTransactions = transactions.filter((tx) => {
@@ -71,18 +74,29 @@ export function AnalyticsPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Insights</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEnableNotifications}
-            disabled={isSubscribed || subscribeToPush.isPending}
-          >
-            {isSubscribed ? <BellRing className="size-4" /> : <Bell className="size-4" />}
-            {isSubscribed ? 'Enabled' : 'Enable alerts'}
-          </Button>
+          {isPremium && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEnableNotifications}
+              disabled={isSubscribed || subscribeToPush.isPending}
+            >
+              {isSubscribed ? <BellRing className="size-4" /> : <Bell className="size-4" />}
+              {isSubscribed ? 'Enabled' : 'Enable alerts'}
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          <InsightsList insights={insights} onDismiss={(id) => dismissInsight.mutate(id)} />
+          {isPremium ? (
+            <InsightsList insights={insights} onDismiss={(id) => dismissInsight.mutate(id)} />
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <Sparkles className="size-6 text-primary" />
+              <p className="text-sm font-medium">{FEATURE_COPY.insights.title}</p>
+              <p className="text-sm text-muted-foreground">{FEATURE_COPY.insights.description}</p>
+              <p className="text-xs text-muted-foreground">Premium isn't available to purchase yet.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -71,6 +71,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Invalid or expired session' }, 401)
     }
 
+    const { data: isPremium, error: entitlementError } = await supabase.rpc('is_premium', {
+      p_user_id: user.id,
+    })
+    if (entitlementError) throw entitlementError
+    if (!isPremium) {
+      return jsonResponse(
+        { error: 'premium_required', message: 'Receipt scanning is a Penda Premium feature.' },
+        402,
+      )
+    }
+
     const body = (await req.json()) as RequestBody
     if (!body.walletId || !body.storagePath) {
       return jsonResponse({ error: 'walletId and storagePath are required' }, 400)
