@@ -1,3 +1,5 @@
+import { Compass, Flame, HeartHandshake, ShieldAlert, Smile, type LucideIcon } from 'lucide-react'
+
 export type AiPersonality =
   | 'balanced_coach'
   | 'angry_mom'
@@ -27,6 +29,8 @@ export interface PersonalityMeta {
   preview: string
   /** Character tint — a CSS color expression, used for the face and card accent. */
   accent: string
+  /** Symbol shown on the persona's avatar orb. */
+  icon: LucideIcon
 }
 
 export const PERSONALITIES: PersonalityMeta[] = [
@@ -36,6 +40,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Warm, encouraging, and balanced.',
     preview: 'You’re K600 ahead of last month — steady wins like this add up.',
     accent: 'var(--iris)',
+    icon: HeartHandshake,
   },
   {
     value: 'angry_mom',
@@ -43,6 +48,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Exasperated but loving — tired of the takeout.',
     preview: 'Takeout again? Ay. There’s rice at home, you know.',
     accent: 'var(--rose)',
+    icon: Flame,
   },
   {
     value: 'wise_mentor',
@@ -50,6 +56,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Calm perspective, never judgment.',
     preview: 'Spending is just choices made visible. You’re seeing them now — that’s the work.',
     accent: 'var(--mint)',
+    icon: Compass,
   },
   {
     value: 'chill_friend',
@@ -57,6 +64,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Casual, easygoing, keeps you honest.',
     preview: 'No stress — you’ve still got K600 for the weekend. Enjoy it.',
     accent: 'var(--apricot)',
+    icon: Smile,
   },
   {
     value: 'drill_sergeant',
@@ -64,5 +72,6 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Blunt, no-nonsense discipline.',
     preview: 'K600 left. That’s the line. Do not cross it. Move.',
     accent: 'oklch(0.6 0.09 250)',
+    icon: ShieldAlert,
   },
 ]

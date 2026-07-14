@@ -12,6 +12,7 @@ export interface SavingsGoal {
 
 export interface SavingsGoalInput {
   name: string
+  icon: string | null
   target_amount_minor: number
   target_date: string | null
 }

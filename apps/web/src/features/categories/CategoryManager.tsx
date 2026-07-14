@@ -58,10 +58,19 @@ export function CategoryManager({ walletId }: CategoryManagerProps) {
         }}
         className="flex items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm disabled:cursor-default enabled:hover:bg-accent"
       >
-        <span
-          className="size-3 shrink-0 rounded-full"
-          style={{ backgroundColor: category.color ?? 'var(--muted-foreground)' }}
-        />
+        {category.icon ? (
+          <span
+            className="grid size-6 shrink-0 place-items-center rounded-full text-sm"
+            style={{ backgroundColor: `color-mix(in srgb, ${category.color ?? 'var(--muted-foreground)'} 20%, transparent)` }}
+          >
+            {category.icon}
+          </span>
+        ) : (
+          <span
+            className="size-3 shrink-0 rounded-full"
+            style={{ backgroundColor: category.color ?? 'var(--muted-foreground)' }}
+          />
+        )}
         <span className="min-w-0 flex-1 truncate">{category.name}</span>
         {!editable && <span className="shrink-0 text-xs text-muted-foreground">Default</span>}
       </button>

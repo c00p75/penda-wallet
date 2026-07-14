@@ -44,7 +44,10 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate font-medium">{category?.name ?? 'Overall'}</p>
+          <p className="truncate font-medium">
+            {category?.icon && <span aria-hidden>{category.icon} </span>}
+            {category?.name ?? 'Overall'}
+          </p>
           <p className="shrink-0 text-xs capitalize text-muted-foreground">{progress.period}</p>
         </div>
         <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">

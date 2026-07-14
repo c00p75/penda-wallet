@@ -1,3 +1,4 @@
+import { CalendarOff, PiggyBank, TrendingDown, type LucideIcon } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import type { Challenge } from './types'
 
@@ -5,6 +6,12 @@ export const TYPE_LABELS: Record<Challenge['type'], string> = {
   savings_target: 'Save the most',
   spending_limit: 'Spend the least',
   no_spend_streak: 'No-spend streak',
+}
+
+export const TYPE_ICONS: Record<Challenge['type'], LucideIcon> = {
+  savings_target: PiggyBank,
+  spending_limit: TrendingDown,
+  no_spend_streak: CalendarOff,
 }
 
 export function formatTarget(challenge: Challenge): string {

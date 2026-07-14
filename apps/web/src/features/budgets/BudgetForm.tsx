@@ -95,6 +95,7 @@ export function BudgetForm({
               <SelectContent>
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
+                    {category.icon ? `${category.icon} ` : ''}
                     {category.name}
                   </SelectItem>
                 ))}

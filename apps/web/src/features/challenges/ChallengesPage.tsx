@@ -25,7 +25,7 @@ import {
 } from './hooks'
 import { ChallengeForm } from './ChallengeForm'
 import { ChallengeDetailSheet } from './ChallengeDetailSheet'
-import { TYPE_LABELS, daysLeft, formatTarget, hasEnded } from './challengeMeta'
+import { TYPE_ICONS, TYPE_LABELS, daysLeft, formatTarget, hasEnded } from './challengeMeta'
 import type { Challenge, ChallengeInput } from './types'
 
 export function ChallengesPage() {
@@ -94,21 +94,27 @@ export function ChallengesPage() {
 
   function ChallengeCard({ challenge }: { challenge: Challenge }) {
     const over = hasEnded(challenge)
+    const TypeIcon = TYPE_ICONS[challenge.type]
     return (
       <button
         type="button"
         onClick={() => setSelected(challenge)}
-        className="flex w-full flex-col gap-1 rounded-lg border p-3 text-left hover:bg-accent"
+        className="flex w-full items-center gap-3 rounded-lg border p-3 text-left hover:bg-accent"
       >
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-sm font-medium">{challenge.name}</p>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {over ? 'Ended' : `${daysLeft(challenge)}d left`}
-          </span>
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+          <TypeIcon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-sm font-medium">{challenge.name}</p>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {over ? 'Ended' : `${daysLeft(challenge)}d left`}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {TYPE_LABELS[challenge.type]} · {formatTarget(challenge)}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {TYPE_LABELS[challenge.type]} · {formatTarget(challenge)}
-        </p>
       </button>
     )
   }

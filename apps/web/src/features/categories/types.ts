@@ -10,5 +10,6 @@ export interface Category {
 
 export interface CategoryInput {
   name: string
+  icon: string | null
   color: string | null
 }

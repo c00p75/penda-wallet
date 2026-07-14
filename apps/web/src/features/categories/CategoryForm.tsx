@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EmojiPicker } from '@/components/EmojiPicker'
 import { cn } from '@/lib/utils'
 import type { Category, CategoryInput } from './types'
 
@@ -33,6 +34,12 @@ const COLOR_SWATCHES: (string | null)[] = [
   '#d946ef', // fuchsia
 ]
 
+const ICON_CHOICES = [
+  '🍔', '🚗', '🏠', '💊', '🛍️', '🎬', '💡', '💰', '🔄', '📦',
+  '🐾', '🎓', '✈️', '🎁', '👶', '💪', '☕', '🛒', '📱', '🛡️',
+  '⛽', '🎮', '📚', '💇',
+]
+
 interface CategoryFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -44,18 +51,20 @@ interface CategoryFormProps {
 
 export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete, isSubmitting }: CategoryFormProps) {
   const [name, setName] = useState('')
+  const [icon, setIcon] = useState<string | null>(null)
   const [color, setColor] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setName(category?.name ?? '')
+    setIcon(category?.icon ?? null)
     setColor(category?.color ?? null)
   }, [open, category])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    await onSubmit({ name: name.trim(), color })
+    await onSubmit({ name: name.trim(), icon, color })
     onOpenChange(false)
   }
 
@@ -76,6 +85,11 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
               onChange={(e) => setName(e.target.value)}
               placeholder="Pets"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Icon</Label>
+            <EmojiPicker emojis={ICON_CHOICES} value={icon} onChange={setIcon} />
           </div>
 
           <div className="flex flex-col gap-1.5">

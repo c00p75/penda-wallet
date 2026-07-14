@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
+import { useAuthStore } from '@/store/authStore'
+import { useProfile } from '@/features/profile/hooks'
+import { PERSONALITIES } from '@/features/profile/types'
 import { useSendChatMessage } from './hooks'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { ChatMessage } from './types'
@@ -41,6 +44,9 @@ export function ChatSheet({
   const [input, setInput] = useState('')
   const [recordMode, setRecordMode] = useState<RecordMode>('idle')
   const sendMessage = useSendChatMessage(walletId)
+  const session = useAuthStore((s) => s.session)
+  const { data: profile } = useProfile(session?.user.id)
+  const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
 
   const keyboardInset = useKeyboardInset()
 
@@ -189,7 +195,17 @@ export function ChatSheet({
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
       >
         <SheetHeader>
-          <SheetTitle>Chat with Penda</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            <span
+              className="grid size-7 shrink-0 place-items-center rounded-full"
+              style={{
+                background: `radial-gradient(circle at 35% 30%, ${persona.accent}, color-mix(in srgb, ${persona.accent} 45%, var(--iris)))`,
+              }}
+            >
+              <persona.icon className="size-3.5 text-white" />
+            </span>
+            Chat with Penda
+          </SheetTitle>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-4">

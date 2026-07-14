@@ -69,9 +69,9 @@ export function TransactionList({ transactions, onSelect }: TransactionListProps
               >
                 <span
                   className="grid size-10 shrink-0 place-items-center rounded-full text-sm font-semibold uppercase"
-                  style={chipStyle(tx.type)}
+                  style={tx.category?.icon ? undefined : chipStyle(tx.type)}
                 >
-                  {label.slice(0, 1)}
+                  {tx.category?.icon ?? label.slice(0, 1)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-sm font-medium">

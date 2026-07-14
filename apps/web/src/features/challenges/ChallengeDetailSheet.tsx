@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useLeaderboard } from './hooks'
-import { TYPE_LABELS, daysLeft, formatTarget, formatValue, hasEnded, hasMetTarget } from './challengeMeta'
+import { TYPE_ICONS, TYPE_LABELS, daysLeft, formatTarget, formatValue, hasEnded, hasMetTarget } from './challengeMeta'
 import type { Challenge } from './types'
 
 interface ChallengeDetailSheetProps {
@@ -38,6 +38,7 @@ export function ChallengeDetailSheet({
 
   const isCreator = challenge.creator_id === currentUserId
   const ended = hasEnded(challenge)
+  const TypeIcon = TYPE_ICONS[challenge.type]
   const myIndex = leaderboard.findIndex((e) => e.user_id === currentUserId)
   const ordinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd']
@@ -56,7 +57,12 @@ export function ChallengeDetailSheet({
     <Sheet open={!!challenge} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{challenge.name}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+              <TypeIcon className="size-3.5" />
+            </span>
+            {challenge.name}
+          </SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-4 px-4 pb-4">

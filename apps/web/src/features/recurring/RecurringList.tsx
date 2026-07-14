@@ -44,6 +44,7 @@ export function RecurringList({ recurring, categories, onSelect, onToggleActive 
               className="min-w-0 flex-1 text-left"
             >
               <p className="truncate text-sm font-medium">
+                {category?.icon && <span aria-hidden>{category.icon} </span>}
                 {rule.template.merchant || category?.name || 'Uncategorized'}
               </p>
               <p className="truncate text-xs text-muted-foreground">

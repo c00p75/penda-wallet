@@ -10,8 +10,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EmojiPicker } from '@/components/EmojiPicker'
 import type { SavingsGoal, SavingsGoalInput } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
+
+const ICON_CHOICES = [
+  '🏖️', '✈️', '🚗', '🏠', '🎓', '💍', '👶', '🎉',
+  '💻', '📱', '🛡️', '💰', '🎁', '🏥', '🐾', '🚴',
+]
 
 interface GoalFormProps {
   open: boolean
@@ -25,6 +31,7 @@ interface GoalFormProps {
 
 export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelete, isSubmitting }: GoalFormProps) {
   const [name, setName] = useState('')
+  const [icon, setIcon] = useState<string | null>(null)
   const [targetAmount, setTargetAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
   const [alreadySaved, setAlreadySaved] = useState('')
@@ -33,11 +40,13 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
     if (!open) return
     if (goal) {
       setName(goal.name)
+      setIcon(goal.icon)
       setTargetAmount(fromMinorUnits(goal.target_amount_minor).toString())
       setTargetDate(goal.target_date ?? '')
       setAlreadySaved('')
     } else {
       setName('')
+      setIcon(null)
       setTargetAmount('')
       setTargetDate('')
       setAlreadySaved('')
@@ -52,6 +61,7 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
     await onSubmit(
       {
         name: name.trim(),
+        icon,
         target_amount_minor: toMinorUnits(targetNumber),
         target_date: targetDate || null,
       },
@@ -77,6 +87,11 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
               onChange={(e) => setName(e.target.value)}
               placeholder="Emergency fund"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Icon</Label>
+            <EmojiPicker emojis={ICON_CHOICES} value={icon} onChange={setIcon} />
           </div>
 
           <div className="flex flex-col gap-1.5">
