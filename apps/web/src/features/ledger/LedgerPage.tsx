@@ -8,6 +8,7 @@ import {
   CloudOff,
   MessageCircle,
   Mic,
+  NotebookPen,
   PiggyBank,
   Plus,
   Settings,
@@ -225,6 +226,7 @@ export function LedgerPage() {
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
     { icon: CalendarRange, label: 'Cashflow timeline', onTap: () => navigate('/cashflow') },
+    { icon: NotebookPen, label: 'Journal', onTap: () => navigate('/journal') },
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
     {
       icon: Camera,
