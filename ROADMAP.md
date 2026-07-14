@@ -4,7 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-14 (rev 4)
+Last updated: 2026-07-14 (rev 8)
 
 ---
 
@@ -16,8 +16,7 @@ on the surface. Reference: the design direction artifact.
 - Iris (periwinkle-indigo) promoted to the primary color across every page
 - Floating glass bottom nav
 - `AiInsight` component — the "AI speaks first" headline unit, wired into all
-  five pages with real, computed insights (Home, Budgets, Goals, Challenges,
-  Analytics)
+  five pages with real, computed insights (Home, Budgets, Goals, Challenges, Analytics)
 - Budget & goal **progress rings** with coaching (never shaming) copy
 - Analytics reordered **insight-first** — the sentence leads, the chart supports
 - AI personality **persona deck** (faces, tints, in-voice previews)
@@ -31,110 +30,64 @@ on the surface. Reference: the design direction artifact.
 These are product/architecture moves, not styling. They need dedicated,
 coordinated passes (each is more than a UI change).
 
-### 1. Penda speaks unprompted — proactive AI · **the moat**
-The defining shift. A proactive assistant that surfaces one thing a day without
-being asked — "This weekend usually costs you ~K850", "Electricity is up",
-"You're on pace to hit your laptop goal 11 days early."
-- **Why:** every competitor waits to be opened. Reaching out is what makes
-  Penda a *companion* rather than a tool.
-- **Scope:** a server-side job that generates a daily insight per wallet
-  (extend the existing insights pipeline + weekly-digest cron); delivery via
-  push notification and a home-screen banner; dismissible; respects personality.
-- **Depends on:** insights generation, push subscriptions (both already exist in
-  some form), personality tone.
+### 1. Zero-friction data — Ambient SMS & Clipboard Parsing · **the enabler**
+The AI cannot manage money it cannot see. In a MoMo-heavy market, manual entry is where finance apps die. Penda needs to read transactions exactly where they happen—in the SMS text—so the data flows automatically.
+- **Why:** Removes the highest friction point and guarantees data liquidity.
+- **Scope:** Android native wrapper (TWA/Capacitor) for `READ_SMS` parsing of Airtel Money, MTN MoMo, and banks. iOS/Web fallback via a persistent "📋 Paste Copied MoMo Text" chip. Ambient real-time processing toasts and a transparent Activity Log.
 
-### 2. Kill the modal chat — ambient conversation layer · **architecture**
-There should be no separate "chat screen." The conversation is the ambient
-layer under every page — pull the ask bar up from anywhere and the current
-screen becomes context the AI already sees.
-- **Why:** the most valuable thing in the app currently hides behind a bottom
-  sheet. You never "go to" the AI because you never left it.
-- **Scope:** promote chat to a persistent, app-level surface; pass current
-  route/context into each message; keep conversation state across navigation.
-- **Depends on:** chat API, a shared conversation store.
+### 2. Planning & Accountability Rituals · **the retention engine**
+Shift from reactive tracking to a proactive behavior-change loop (plan → act → reflect). Penda reaches out, sets intentions with the user, and reviews them on a cadence.
+- **Why:** Cadence builds habits, and habits drive retention (DAU/WAU). It gives the AI a relational, structured reason to speak.
+- **Scope:** 
+  - **Rituals:** A morning "money minute", an evening reconcile, a weekly week-ahead review, and an annual recap. Adaptive cadence (backs off to weekly if the user ignores daily check-ins to avoid nagging).
+  - **Spending Plan Object:** A top-level period intention (e.g., "This month I intend to spend K12k") tracked against actuals.
+  - **Commitment Pacts:** "No takeout this week"—Penda holds you to it.
+  - **Reflection Prompts:** "What felt worth it this week?" (optionally mood-tag spending).
 
-### 3. Voice as the hero, ungated · **growth**
-"Talking to your money" is the most demo-able, word-of-mouth interaction Penda
-has — and it's currently locked behind a paywall with nothing to buy. Make voice
-the free hook; monetize depth (insights history, unlimited members) instead.
-- **Why:** the hook that defines the product should not be gated.
-- **Scope:** remove the voice entitlement gate; keep voice prominent on Home;
-  re-slot monetization onto depth features.
-- **Depends on:** entitlements config, voice recorder (already built).
+### 3. Profile Modes: Context, not Code Forks · **the architecture shift**
+Treat Individual, Family, and Business accounts as a context layer over the same core engine, not three separate apps.
+- **Why:** Trying to build three apps dilutes focus. Changing the "mode" simply changes default categories, terminology, which surfaces show, and how the AI frames things.
+- **Scope:** 
+  - A mode selector at onboarding (switchable later; users can hold multiple). 
+  - Sets defaults and AI context (e.g., Business mode talks margins and runway; Family mode talks shared priorities).
+  - Sequence: Individual → Family → Business (Side-hustle lite).
 
-### 4. Every gate is a live preview · **monetization**
-_Partially done — the paywall now reads as an invitation._ The remaining piece:
-let users **feel the magic once** — scan one receipt, hear one weekly insight —
-then invite them to keep it.
-- **Why:** a paywall that has demonstrated its value converts; a locked door
-  trains people to stop pushing on locked doors.
-- **Scope:** a one-time free trial per gated feature (receipt scan, weekly
-  insight), tracked per user; then the invitation.
-- **Depends on:** entitlements, receipts/insights pipelines, per-user trial state.
+### 4. Agentic Reliability & Multi-Step Reasoning · **the AI upgrade**
+The AI must act like an infallible assistant. It cannot silently fail, and it must understand double-entry bookkeeping inherently.
+- **Why:** If the AI logs borrowed money as income but forgets the debt, trust evaporates. If it drops a transaction because it's confused, the ledger breaks.
+- **Scope:** 
+  - **Multi-tool chains:** E.g., intent `borrowed_money` triggers both `Wallet_Increase` AND `Debt_Create`.
+  - **The Clarification Fallback:** If the AI is unsure how to categorize a transaction or goal, it halts and asks the user directly in the ambient chat rather than doing nothing.
 
-### 5. The persona colors the whole app · **identity**
-_Partially done — the persona deck exists in Settings._ The remaining piece:
-make the chosen character **visible everywhere** — tint the AI orb, shape
-insight phrasing, subtly warm the accent — so casting a companion is felt on
-every screen, not just stored in a column.
-- **Why:** turns a settings toggle into the emotional core of the product.
-- **Scope:** thread `ai_personality` into the `AiInsight`/orb tone and insight
-  copy generation app-wide.
-- **Depends on:** the persona metadata (already defined), insight generation.
+### 5. The Living Cashflow Timeline · **the paradigm shift**
+Replace the traditional static month-to-month budget with a forward-looking timeline based on known income, recurring bills, and average spending.
+- **Why:** Traditional budgeting looks at a calendar month; real life looks at the time between paychecks.
+- **Scope:** A vertical timeline UI where users scroll into the future. AI highlights upcoming crunch periods: *"Next Tuesday is expensive,"* or *"You have K900 free before payday."*
 
-### 6. AI-assisted budget & goal creation · **onboarding + activation**
-Setting up a budget or goal is the moment people abandon finance apps — a blank
-form asking for numbers they don't know. Penda should propose them.
-- **Budgets:** analyze the last 2–3 months of real spending and suggest a
-  realistic cap per category ("You've averaged K2,100/mo on dining — set the cap
-  at K2,000?"). One tap to accept, adjust, or dismiss.
-- **Goals:** turn a plain-language wish into a structured goal — "save for a
-  laptop by September" → target amount (asks or estimates), target date, and a
-  suggested monthly/weekly contribution to make it, with the pace forecast
-  attached. Reachable from the ask bar and the empty states.
-- **Why:** removes the hardest step and shows the AI's value immediately;
-  budgets/goals become a conversation, not a form.
-- **Scope:** spending-history aggregation per category; an AI action that emits
-  a structured `BudgetInput`/`SavingsGoalInput` for one-tap confirmation;
-  entry points on empty states and in chat.
-- **Depends on:** transactions history, categories, chat/AI actions (see bet 2).
+### 6. The Personal Simulation Engine · **the differentiator**
+Penda builds a living simulation of the user by learning their salary patterns, impulse triggers, savings behaviors, and upcoming life events. Let people ask the future out loud.
+- **Why:** Highly demo-able; turns anxiety into confident, visual answers.
+- **Scope:** In-store AI Shopping Companion (*"Can I buy this TV?"* → *"Future you might regret this... "*), and scenario sliders to model cutting expenses or adjusting debt payoff.
 
-### 7. Scenario / simulator — "what if" money modeling · **differentiator**
-Let people ask the future out loud and see it move. "What if I cut dining by
-K500 a month?", "If I pay K2,000/mo, when is this debt clear?", "Can I afford a
-K9,000 trip in December?" — Penda answers with a projected outcome, not a lecture.
-- **Why:** deeply AI-native, highly demo-able, and it turns anxiety ("can I
-  afford this?") into a confident, visual answer. Few finance apps let you play
-  with your own future.
-- **Scope:** a lightweight projection engine over income cadence, budgets,
-  goal pace, and debt payoff (much of the math already exists in the goal
-  forecast and debt logic); expose it through the ask bar and as a dedicated
-  "what if" surface with adjustable sliders and a before/after view.
-- **Depends on:** goal pace forecast + debt payoff math (partly built),
-  transactions history, chat/AI actions (bet 2). Feeds the financial health
-  score and proactive AI (bet 1).
+### 7. Penda speaks unprompted — Proactive Coaching · **the moat**
+A proactive assistant that surfaces one thing a day without being asked, focusing on **Opportunity Detection** and **Observability**. 
+- **Why:** Finance apps are negative. Catching a user doing something good, or proactively solving a problem, builds addiction to the coaching.
+- **Scope:** 
+  - **Observability:** AI notices patterns (e.g., *"You've spent K150 on unbudgeted coffee this week; should we create a budget for it?"*).
+  - **Opportunity:** *"You spent K3,400 less than usual; fund your emergency goal today!"*
 
-### 8. Digital savings groups (chilimba / village banking / ROSCA) · **market wedge**
-Rotating community savings are how a large share of the Kwacha market already
-saves. Almost no app does them well, and Penda already has most of the pieces:
-shared wallets, invite codes, member roles, and challenges.
-- **Why:** a defensible, culturally-native wedge rather than a me-too feature;
-  turns Penda into infrastructure for how people actually save here.
-- **Scope:** a group entity with members, a contribution schedule, a payout
-  rotation, and transparent per-member ledgers; reminders when a round is due;
-  built on the existing wallet-membership + invite-code machinery.
-- **Depends on:** wallets/members, invite codes, recurring schedule, reminders.
+### 8. Kill the modal chat — ambient conversation layer · **architecture**
+There should be no separate "chat screen." The conversation is the ambient layer under every page — pull the ask bar up from anywhere.
 
-### 9. AI memory — a companion that remembers · **makes everything land**
-Penda should remember what you told it ("last month you said you wanted to cut
-takeout"), your goals, and your preferences, and refer back to them.
-- **Why:** the cheapest way to make the whole companion feel real. A stateless
-  chatbot is a tool; a companion with memory is the product. It also amplifies
-  the personality, proactive-AI, and coaching bets.
-- **Scope:** a per-user memory store (facts, stated intentions, preferences)
-  written from conversations and read into future AI context; user-visible and
-  editable ("what Penda remembers") for trust.
-- **Depends on:** chat/AI actions (bet 2), profile.
+### 9. Voice as the hero, ungated · **growth**
+Make voice the free hook; monetize depth (insights history, unlimited members) instead. The most demo-able interaction should not be gated.
+
+### 10. AI memory & The Financial Journal · **makes everything land**
+Penda remembers what you told it, your goals, and preferences. Users can log emotional states (*"I stress-buy after work"*), allowing the AI to spot behavioral patterns.
+- **Includes:** A Memory Timeline (*"One year ago you wanted to stop living paycheck-to-paycheck. Today you have K14,000 saved."*)
+
+### 11. AI-assisted budget & goal creation · **onboarding + activation**
+Penda proposes budgets based on the last 2-3 months of spending. For goals, the AI uses a **Dream Builder** (asking *"Why?"*) to connect goals to outcomes (e.g., *"This laptop could increase your income"*).
 
 ---
 
@@ -142,82 +95,35 @@ takeout"), your goals, and your preferences, and refer back to them.
 
 A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 
-### Money in (the biggest lever)
-- **Mobile-money & bank sync** — auto-import from Airtel Money / MTN MoMo /
-  M-Pesa and bank feeds. In a Kwacha market this is likely the single highest-
-  value feature: it removes manual entry entirely and feeds every AI insight.
-- **SMS transaction parsing** — as a lighter first step, parse mobile-money
-  confirmation SMS into transactions (on-device or pasted), no integration
-  needed.
-- **Irregular-income handling** — budgets and safe-to-spend assume a steady
-  salary; many users earn variable/informal income. Smooth it: average income,
-  a "set-aside" buffer in fat months, gentle guidance in lean ones.
+### The Business Mode ("Side-Hustle Lite") Wedge
+*Consciously scoped to resist becoming full accounting software.*
+- **Simple Period Profit View:** Revenue minus expenses.
+- **Cash Runway:** How long current cash lasts based on average burn.
+- **Accounts Receivable:** Built naturally on top of "owed to me" debts.
+- **Payment Requests / Simple Invoices:** Mobile-money-native invoicing (potentially a killer feature).
+- **Tax Set-Aside:** Auto-reserve a percentage of income into a tax sub-wallet.
+
+### The Family Mode Wedge
+- **Household Plan:** A single spending plan mapped across shared wallets.
+- **Allowances / Kids' Sub-Wallets:** Pocket money management.
+- **Family Intelligence:** AI understands shared grocery budgets, school fees, and rent responsibilities.
+
+### Money in & Automations
+- **Bank sync API** — longer-term integration beyond MoMo SMS.
+- **The "Buffer" Engine** — actively manage irregular income (e.g., *"Move K1,500 of this large cash-in to a buffer for next month"*).
+- **Round-ups & Pay-yourself-first rules** — automatic saving mechanisms.
+- **Impulse / cooling-off pause** — *"Want to sit on this K1,500 for 24h?"*
 
 ### Money management depth
-- **Split expenses & settle-up** — shared wallets and the "Split dinner" chip
-  already imply this; add a Splitwise-style per-member balance and settle-up.
-- **Bill reminders & due dates** — debts and recurring rules already carry
-  dates; surface upcoming bills and nudge before they're due.
-- **Envelope / rollover budgeting** — the `rollover` flag exists on budgets;
-  build the envelope UX around it.
-- **Multi-currency & FX** — (in progress) per-wallet currency + conversion so
-  goals and balances read in one base currency.
-- **Safe-to-spend** — a single daily number derived from income cadence minus
-  commitments (the hero number from the Home direction).
-- **Net-worth tracking** — assets minus debts over time; gives the financial
-  health score real substance.
-- **Airtime & data budgeting** — first-class categories that signal you
-  understand the market.
+- **Safe Spending Radar** — Actionable daily guidance: *"You can comfortably spend K410 today."*
+- **Split expenses & settle-up** — Splitwise-style per-member balances.
+- **Envelope / rollover budgeting** — build the envelope UX around existing rollover flags.
+- **Multi-currency & FX** — per-wallet currency conversion.
 
-### Automations (behavioral, anxiety-reducing)
-- **Round-ups → goals** — round each expense up and sweep the difference into a
-  savings goal. High-conversion saving with almost no user effort.
-- **Pay-yourself-first rules** — auto-allocate to a goal on payday, before it
-  gets spent.
-- **Impulse / cooling-off pause** — "want to sit on this K1,500 for 24h?" A calm
-  nudge that reduces regret spending.
-- **Learning auto-categorization** — Penda learns your merchants so entries
-  categorize themselves; quietly improves every downstream AI feature.
-
-### Intelligence
-- **Anomaly & subscription watch** — flag unusual charges, auto-detect
-  recurring/subscriptions the user didn't mark, and price creep on bills.
-- **Receipt itemization** — extend receipt scan beyond the total to line items,
-  split across categories automatically.
-- **Monthly narrative recap** — an AI-written story of the month, not a chart.
-- **Natural-language history queries** — "how much at Shoprite this year?",
-  "what did I spend on transport last month?" — a low-lift, high-delight use of
-  the AI you already have.
-- **Penda Pro coaching** — behavioral coaching + financial *education* grounded
-  in the user's own data ("you'd clear this debt 4 months sooner by…"). A Pro
-  monetization surface. Explicitly *not* regulated advice (no investment / tax /
-  credit product recommendations); ships with a plain disclaimer.
-
-### Engagement & growth
-- **Streaks, milestones & badges** — celebrate no-spend streaks and savings
-  milestones (the celebration moments from the direction). Home for the
-  achievements gallery is the Compete tab; personal milestones still fire
-  in-context on Home/Goals.
-- **Shared goals** — a household saving toward one goal together.
-- **"Penda Wrapped" / Year in Review** — a shareable, personality-narrated
-  recap; a proven organic-growth loop, cheap to build on existing data.
-- **Referral program** — invite a friend, both unlock something; ties into the
-  challenges/social loop.
-
-### Trust & onboarding
-- **Financial health score** — a single evolving, transparent, trend-based
-  number (encouraging, never a shaming grade).
-- **First-run onboarding** — set currency, then create a first budget/goal via
-  the AI (ties directly to bet 6).
-- **Privacy mode** — one tap to blur/hide balances on a shared device or in
-  public.
-- **Biometric / PIN lock** — protect the PWA on a shared device.
-- **Data export** — CSV / PDF statements and reports.
-
----
-
-## Notes
-- Sequencing suggestion: **3 (ungate voice)** is the cheapest high-impact win;
-  **1 (proactive AI)** is the biggest differentiator and worth the most
-  investment; **2 (ambient chat)** is the largest architectural lift.
-- Items 4 and 5 are finish-what-was-started and can slot in opportunistically.
+### Intelligence & Trust
+- **Context-Aware "Local Market" Intelligence** — plug into physical reality (*"Fuel goes up tonight—filling up today saves K120"*).
+- **Ghost Expenses & "Phantom Leak" Detection** — catch compounding behavioral leaks (e.g., peer-to-peer sending fees).
+- **Dynamic Financial Missions** — AI-generated missions (*"Five no-spend days starting now"*).
+- **Blind Budgeting / "Out of Sight" Mode** — hide exact low balances behind ambient health indicators (green/amber auras) to reduce anxiety.
+- **Financial Confidence Score** — replace the generic credit score with a holistic metric based on cash flow, savings runway, and stability.
+- **Every gate is a live preview** — let users feel the magic once before hitting the paywall.
