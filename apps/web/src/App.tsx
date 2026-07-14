@@ -3,6 +3,7 @@ import { LedgerPage } from '@/features/ledger/LedgerPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage'
 import { BudgetsPage } from '@/features/budgets/BudgetsPage'
+import { GoalsPage } from '@/features/goals/GoalsPage'
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/analytics" element={<AnalyticsPage />} />
       <Route path="/budgets" element={<BudgetsPage />} />
+      <Route path="/goals" element={<GoalsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

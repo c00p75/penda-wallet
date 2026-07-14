@@ -1,10 +1,11 @@
-import { BarChart3, PiggyBank, Wallet } from 'lucide-react'
+import { BarChart3, PiggyBank, Target, Wallet } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
   { to: '/', label: 'Ledger', icon: Wallet },
   { to: '/budgets', label: 'Budgets', icon: PiggyBank },
+  { to: '/goals', label: 'Goals', icon: Target },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 

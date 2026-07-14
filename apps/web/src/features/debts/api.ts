@@ -1,0 +1,60 @@
+import { supabase } from '@/lib/supabase/client'
+import type { Debt, DebtInput, DebtPayment } from './types'
+
+export async function fetchDebts(walletId: string): Promise<Debt[]> {
+  const { data, error } = await supabase
+    .from('debts')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .order('created_at')
+
+  if (error) throw error
+  return data
+}
+
+export async function createDebt(walletId: string, input: DebtInput): Promise<Debt> {
+  const { data, error } = await supabase
+    .from('debts')
+    .insert({ wallet_id: walletId, balance_minor: input.principal_minor, ...input })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateDebt(id: string, input: DebtInput): Promise<Debt> {
+  const { data, error } = await supabase
+    .from('debts')
+    .update(input)
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteDebt(id: string): Promise<void> {
+  const { error } = await supabase.from('debts').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchPayments(debtId: string): Promise<DebtPayment[]> {
+  const { data, error } = await supabase
+    .from('debt_payments')
+    .select('*')
+    .eq('debt_id', debtId)
+    .order('paid_date', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function addPayment(debtId: string, amountMinor: number, date: string): Promise<void> {
+  const { error } = await supabase
+    .from('debt_payments')
+    .insert({ debt_id: debtId, amount_minor: amountMinor, paid_date: date })
+
+  if (error) throw error
+}
