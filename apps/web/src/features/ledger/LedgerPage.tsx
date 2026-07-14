@@ -258,7 +258,7 @@ export function LedgerPage() {
         <TransactionList transactions={transactions} onSelect={openEditForm} />
       )}
 
-      <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40">
+      <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40">
         <div className="mx-auto flex max-w-md items-center gap-2 px-4 pb-2">
           <Button
             onClick={openAddForm}
