@@ -54,6 +54,10 @@ export function useVoiceRecorder({ onLiveTranscript, onError }: VoiceRecorderOpt
   // --- Live path (Web Speech API) ---
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const finalTranscriptRef = useRef('')
+  // Text finalized in *previous* recognition sessions. Android ends the session
+  // on every pause (see onend), and each new session resets event.results to an
+  // empty list, so we stash prior finals here and prepend them.
+  const committedTranscriptRef = useRef('')
   const stopResolveRef = useRef<((text: string) => void) | null>(null)
   const stopRequestedRef = useRef(false)
 
@@ -68,15 +72,22 @@ export function useVoiceRecorder({ onLiveTranscript, onError }: VoiceRecorderOpt
     recognition.interimResults = true
 
     finalTranscriptRef.current = ''
+    committedTranscriptRef.current = ''
     stopRequestedRef.current = false
 
     recognition.onresult = (event) => {
+      // Rebuild from the full results list every event rather than appending —
+      // Android Chrome re-delivers already-finalized results with resultIndex
+      // stuck at 0, so an incremental `+=` double-counts them ("todaytoday…").
+      // Assigning the recomputed value each time keeps the handler idempotent.
+      let sessionFinal = ''
       let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i]
-        if (result.isFinal) finalTranscriptRef.current += result[0].transcript
+        if (result.isFinal) sessionFinal += result[0].transcript
         else interim += result[0].transcript
       }
+      finalTranscriptRef.current = committedTranscriptRef.current + sessionFinal
       onLiveTranscriptRef.current((finalTranscriptRef.current + interim).trim())
     }
 
@@ -93,6 +104,9 @@ export function useVoiceRecorder({ onLiveTranscript, onError }: VoiceRecorderOpt
       // Android often ends the session after a pause. If the user hasn't let go
       // yet, transparently resume so holding keeps recording.
       if (!stopRequestedRef.current) {
+        // Preserve what's been finalized so far; the resumed session starts with
+        // a fresh, empty results list.
+        committedTranscriptRef.current = finalTranscriptRef.current
         try {
           recognition.start()
           return
