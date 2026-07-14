@@ -4,7 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-14 (rev 2)
+Last updated: 2026-07-14 (rev 3)
 
 ---
 
@@ -98,6 +98,21 @@ form asking for numbers they don't know. Penda should propose them.
   a structured `BudgetInput`/`SavingsGoalInput` for one-tap confirmation;
   entry points on empty states and in chat.
 - **Depends on:** transactions history, categories, chat/AI actions (see bet 2).
+
+### 7. Scenario / simulator — "what if" money modeling · **differentiator**
+Let people ask the future out loud and see it move. "What if I cut dining by
+K500 a month?", "If I pay K2,000/mo, when is this debt clear?", "Can I afford a
+K9,000 trip in December?" — Penda answers with a projected outcome, not a lecture.
+- **Why:** deeply AI-native, highly demo-able, and it turns anxiety ("can I
+  afford this?") into a confident, visual answer. Few finance apps let you play
+  with your own future.
+- **Scope:** a lightweight projection engine over income cadence, budgets,
+  goal pace, and debt payoff (much of the math already exists in the goal
+  forecast and debt logic); expose it through the ask bar and as a dedicated
+  "what if" surface with adjustable sliders and a before/after view.
+- **Depends on:** goal pace forecast + debt payoff math (partly built),
+  transactions history, chat/AI actions (bet 2). Feeds the financial health
+  score and proactive AI (bet 1).
 
 ---
 
