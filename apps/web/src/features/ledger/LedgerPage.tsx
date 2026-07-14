@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
-import { Camera, MessageCircle, Plus, Users } from 'lucide-react'
+import { Link, Navigate } from 'react-router-dom'
+import { Camera, CloudOff, MessageCircle, Plus, Settings, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
-import { supabase } from '@/lib/supabase/client'
+import { enqueueTransaction } from '@/pwa/offlineQueue'
+import { useOfflineQueue } from '@/pwa/useOfflineQueue'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { useWalletPresence } from '@/features/wallets/useWalletPresence'
@@ -44,6 +45,7 @@ export function LedgerPage() {
 
   useWalletRealtime(wallet?.id)
   const present = useWalletPresence(wallet?.id, session?.user.id, session?.user.email ?? '')
+  const offlineQueue = useOfflineQueue()
 
   function openAddForm() {
     setEditing(null)
@@ -55,7 +57,22 @@ export function LedgerPage() {
     setFormOpen(true)
   }
 
+  async function saveOffline(input: TransactionInput) {
+    if (!wallet || !session) return
+    await enqueueTransaction(wallet.id, session.user.id, input)
+    await offlineQueue.refreshCount()
+    toast("Saved offline — it'll sync when you're back online.")
+  }
+
   async function handleSubmit(input: TransactionInput) {
+    // Queue new entries immediately when offline rather than letting the
+    // request hang on the auth lock until reconnect. Edits are never queued:
+    // they carry a version check that must run against the live row.
+    if (!editing && !navigator.onLine) {
+      await saveOffline(input)
+      return
+    }
+
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
@@ -66,6 +83,11 @@ export function LedgerPage() {
         toast('Transaction added.')
       }
     } catch (error) {
+      // Fallback for a network that broke without navigator.onLine noticing.
+      if (!editing && error instanceof TypeError) {
+        await saveOffline(input)
+        return
+      }
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
   }
@@ -120,6 +142,15 @@ export function LedgerPage() {
           className="flex items-center gap-2 text-left"
         >
           <h1 className="text-xl font-semibold">{wallet.name}</h1>
+          {offlineQueue.pendingCount > 0 && (
+            <span
+              className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+              title="Waiting to sync"
+            >
+              <CloudOff className="size-3" />
+              {offlineQueue.pendingCount}
+            </span>
+          )}
           {present.length > 1 && (
             <span className="flex -space-x-1.5">
               {present.slice(0, 3).map((p) => (
@@ -158,8 +189,10 @@ export function LedgerPage() {
           <Button variant="ghost" size="icon" onClick={() => setWalletSheetOpen(true)} aria-label="Wallet members">
             <Users className="size-5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()}>
-            Sign out
+          <Button variant="ghost" size="icon" asChild>
+            <Link to="/settings" aria-label="Settings">
+              <Settings className="size-5" />
+            </Link>
           </Button>
         </div>
       </header>
@@ -193,10 +226,6 @@ export function LedgerPage() {
       <ChatSheet open={chatOpen} onOpenChange={setChatOpen} walletId={wallet.id} />
 
       <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
-
-      <p className="text-center text-xs text-muted-foreground">
-        Signed in as {session?.user.email}
-      </p>
 
       <BottomNav />
     </div>

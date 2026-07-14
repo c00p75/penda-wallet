@@ -5,6 +5,7 @@ import { AnalyticsPage } from '@/features/analytics/AnalyticsPage'
 import { BudgetsPage } from '@/features/budgets/BudgetsPage'
 import { GoalsPage } from '@/features/goals/GoalsPage'
 import { ChallengesPage } from '@/features/challenges/ChallengesPage'
+import { SettingsPage } from '@/features/profile/SettingsPage'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
       <Route path="/budgets" element={<BudgetsPage />} />
       <Route path="/goals" element={<GoalsPage />} />
       <Route path="/challenges" element={<ChallengesPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
