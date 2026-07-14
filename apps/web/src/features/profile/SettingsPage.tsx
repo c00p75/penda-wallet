@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { BottomNav } from '@/components/BottomNav'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
@@ -99,25 +100,53 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Penda's personality</CardTitle>
+          <CardTitle className="text-base">Who should Penda be?</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col overflow-hidden rounded-lg border">
-            {PERSONALITIES.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setPersonality(p.value)}
-                className="flex items-center justify-between gap-3 border-b p-3 text-left last:border-b-0 hover:bg-accent"
-                aria-pressed={personality === p.value}
-              >
-                <div>
-                  <p className="text-sm font-medium">{p.label}</p>
-                  <p className="text-xs text-muted-foreground">{p.description}</p>
-                </div>
-                {personality === p.value && <Check className="size-4 shrink-0 text-primary" />}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            {PERSONALITIES.map((p) => {
+              const active = personality === p.value
+              return (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPersonality(p.value)}
+                  className={cn(
+                    'flex flex-col gap-2.5 rounded-2xl border p-3 text-left transition-shadow',
+                    active ? 'shadow-md' : 'hover:shadow-sm',
+                  )}
+                  style={
+                    active
+                      ? {
+                          borderColor: p.accent,
+                          boxShadow: `0 0 0 1px ${p.accent}`,
+                          background: `color-mix(in srgb, ${p.accent} 8%, var(--card))`,
+                        }
+                      : undefined
+                  }
+                  aria-pressed={active}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="size-11 shrink-0 rounded-full"
+                      style={{
+                        background: `radial-gradient(circle at 35% 30%, ${p.accent}, color-mix(in srgb, ${p.accent} 45%, var(--iris)))`,
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{p.label}</p>
+                      <p className="text-xs text-muted-foreground">{p.description}</p>
+                    </div>
+                    {active && <Check className="size-4 shrink-0" style={{ color: p.accent }} />}
+                  </div>
+                  {active && (
+                    <p className="rounded-xl bg-background/70 px-3 py-2 text-sm italic text-muted-foreground">
+                      “{p.preview}”
+                    </p>
+                  )}
+                </button>
+              )
+            })}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             Changes how Penda talks to you in chat — never what it does with your money.
