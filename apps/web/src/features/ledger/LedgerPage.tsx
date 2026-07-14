@@ -40,7 +40,7 @@ import { TransactionList } from '@/features/transactions/TransactionList'
 import { MoMoPasteSheet, parsedToDraft } from '@/features/transactions/MoMoPasteSheet'
 import { parseMoMoText } from '@/features/transactions/momoParser'
 import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
-import { ChatSheet } from '@/features/chat/ChatSheet'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
@@ -50,6 +50,7 @@ export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
   const navigate = useNavigate()
+  const openChat = useChatStore((s) => s.openChat)
   const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
@@ -67,8 +68,6 @@ export function LedgerPage() {
   const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteInitialText, setPasteInitialText] = useState('')
-  const [chatOpen, setChatOpen] = useState(false)
-  const [chatPrefill, setChatPrefill] = useState('')
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
@@ -102,11 +101,6 @@ export function LedgerPage() {
     }
     setPasteInitialText(clip)
     setPasteOpen(true)
-  }
-
-  function openChat(prefill = '') {
-    setChatPrefill(prefill)
-    setChatOpen(true)
   }
 
   function openEditForm(tx: Transaction) {
@@ -350,15 +344,6 @@ export function LedgerPage() {
         onSubmit={handleSubmit}
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
-      />
-
-      <ChatSheet
-        open={chatOpen}
-        onOpenChange={setChatOpen}
-        walletId={wallet.id}
-        initialInput={chatPrefill}
-        isVoicePremium={isPremium}
-        onRequireVoicePremium={() => setPaywallFeature('voice')}
       />
 
       <MoMoPasteSheet
