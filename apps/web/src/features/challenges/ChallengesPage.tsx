@@ -13,6 +13,7 @@ import {
   SheetClose,
 } from '@/components/ui/sheet'
 import { BottomNav } from '@/components/BottomNav'
+import { AiInsight } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import {
@@ -115,12 +116,25 @@ export function ChallengesPage() {
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Challenges</h1>
+        <h1 className="text-xl font-semibold">Am I winning?</h1>
         <Button variant="outline" size="sm" onClick={() => setJoinOpen(true)}>
           <Ticket className="size-4" />
           Join with code
         </Button>
       </header>
+
+      {challenges.length > 0 && (
+        <AiInsight>
+          {active.length > 0
+            ? (() => {
+                const soonest = Math.min(...active.map((c) => daysLeft(c)))
+                return `${active.length} live challenge${active.length === 1 ? '' : 's'} — ${
+                  soonest === 0 ? 'one ends today' : `one ends in ${soonest}d`
+                }. Stay sharp.`
+              })()
+            : 'Your challenges have wrapped. Ready to start another?'}
+        </AiInsight>
+      )}
 
       {challenges.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">

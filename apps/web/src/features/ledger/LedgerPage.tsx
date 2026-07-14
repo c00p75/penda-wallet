@@ -37,6 +37,8 @@ import { TransactionList } from '@/features/transactions/TransactionList'
 import type { Transaction, TransactionInput } from '@/features/transactions/types'
 import { ChatSheet } from '@/features/chat/ChatSheet'
 import { useUploadReceipt } from '@/features/receipts/hooks'
+import { AiInsight } from '@/components/AiInsight'
+import { formatMoney } from '@/lib/money'
 import { BalanceSummary } from './BalanceSummary'
 
 export function LedgerPage() {
@@ -159,6 +161,18 @@ export function LedgerPage() {
 
   const firstName = profile?.display_name?.split(' ')[0]
 
+  // AI speaks first: a grounded read of the last 7 days from real transactions.
+  const weekCutoff = new Date()
+  weekCutoff.setDate(weekCutoff.getDate() - 7)
+  const weekCutoffStr = weekCutoff.toISOString().slice(0, 10)
+  const last7Spent = transactions
+    .filter((tx) => tx.type === 'expense' && tx.transaction_date >= weekCutoffStr)
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const weekInsight =
+    last7Spent > 0
+      ? `You’ve spent ${formatMoney(last7Spent, wallet.base_currency)} in the last 7 days.`
+      : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
+
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
     {
@@ -239,6 +253,8 @@ export function LedgerPage() {
 
         <BalanceSummary transactions={transactions} currency={wallet.base_currency} />
       </section>
+
+      <AiInsight>{weekInsight}</AiInsight>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         {suggestions.map(({ icon: Icon, label, onTap }) => (
