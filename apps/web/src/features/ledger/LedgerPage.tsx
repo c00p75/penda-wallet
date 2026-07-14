@@ -1,6 +1,16 @@
 import { useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { Camera, CloudOff, MessageCircle, Plus, Settings, Users } from 'lucide-react'
+import {
+  BarChart3,
+  Camera,
+  CloudOff,
+  MessageCircle,
+  Mic,
+  PiggyBank,
+  Plus,
+  Settings,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from '@/components/BottomNav'
@@ -12,6 +22,7 @@ import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { useWalletPresence } from '@/features/wallets/useWalletPresence'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { useCategories } from '@/features/categories/hooks'
+import { useProfile } from '@/features/profile/hooks'
 import {
   useCreateTransaction,
   useDeleteTransaction,
@@ -37,9 +48,12 @@ export function LedgerPage() {
   const deleteTransaction = useDeleteTransaction(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
+  const { data: profile } = useProfile(session?.user.id)
+
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [chatPrefill, setChatPrefill] = useState('')
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
@@ -50,6 +64,11 @@ export function LedgerPage() {
   function openAddForm() {
     setEditing(null)
     setFormOpen(true)
+  }
+
+  function openChat(prefill = '') {
+    setChatPrefill(prefill)
+    setChatOpen(true)
   }
 
   function openEditForm(tx: Transaction) {
@@ -133,15 +152,24 @@ export function LedgerPage() {
     return null
   }
 
+  const firstName = profile?.display_name?.split(' ')[0]
+
+  const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
+    { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
+    { icon: Camera, label: 'Scan a receipt', onTap: () => receiptInputRef.current?.click() },
+    { icon: BarChart3, label: 'What did I spend this week?', onTap: () => openChat('What did I spend this week?') },
+    { icon: PiggyBank, label: 'How are my budgets?', onTap: () => openChat('How are my budgets doing?') },
+  ]
+
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <div className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-36">
       <header className="flex items-center justify-between">
         <button
           type="button"
           onClick={() => setWalletSheetOpen(true)}
-          className="flex items-center gap-2 text-left"
+          className="flex items-center gap-2 rounded-full border bg-card py-1.5 pl-3 pr-2 text-left shadow-xs"
         >
-          <h1 className="text-xl font-semibold">{wallet.name}</h1>
+          <span className="text-sm font-medium">{wallet.name}</span>
           {offlineQueue.pendingCount > 0 && (
             <span
               className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
@@ -151,9 +179,9 @@ export function LedgerPage() {
               {offlineQueue.pendingCount}
             </span>
           )}
-          {present.length > 1 && (
-            <span className="flex -space-x-1.5">
-              {present.slice(0, 3).map((p) => (
+          <span className="flex -space-x-1.5">
+            {present.length > 1 ? (
+              present.slice(0, 3).map((p) => (
                 <span
                   key={p.userId}
                   title={p.label}
@@ -161,56 +189,89 @@ export function LedgerPage() {
                 >
                   {p.label.slice(0, 1).toUpperCase()}
                 </span>
-              ))}
-            </span>
-          )}
+              ))
+            ) : (
+              <Users className="size-4 text-muted-foreground" />
+            )}
+          </span>
         </button>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => receiptInputRef.current?.click()}
-            aria-label="Scan a receipt"
-            disabled={uploadReceipt.isPending}
-          >
-            <Camera className="size-5" />
-          </Button>
-          <input
-            ref={receiptInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleReceiptSelected}
-          />
-          <Button variant="ghost" size="icon" onClick={() => setChatOpen(true)} aria-label="Chat with Penda">
-            <MessageCircle className="size-5" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setWalletSheetOpen(true)} aria-label="Wallet members">
-            <Users className="size-5" />
-          </Button>
-          <Button variant="ghost" size="icon" asChild>
-            <Link to="/settings" aria-label="Settings">
-              <Settings className="size-5" />
-            </Link>
-          </Button>
-        </div>
+        <input
+          ref={receiptInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleReceiptSelected}
+        />
+        <Button variant="ghost" size="icon" className="rounded-full border bg-card shadow-xs" asChild>
+          <Link to="/settings" aria-label="Settings">
+            <Settings className="size-5" />
+          </Link>
+        </Button>
       </header>
 
-      <BalanceSummary transactions={transactions} currency={wallet.base_currency} />
+      <section
+        className="flex flex-col gap-5 rounded-3xl p-5 pt-7"
+        style={{
+          background:
+            'radial-gradient(120% 90% at 50% 110%, var(--hero-glow) -40%, transparent 60%), linear-gradient(180deg, var(--hero-from) 0%, var(--hero-via) 60%, var(--hero-to) 100%)',
+        }}
+      >
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="rounded-full bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
+            AI money assistant
+          </span>
+          <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight">
+            Hello{firstName ? ` ${firstName}` : ''},
+            <br />
+            how can I help today?
+          </h1>
+        </div>
+
+        <BalanceSummary transactions={transactions} currency={wallet.base_currency} />
+      </section>
+
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+        {suggestions.map(({ icon: Icon, label, onTap }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={onTap}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-3.5 py-2 text-sm font-medium shadow-xs hover:bg-accent"
+          >
+            <Icon className="size-4 text-primary" />
+            {label}
+          </button>
+        ))}
+      </div>
 
       {isTransactionsLoading ? null : (
         <TransactionList transactions={transactions} onSelect={openEditForm} />
       )}
 
-      <Button
-        onClick={openAddForm}
-        size="icon"
-        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-lg"
-        aria-label="Add transaction"
-      >
-        <Plus className="size-6" />
-      </Button>
+      <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40">
+        <div className="mx-auto flex max-w-md items-center gap-2 px-4 pb-2">
+          <Button
+            onClick={openAddForm}
+            size="icon"
+            className="size-12 shrink-0 rounded-full shadow-lg"
+            aria-label="Add transaction"
+          >
+            <Plus className="size-5" />
+          </Button>
+          <button
+            type="button"
+            onClick={() => openChat()}
+            className="flex h-12 flex-1 items-center justify-between rounded-full border bg-card pl-4 pr-1.5 text-left shadow-lg"
+            aria-label="Ask Penda"
+          >
+            <span className="text-sm text-muted-foreground">Ask Penda anything…</span>
+            <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Mic className="size-4" />
+            </span>
+          </button>
+        </div>
+      </div>
 
       <TransactionForm
         open={formOpen}
@@ -223,7 +284,12 @@ export function LedgerPage() {
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
       />
 
-      <ChatSheet open={chatOpen} onOpenChange={setChatOpen} walletId={wallet.id} />
+      <ChatSheet
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        walletId={wallet.id}
+        initialInput={chatPrefill}
+      />
 
       <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
 

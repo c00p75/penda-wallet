@@ -48,7 +48,12 @@
   --status-good: #1a7f4b;
   --status-warning: #b7791f;
   --status-critical: #c0362c;
-  --radius: 0.625rem;
+  /* Home hero bloom — soft blue-violet gradient behind the greeting */
+  --hero-from: #f4f7ff;
+  --hero-via: #dfe9fe;
+  --hero-to: #c8d9fb;
+  --hero-glow: #b8b6f6;
+  --radius: 0.8rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -150,6 +155,10 @@ body {
   --status-good: #3fb87f;
   --status-warning: #d9a441;
   --status-critical: #e0685c;
+  --hero-from: #131a2b;
+  --hero-via: #182840;
+  --hero-to: #1e3252;
+  --hero-glow: #3a3f8f;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

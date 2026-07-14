@@ -11,6 +11,14 @@ import { useAuthStore } from '@/store/authStore'
 
 const queryClient = new QueryClient()
 
+// Follow the system color scheme — the .dark class drives all theme tokens.
+const darkMedia = window.matchMedia('(prefers-color-scheme: dark)')
+function applyColorScheme() {
+  document.documentElement.classList.toggle('dark', darkMedia.matches)
+}
+applyColorScheme()
+darkMedia.addEventListener('change', applyColorScheme)
+
 const updateSW = registerSW({
   onNeedRefresh() {
     toast('A new version of Penda is available.', {

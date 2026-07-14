@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Mic, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -12,16 +12,21 @@ interface ChatSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   walletId: string | undefined
+  initialInput?: string
 }
 
 let messageIdCounter = 0
 const nextId = () => `msg-${++messageIdCounter}`
 
-export function ChatSheet({ open, onOpenChange, walletId }: ChatSheetProps) {
+export function ChatSheet({ open, onOpenChange, walletId, initialInput }: ChatSheetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [input, setInput] = useState('')
   const sendMessage = useSendChatMessage(walletId)
+
+  useEffect(() => {
+    if (open && initialInput) setInput(initialInput)
+  }, [open, initialInput])
 
   const voice = useVoiceRecorder(
     (transcript) => setInput((prev) => (prev ? `${prev} ${transcript}` : transcript)),
