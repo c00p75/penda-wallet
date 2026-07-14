@@ -4,7 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-14 (rev 3)
+Last updated: 2026-07-14 (rev 4)
 
 ---
 
@@ -114,6 +114,28 @@ K9,000 trip in December?" — Penda answers with a projected outcome, not a lect
   transactions history, chat/AI actions (bet 2). Feeds the financial health
   score and proactive AI (bet 1).
 
+### 8. Digital savings groups (chilimba / village banking / ROSCA) · **market wedge**
+Rotating community savings are how a large share of the Kwacha market already
+saves. Almost no app does them well, and Penda already has most of the pieces:
+shared wallets, invite codes, member roles, and challenges.
+- **Why:** a defensible, culturally-native wedge rather than a me-too feature;
+  turns Penda into infrastructure for how people actually save here.
+- **Scope:** a group entity with members, a contribution schedule, a payout
+  rotation, and transparent per-member ledgers; reminders when a round is due;
+  built on the existing wallet-membership + invite-code machinery.
+- **Depends on:** wallets/members, invite codes, recurring schedule, reminders.
+
+### 9. AI memory — a companion that remembers · **makes everything land**
+Penda should remember what you told it ("last month you said you wanted to cut
+takeout"), your goals, and your preferences, and refer back to them.
+- **Why:** the cheapest way to make the whole companion feel real. A stateless
+  chatbot is a tool; a companion with memory is the product. It also amplifies
+  the personality, proactive-AI, and coaching bets.
+- **Scope:** a per-user memory store (facts, stated intentions, preferences)
+  written from conversations and read into future AI context; user-visible and
+  editable ("what Penda remembers") for trust.
+- **Depends on:** chat/AI actions (bet 2), profile.
+
 ---
 
 ## 🧭 Candidate features — proposed, unprioritized
@@ -127,6 +149,9 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **SMS transaction parsing** — as a lighter first step, parse mobile-money
   confirmation SMS into transactions (on-device or pasted), no integration
   needed.
+- **Irregular-income handling** — budgets and safe-to-spend assume a steady
+  salary; many users earn variable/informal income. Smooth it: average income,
+  a "set-aside" buffer in fat months, gentle guidance in lean ones.
 
 ### Money management depth
 - **Split expenses & settle-up** — shared wallets and the "Split dinner" chip
@@ -139,6 +164,20 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
   goals and balances read in one base currency.
 - **Safe-to-spend** — a single daily number derived from income cadence minus
   commitments (the hero number from the Home direction).
+- **Net-worth tracking** — assets minus debts over time; gives the financial
+  health score real substance.
+- **Airtime & data budgeting** — first-class categories that signal you
+  understand the market.
+
+### Automations (behavioral, anxiety-reducing)
+- **Round-ups → goals** — round each expense up and sweep the difference into a
+  savings goal. High-conversion saving with almost no user effort.
+- **Pay-yourself-first rules** — auto-allocate to a goal on payday, before it
+  gets spent.
+- **Impulse / cooling-off pause** — "want to sit on this K1,500 for 24h?" A calm
+  nudge that reduces regret spending.
+- **Learning auto-categorization** — Penda learns your merchants so entries
+  categorize themselves; quietly improves every downstream AI feature.
 
 ### Intelligence
 - **Anomaly & subscription watch** — flag unusual charges, auto-detect
@@ -146,14 +185,32 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **Receipt itemization** — extend receipt scan beyond the total to line items,
   split across categories automatically.
 - **Monthly narrative recap** — an AI-written story of the month, not a chart.
+- **Natural-language history queries** — "how much at Shoprite this year?",
+  "what did I spend on transport last month?" — a low-lift, high-delight use of
+  the AI you already have.
+- **Penda Pro coaching** — behavioral coaching + financial *education* grounded
+  in the user's own data ("you'd clear this debt 4 months sooner by…"). A Pro
+  monetization surface. Explicitly *not* regulated advice (no investment / tax /
+  credit product recommendations); ships with a plain disclaimer.
 
-### Engagement & trust
+### Engagement & growth
 - **Streaks, milestones & badges** — celebrate no-spend streaks and savings
-  milestones (the celebration moments from the direction).
+  milestones (the celebration moments from the direction). Home for the
+  achievements gallery is the Compete tab; personal milestones still fire
+  in-context on Home/Goals.
 - **Shared goals** — a household saving toward one goal together.
-- **Financial health score** — a single evolving number that trends over time.
+- **"Penda Wrapped" / Year in Review** — a shareable, personality-narrated
+  recap; a proven organic-growth loop, cheap to build on existing data.
+- **Referral program** — invite a friend, both unlock something; ties into the
+  challenges/social loop.
+
+### Trust & onboarding
+- **Financial health score** — a single evolving, transparent, trend-based
+  number (encouraging, never a shaming grade).
 - **First-run onboarding** — set currency, then create a first budget/goal via
   the AI (ties directly to bet 6).
+- **Privacy mode** — one tap to blur/hide balances on a shared device or in
+  public.
 - **Biometric / PIN lock** — protect the PWA on a shared device.
 - **Data export** — CSV / PDF statements and reports.
 
