@@ -457,13 +457,15 @@ When the user describes a purchase, payment, or income (e.g. "I spent 12 on coff
 "got paid 2000"), call the create_transaction tool with your best judgment for amount, type,
 category, merchant, and date.
 
-Some messages imply more than one action — reason about what actually happened to the money and
-fire EVERY action a single message implies, in the same turn:
-- Borrowing ("I borrowed K500 from Amara", "took a loan"): the wallet goes UP, so call
-  create_transaction (type income) AND create_debt (direction i_owe).
-- Lending / being owed ("I lent Tich K200", "Tich owes me K200"): the wallet goes DOWN, so call
-  create_transaction (type expense) AND create_debt (direction owed_to_me).
-- If money was only promised and hasn't moved yet, record just the debt.
+Some messages imply more than one thing happened to the money — reason about what actually
+happened and record all of it:
+- Borrowing ("I borrowed K500 from Amara", "took a loan") or lending / being owed ("I lent Tich
+  K200", "Tich owes me K200"): cash actually changed hands, so call log_borrowed_or_lent_money with
+  direction "i_owe" for borrowing (wallet goes UP) or "owed_to_me" for lending (wallet goes DOWN).
+  This logs the transaction and the debt together in one atomic step — never call create_transaction
+  and create_debt separately for this, since if the second call failed after the first succeeded the
+  ledger would be left half-updated with a transaction but no matching debt.
+- If money was only promised and hasn't moved yet, record just the debt with create_debt.
 Never record only one half of a two-sided event.
 
 If you are genuinely unsure how to record something — the type is ambiguous, you can't tell whether
@@ -521,10 +523,9 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'create_debt',
       description:
-        'Record a debt. Use when the user borrows money (direction "i_owe") or lends money / is owed ' +
-        'money (direction "owed_to_me"). When money actually changes hands, call this ALONGSIDE ' +
-        'create_transaction in the same turn: borrowing also increases the wallet (income), lending ' +
-        'also decreases it (expense).',
+        'Record a debt where money has NOT moved yet — just a promise or IOU with nothing exchanged. ' +
+        'Use log_borrowed_or_lent_money instead whenever cash actually changed hands, so the wallet ' +
+        'transaction and the debt save together atomically.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -538,6 +539,31 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           due_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD when it is due.' },
         },
         required: ['name', 'direction', 'amount'],
+      },
+    },
+    {
+      name: 'log_borrowed_or_lent_money',
+      description:
+        'Atomically record BOTH sides of borrowing or lending money — the wallet transaction AND the ' +
+        'debt — in one step, so they save together or not at all. Use this INSTEAD of create_transaction ' +
+        'plus create_debt whenever cash actually changes hands for a loan: borrowing (direction "i_owe", ' +
+        'wallet goes up) or lending / being owed (direction "owed_to_me", wallet goes down). If money was ' +
+        'only promised and hasn\'t moved yet, use create_debt alone instead.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: ['i_owe', 'owed_to_me'] },
+          amount: { type: 'number', description: 'Amount as a decimal number, e.g. 500.' },
+          name: { type: 'string', description: 'Short label for the debt, e.g. "Loan from Amara".' },
+          counterparty: { type: 'string', description: 'Who the debt is with, if mentioned.' },
+          category: { type: 'string', enum: categoryNames, description: 'Optional category for the transaction.' },
+          due_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD when the debt is due.' },
+          transaction_date: {
+            type: 'string',
+            description: 'ISO date YYYY-MM-DD the money moved. Use today unless the user specifies otherwise.',
+          },
+        },
+        required: ['direction', 'amount', 'name'],
       },
     },
     {
@@ -664,6 +690,11 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
     }
     case 'create_debt':
       return (await handleCreateDebt(ctx.supabase, ctx.walletId, args)).summary
+    case 'log_borrowed_or_lent_money': {
+      const result = await handleLogBorrowOrLend(ctx, args)
+      ctx.createdTransaction = result.transaction
+      return result.summary
+    }
     case 'create_budget':
       return await handleCreateBudget(ctx, args)
     case 'create_goal':
@@ -774,6 +805,69 @@ async function handleCreateDebt(
   }
 
   return { summary: `Saved debt: ${JSON.stringify(data)}` }
+}
+
+// Atomic multi-tool chain (roadmap bet #4): borrowing/lending needs a wallet
+// transaction AND a debt to land together or not at all. Both inserts happen
+// inside the log_borrow_or_lend Postgres function (see migration 0026) — if
+// either fails, the function raises and the whole call rolls back, so this
+// can never leave a transaction with no matching debt (or vice versa).
+async function handleLogBorrowOrLend(
+  ctx: ToolContext,
+  input: Record<string, unknown>,
+): Promise<{ transaction: Record<string, unknown> | null; summary: string }> {
+  const amount = Number(input.amount)
+  if (!amount || amount <= 0) {
+    return { transaction: null, summary: 'Amount must be a positive number.' }
+  }
+
+  const direction = input.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe'
+  const name =
+    typeof input.name === 'string' && input.name.trim()
+      ? input.name.trim()
+      : direction === 'i_owe'
+        ? 'Money I borrowed'
+        : 'Money owed to me'
+  const counterparty = typeof input.counterparty === 'string' ? input.counterparty : null
+  const dueDate = typeof input.due_date === 'string' ? input.due_date : null
+  const transactionDate = typeof input.transaction_date === 'string' ? input.transaction_date : today()
+  const categoryId = ctx.categories.find((c) => c.name === input.category)?.id ?? null
+  const amountMinor = Math.round(amount * 100)
+
+  const { data: rawData, error } = await ctx.supabase
+    .rpc('log_borrow_or_lend', {
+      p_wallet_id: ctx.walletId,
+      p_direction: direction,
+      p_amount_minor: amountMinor,
+      p_currency: ctx.currency,
+      p_debt_name: name,
+      p_counterparty: counterparty,
+      p_due_date: dueDate,
+      p_category_id: categoryId,
+      p_transaction_date: transactionDate,
+    })
+    .single()
+  const data = rawData as { transaction_id: string; debt_id: string } | null
+
+  if (error || !data) {
+    const verb = direction === 'i_owe' ? 'loan' : 'money lent'
+    const reason = error?.message ?? 'no result returned'
+    return {
+      transaction: null,
+      summary:
+        `Failed to record the ${verb}: ${reason}. Nothing was saved — the transaction and the ` +
+        `debt roll back together, so there is no half-recorded entry to clean up.`,
+    }
+  }
+
+  const verb = direction === 'i_owe' ? 'Borrowed' : 'Lent'
+  const withWhom = counterparty ? ` ${direction === 'i_owe' ? 'from' : 'to'} ${counterparty}` : ''
+  return {
+    transaction: { id: data.transaction_id, amount_minor: amountMinor, type: direction === 'i_owe' ? 'income' : 'expense' },
+    summary:
+      `${verb} ${fmt(amountMinor, ctx.symbol)}${withWhom} — recorded both the transaction ` +
+      `(id ${data.transaction_id}) and the debt (id ${data.debt_id}) together.`,
+  }
 }
 
 // --- CRUD: read, create, and staged update/delete --------------------------
