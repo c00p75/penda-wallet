@@ -19,6 +19,7 @@ import { useInstallPrompt } from '@/pwa/useInstallPrompt'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
+import { useExport } from '@/features/export/useExport'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PersonaAvatar } from './PersonaAvatar'
 import { PERSONALITIES, type AiPersonality } from './types'
@@ -38,6 +39,7 @@ export function SettingsPage() {
   const install = useInstallPrompt()
   const { isPremium } = useEntitlement(userId)
   const { data: wallet } = useCurrentWallet()
+  const { exportAs, isExporting } = useExport(wallet?.id)
   const themeMode = useThemeStore((s) => s.mode)
   const setThemeMode = useThemeStore((s) => s.setMode)
 
@@ -300,6 +302,27 @@ export function SettingsPage() {
               Open Penda in your phone's browser to install it as an app.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Export your data</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            Download this wallet's full financial history. It's your data.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => exportAs('json')} disabled={isExporting} className="flex-1 gap-1.5">
+              <Download className="size-4" />
+              JSON
+            </Button>
+            <Button variant="outline" onClick={() => exportAs('csv')} disabled={isExporting} className="flex-1 gap-1.5">
+              <Download className="size-4" />
+              CSV
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
