@@ -4,15 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-15 (rev 9)
-
----
-
-## 🔒 Near-term — committed, shipping next
-
-Not someday-maybe. Real exposure or table-stakes gaps we take on before the bold bets below.
-
-- **App lock** — biometric / PIN gate on open (and on reveal of exact balances). Shipping a money app with no lock screen is a live exposure the day we have users on shared or lost phones; this is near-term, not backlog.
+Last updated: 2026-07-15 (rev 10)
 
 ---
 
@@ -30,102 +22,68 @@ on the surface. Reference: the design direction artifact.
 - AI personality **persona deck** (faces, tints, in-voice previews)
 - Paywall reframed as an **invitation** instead of a dead-end
 - Transaction **timeline** and game-like challenge **leaderboard**
+- **App lock** — biometric / PIN gate on open and on reveal of exact balances
 
 ---
 
 ## 🎯 The bold bets — what makes Penda category-defining
 
-These are product/architecture moves, not styling. They need dedicated,
-coordinated passes (each is more than a UI change).
+These are product/architecture moves, not styling. Each needed a dedicated,
+coordinated pass. Status noted per bet — several turned out to already be
+substantially built from earlier passes; this rev corrects that record against
+what's actually in the codebase rather than commit-log guesswork.
 
-### 1. Zero-friction data — Ambient SMS & Clipboard Parsing · **the enabler**
-The AI cannot manage money it cannot see. In a MoMo-heavy market, manual entry is where finance apps die. Penda needs to read transactions exactly where they happen—in the SMS text—so the data flows automatically.
-- **Why:** Removes the highest friction point and guarantees data liquidity.
-- **Scope:** Android native wrapper (TWA/Capacitor) for `READ_SMS` parsing of Airtel Money, MTN MoMo, and banks. iOS/Web fallback via a persistent "📋 Paste Copied MoMo Text" chip. Ambient real-time processing toasts and a transparent Activity Log.
-  - **Action provenance across the app:** Every record knows its origin (manual / voice / SMS / AI-chat) and the UI badges non-manual entries ("auto-added by Penda"). Generalizes the transaction `source` tagging (migration 0017) to all record types — provenance is what makes the audit trail and undo legible.
+### 1. Zero-friction data — Ambient SMS & Clipboard Parsing · **the enabler** — 🟡 partial
+The AI cannot manage money it cannot see. In a MoMo-heavy market, manual entry is where finance apps die.
+- **Shipped:** Deterministic MoMo/bank SMS-text parser (Airtel, MTN, Zamtel, banks; ZMW/USD) with a persistent "📋 Paste Copied MoMo Text" chip as the iOS/web fallback. Transactions carry a `source` (`manual`/`chat`/`voice`/`receipt`/`recurring`/`sms`) so provenance is tracked end-to-end.
+- **Not shipped:** The Android native wrapper (TWA/Capacitor) for actual `READ_SMS` — needs a native build + a physical device to sign and test, out of reach in this environment. Ambient real-time processing toasts and a transparent Activity Log. Provenance badging in the UI ("auto-added by Penda") beyond the raw `source` column.
 
-### 2. Planning & Accountability Rituals · **the retention engine**
-Shift from reactive tracking to a proactive behavior-change loop (plan → act → reflect). Penda reaches out, sets intentions with the user, and reviews them on a cadence.
-- **Why:** Cadence builds habits, and habits drive retention (DAU/WAU). It gives the AI a relational, structured reason to speak.
-- **Scope:** 
-  - **Rituals:** A morning "money minute", an evening reconcile, a weekly week-ahead review, and an annual recap. Adaptive cadence (backs off to weekly if the user ignores daily check-ins to avoid nagging).
-  - **Spending Plan Object:** A top-level period intention (e.g., "This month I intend to spend K12k") tracked against actuals.
-  - **Commitment Pacts:** "No takeout this week"—Penda holds you to it.
-  - **Reflection Prompts:** "What felt worth it this week?" (optionally mood-tag spending).
-  - **Balance reconciliation — the trust anchor:** The evening reconcile isn't just reflective; it's a truth-check. A lightweight *"Penda has K3,240 — does that match your MoMo? [Yes / Fix]"* keeps computed balance from silently drifting from reality. Everything downstream (Safe Spending Radar, the cashflow timeline, the simulation engine) is only as trustworthy as this match.
+### 2. Planning & Accountability Rituals · **the retention engine** — 🟡 partial
+Shift from reactive tracking to a proactive behavior-change loop (plan → act → reflect).
+- **Shipped:**
+  - **Spending Plan Object** — a monthly intention tracked against actuals, instant-save, never a chat gate.
+  - **Reflection Prompts** — free-text "what felt worth it" near month-end, plus a computed **end-of-period retro** that seeds the next plan off last month's actual spend.
+  - **Balance reconciliation — the trust anchor.** A once-a-day ledger prompt: *"Penda has K3,240 — does that match your MoMo? [Yes / Fix]."* Fix posts a balancing transaction for the difference. This is the evening-reconcile ritual's core mechanic.
+  - **Commitment Pacts** — "No takeout this week": pick a category to avoid over a window; status (active/kept/broken) computed live from transactions, never stored/stale.
+- **Not shipped:** The morning "money minute," a *pushed* weekly week-ahead review, and an annual recap — plus the adaptive cadence (backing off to weekly if daily check-ins get ignored). Deliberately not rushed: adaptive backoff needs real engagement data to tune sensibly, and stacking more daily/weekly pushes on top of the existing burn-rate nudge risks notification fatigue without a coordinated cadence budget across all of them.
 
-### 3. Profile Modes: Context, not Code Forks · **the architecture shift**
-Treat Individual, Family, and Business accounts as a context layer over the same core engine, not three separate apps.
-- **Why:** Trying to build three apps dilutes focus. Changing the "mode" simply changes default categories, terminology, which surfaces show, and how the AI frames things.
-- **Scope:** 
-  - A mode selector at onboarding (switchable later; users can hold multiple). 
-  - Sets defaults and AI context (e.g., Business mode talks margins and runway; Family mode talks shared priorities).
-  - Sequence: Individual → Family → Business (Side-hustle lite).
+### 3. Profile Modes: Context, not Code Forks · **the architecture shift** — ✅ shipped
+Individual, Family, and Business as a context layer over the same engine.
+- Mode selector in Settings, per-mode terminology (`termFor`) used across the ledger, and — this pass — the chat agent's system prompt now actually injects the mode's `aiContext` fragment, so a Family or Business wallet gets framed accordingly instead of only affecting client-side copy.
 
-### 4. Agentic Reliability & Multi-Step Reasoning · **the AI upgrade**
-The AI must act like an infallible assistant. It cannot silently fail, and it must understand double-entry bookkeeping inherently.
-- **Why:** If the AI logs borrowed money as income but forgets the debt, trust evaporates. If it drops a transaction because it's confused, the ledger breaks.
-- **Scope:** 
-  - **Multi-tool chains:** E.g., intent `borrowed_money` triggers both `Wallet_Increase` AND `Debt_Create`.
-  - **The Clarification Fallback:** If the AI is unsure how to categorize a transaction or goal, it halts and asks the user directly in the ambient chat rather than doing nothing.
-  - **Full CRUD with tiered confirmation:** Expand the agent's tools beyond create-only to cover the app's domains (transactions, debts, budgets, goals, wallets, categories). Reads and creates flow freely; **updates and deletes always surface a confirmation request before executing** (e.g. *"Delete the K450 groceries entry from Tuesday?"*). Destructive bulk/structural ops (deleting a wallet, mass-deleting transactions) stay forbidden to the agent regardless. This capability matrix is a hard guardrail in the tool layer, distinct from the user-facing consent controls (see Intelligence & Trust).
-  - **Atomic multi-tool chains:** A chain must be all-or-nothing. If one step of a `Wallet_Increase` + `Debt_Create` chain fails, the whole chain rolls back (or self-repairs) rather than leaving the ledger half-updated — a silent partial write is exactly the failure this bet promises to prevent.
+### 4. Agentic Reliability & Multi-Step Reasoning · **the AI upgrade** — ✅ shipped
+- **Full CRUD with tiered confirmation** — creates/reads run immediately; updates/deletes always stage a Yes/Cancel confirmation card via `ai_pending_actions`, applied only by `confirm-ai-action`. Structural edits (wallet currency, system categories, wallet deletion) are guarded off in the tool layer.
+- **Multi-tool chains + the Clarification Fallback** — the system prompt already directed the model to fire both `create_transaction` and `create_debt` for a borrow/lend event, and to ask one clarifying question when genuinely unsure rather than guess or stay silent.
+- **Atomic multi-tool chains — this pass.** The borrow/lend chain was two independent inserts with no linkage: a failure after the first succeeded left a transaction with no matching debt. Replaced with `log_borrow_or_lend`, a single Postgres function doing both inserts in one call — either raising rolls back the whole thing — and a new `log_borrowed_or_lent_money` tool wired to it.
 
-### 5. The Living Cashflow Timeline · **the paradigm shift**
-Replace the traditional static month-to-month budget with a forward-looking timeline based on known income, recurring bills, and average spending.
-- **Why:** Traditional budgeting looks at a calendar month; real life looks at the time between paychecks.
-- **Scope:** A vertical timeline UI where users scroll into the future. AI highlights upcoming crunch periods: *"Next Tuesday is expensive,"* or *"You have K900 free before payday."*
+### 5. The Living Cashflow Timeline · **the paradigm shift** — ✅ shipped
+A vertical timeline (`/cashflow`) projecting forward from current balance, active recurring bills, and average discretionary spend — surfacing exactly the promised copy: *"You have K900 free before payday"* / *heading short before Tuesday*.
 
-### 6. The Personal Simulation Engine · **the differentiator**
-Penda builds a living simulation of the user by learning their salary patterns, impulse triggers, savings behaviors, and upcoming life events. Let people ask the future out loud.
-- **Why:** Highly demo-able; turns anxiety into confident, visual answers.
-- **Scope:** In-store AI Shopping Companion (*"Can I buy this TV?"* → *"Future you might regret this... "*), and scenario sliders to model cutting expenses or adjusting debt payoff.
+### 6. The Personal Simulation Engine · **the differentiator** — ✅ shipped
+The "Can I buy this?" shopping companion (*"Future you might regret this…"*) and a spend-cut slider were already live. **This pass** added the other named scenario: a debt-payoff slider (`projectDebtPayoff` — standard amortization) showing months-to-debt-free and total interest at a chosen extra monthly payment, folded into the same 30-day affordability check.
 
-### 7. Penda speaks unprompted — Proactive Coaching · **the moat**
-A proactive assistant that surfaces one thing a day without being asked, focusing on **Opportunity Detection** and **Observability**. 
-- **Why:** Finance apps are negative. Catching a user doing something good, or proactively solving a problem, builds addiction to the coaching.
-- **Scope:** 
-  - **Observability:** AI notices patterns (e.g., *"You've spent K150 on unbudgeted coffee this week; should we create a budget for it?"*).
-  - **Opportunity:** *"You spent K3,400 less than usual; fund your emergency goal today!"*
+### 7. Penda speaks unprompted — Proactive Coaching · **the moat** — ✅ shipped
+- **This pass:** the daily burn-rate cron now falls through to a coaching check when no budget is burning — an underspend opportunity, an unbudgeted spending pattern, or a goal worth celebrating — so "one thing a day, unprompted" isn't limited to budget pace. Still capped at one push per member per day. A cold-start wallet with zero budgets is no longer skipped outright, since it can still have goals or patterns worth a nudge.
 
-### 8. Kill the modal chat — ambient conversation layer · **architecture**
-There should be no separate "chat screen." The conversation is the ambient layer under every page — pull the ask bar up from anywhere.
+### 8. Kill the modal chat — ambient conversation layer · **architecture** — ✅ shipped
+No `/chat` route exists. `AmbientChat` mounts one `ChatSheet` app-wide with a pull-up "Ask Penda" handle reachable from every page (the ledger has its own richer ask bar instead of the handle, to avoid a double affordance).
 
-### 9. Voice as the hero, ungated · **growth**
-Make voice the free hook; monetize depth (insights history, unlimited members) instead. The most demo-able interaction should not be gated.
+### 9. Voice as the hero, ungated · **growth** — ✅ shipped
+Hold-to-talk / tap-to-lock voice input, server transcription via Groq Whisper — confirmed zero premium/paywall gating anywhere in the chat or voice code path.
 
-### 10. AI memory & The Financial Journal · **makes everything land**
-Penda remembers what you told it, your goals, and preferences. Users can log emotional states (*"I stress-buy after work"*), allowing the AI to spot behavioral patterns.
-- **Includes:** A Memory Timeline (*"One year ago you wanted to stop living paycheck-to-paycheck. Today you have K14,000 saved."*)
+### 10. AI memory & The Financial Journal · **makes everything land** — ✅ shipped
+`ai_memories` + the Journal page already let a user log notes/moods/preferences/facts by hand. **This pass:** the chat agent now reads the user's most recent memories into its system prompt (so it can reference a stated preference or mood pattern without being re-told), and a new `save_memory` tool lets the AI capture something worth remembering mid-conversation instead of memory only ever being written from the Journal page.
+- **Not shipped:** the Memory Timeline retrospective view (*"One year ago you wanted to stop living paycheck-to-paycheck…"*).
 
-### 11. AI-first budget & goal creation · **onboarding + activation**
-Penda proposes budgets based on the last 2-3 months of spending. For goals, the AI uses a **Dream Builder** (asking *"Why?"*) to connect goals to outcomes (e.g., *"This laptop could increase your income"*).
-
-**The set-plan flow — instant plan + AI assist, never a chat gate.** When the user enters an amount and taps *Set plan*, the plan is created **instantly and always succeeds** — no waiting on the model, no forced conversation. The AI then shows up *on* the plan as a proactive assistant: it opens with something specific (it already knows income, recurring spend, persona) and proposes 2-3 tappable budget items rather than interrogating. Every AI-first principle here is a guardrail against friction:
-  - **Skippable, always.** A clear "I'll do it myself" path. AI-first ≠ AI-only.
-  - **Suggestions over interrogation.** Tappable proposed items (accept / dismiss / edit) beat open-ended Q&A. Every turn is friction; minimize turns.
-  - **Ask only what can't be inferred.** Reserve questions for genuine unknowns (goals, upcoming one-offs), never for income/rent we already hold.
-  - **Writes go through the tiered-confirmation matrix** (bet #4): item creates flow freely, edits/removes confirm.
-
-**Value-adds that make the budget *real* (not just novel):**
-
-*v1 — build with the set-plan flow:*
-  - **Safe-to-spend — the headline number.** After fixed costs and savings, how much is actually free this period (and *per day*). Most users don't want a budget table; they want one number that answers "can I buy this?" This is what the AI surfaces and defends. Supersedes the standalone **Safe Spending Radar** candidate (now folded here).
-  - **Fixed vs. flexible auto-detection.** Detect recurring spend (rent, subscriptions, utilities) from transaction history and pre-fill those as fixed lines, so the AI only asks about the *flexible* remainder. Directly shortens the assist flow (fewer questions = less friction).
-  - **Actuals mapped to budget lines automatically.** Auto-categorize real transactions against their budget items (reuses the agent's transaction categorization). Without this the budget is a wish, not a tracker.
-
-*Pairs with fresh push infra — build next:*
-  - **Burn-rate / pace nudges via push.** *"You're 60% through the month but 85% through groceries."* The AI's recurring, personalized reason to reach out — the natural justification for the notification permission we just shipped. (Overlaps the Rituals cadence in bet #2.)
-
-*Upfront data-model decision (decide now, don't migrate later):*
-  - **Rollover: per-period vs. cumulative.** Decide whether a budget line resets each period or carries unspent/overspent forward *before* shipping, so envelope budgeting isn't a painful migration. Builds the **Envelope / rollover** candidate on top of this.
-
-*Fast-follow backlog (named so we don't design into a corner):*
-  - **Goals as budget lines.** A savings goal is a budget item that accrues — wire budgeting and goals as the same primitive.
-  - **End-of-period retro.** AI recaps how the period went and seeds the next plan, giving the AI memory across cycles (ties into bet #2 rituals and #10 memory).
-  - **Cash-flow timing.** Not just "how much" but "will the money be there *when* rent hits?" (this is bet #5, the Living Cashflow Timeline — the budget should hand off to it).
-  - **Variable/irregular income handling.** Budget off a conservative baseline or rolling average for lumpy income (ties into the **Buffer Engine** candidate).
-  - **Persona-based starter budgets.** Offer a sensible starting budget per persona so cold-start users with no history aren't staring at zero.
+### 11. AI-first budget & goal creation · **onboarding + activation** — ✅ shipped
+The instant set-plan flow, safe-to-spend headline number, and Dream Builder were already live. **This pass shipped the full remaining list:**
+- **Rollover: per-period vs. cumulative** — decided and built. `get_budget_progress` now walks history since a budget's start date and carries unspent/overspent forward cumulatively when rollover is on (previously a stored flag with no effect).
+- **Fixed vs. flexible auto-detection** — `detectRecurringSpend` finds stable-amount, weekly/monthly-cadence merchants straight from transaction history (not just registered recurring rules), and the set-plan assist tells the AI about them so it doesn't ask.
+- **Actuals mapped to budget lines automatically** — verified already shipped (`get_budget_progress` RPC).
+- **Goals as budget lines** — a goal's required monthly contribution (to stay on pace for its target date) now reserves against the plan the same way an upcoming bill does.
+- **End-of-period retro** — see bet #2.
+- **Variable/irregular income handling** — detects lumpy income (coefficient of variation across recent months) and seeds the next plan off the leanest recent month instead of the average when income is irregular enough to make the average unsafe.
+- **Persona-based starter budgets** — a cold-start wallet with a plan set but no spending history gets a starter split weighted by the user's chosen AI persona, instead of staring at zero.
 
 ---
 
@@ -148,14 +106,13 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 
 ### Money in & Automations
 - **Bank sync API** — longer-term integration beyond MoMo SMS.
-- **The "Buffer" Engine** — actively manage irregular income (e.g., *"Move K1,500 of this large cash-in to a buffer for next month"*).
+- **The "Buffer" Engine** — actively manage irregular income (e.g., *"Move K1,500 of this large cash-in to a buffer for next month"*). Builds on the variable-income detection shipped in bet #11.
 - **Round-ups & Pay-yourself-first rules** — automatic saving mechanisms.
 - **Impulse / cooling-off pause** — *"Want to sit on this K1,500 for 24h?"*
 
 ### Money management depth
-- **Safe Spending Radar** — Actionable daily guidance: *"You can comfortably spend K410 today."* *(Promoted into bet #11 as "safe-to-spend" — the headline number of the new budget flow.)*
 - **Split expenses & settle-up** — Splitwise-style per-member balances.
-- **Envelope / rollover budgeting** — build the envelope UX around existing rollover flags. *(Depends on the per-period-vs-cumulative data decision now called out in bet #11.)*
+- **Envelope / rollover budgeting** — the per-period-vs-cumulative decision this depended on shipped in bet #11; the dedicated envelope UX on top of it is still open.
 - **Multi-currency & FX** — per-wallet currency conversion.
 
 ### Intelligence & Trust
@@ -170,6 +127,6 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **Every gate is a live preview** — let users feel the magic once before hitting the paywall.
 
 ### Security & Data Control
-*Table stakes for a money app, and a trust play — hardens who can open the app, complementing the AI-action guardrails that harden what the AI can do. (App lock has been promoted to Near-term above.)*
-- **Data export** — let users download their full financial history (CSV/JSON). Ownership builds trust; also an app-store/privacy expectation.
-- **Account & data deletion** — a real self-serve delete path. Compliance requirement the moment we publish.
+*Table stakes for a money app, and a trust play — hardens who can open the app, complementing the AI-action guardrails that harden what the AI can do. (App lock shipped — see above.)*
+- **Data export** — ✅ shipped. Download the wallet's full financial history as structured JSON or a flat transactions CSV, client-side against the user's own RLS-scoped data.
+- **Account & data deletion** — 🟡 in progress (a self-serve delete path is being built; not yet verified complete as of this writing). Compliance requirement the moment we publish.
