@@ -153,17 +153,24 @@ Deno.serve(async (req) => {
       const toolResultParts: NeutralPart[] = []
       for (const call of turn.toolCalls) {
         let summary: string
-        if (call.name === 'create_transaction') {
-          const result = await handleCreateTransaction(supabase, body.walletId, user.id, categories, rules, call.args)
-          createdTransaction = result.transaction
-          summary = result.summary
-        } else if (call.name === 'create_debt') {
-          summary = (await handleCreateDebt(supabase, body.walletId, call.args)).summary
-        } else {
-          summary = `Unknown tool "${call.name}" — no action taken.`
+        try {
+          if (call.name === 'create_transaction') {
+            const result = await handleCreateTransaction(supabase, body.walletId, user.id, categories, rules, call.args)
+            createdTransaction = result.transaction
+            summary = result.summary
+          } else if (call.name === 'create_debt') {
+            summary = (await handleCreateDebt(supabase, body.walletId, call.args)).summary
+          } else {
+            summary = `Unknown tool "${call.name}" — no action taken.`
+          }
+        } catch (err) {
+          // Agentic reliability: a tool that throws must never abort the whole
+          // turn or leave a chain half-applied. Feed the failure back so the
+          // model can recover or tell the user, and so every tool_call keeps a
+          // matching result (unbalanced pairs break the provider's next turn).
+          console.error(`Tool ${call.name} threw:`, err)
+          summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
         }
-        // Every tool call must get a matching result, or the provider's next
-        // turn breaks (unbalanced function-call / function-response pairs).
         toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
       }
 
