@@ -37,6 +37,129 @@ interface PaceResult {
   over: boolean
 }
 
+// Roadmap bet #7 (proactive coaching): when nothing is burning, still look for
+// something worth surfacing unprompted — an underspend to redirect, a pattern
+// with no budget yet, or a goal worth celebrating. "One thing a day" means
+// this only fires when the burn-rate pace check above found nothing.
+type CoachingKind = 'opportunity' | 'observability' | 'celebration'
+
+interface CoachingResult {
+  kind: CoachingKind
+  title: string
+  body: string
+  url: string
+  meta: Record<string, unknown>
+}
+
+interface WideTxRow {
+  amount_minor: number
+  category_id: string | null
+  transaction_date: string
+  type: string
+}
+
+interface GoalRow {
+  id: string
+  name: string
+  target_amount_minor: number
+  current_amount_minor: number
+}
+
+interface CategoryRow {
+  id: string
+  name: string
+}
+
+const OPPORTUNITY_MIN_BASELINE_MINOR = 20_000
+const OPPORTUNITY_UNDERSPEND_FACTOR = 0.7
+const OBSERVABILITY_MIN_90D_TOTAL_MINOR = 15_000
+const OBSERVABILITY_MIN_COUNT = 2
+const CELEBRATION_MIN_PCT = 0.8
+
+function sumExpense(rows: WideTxRow[], fromExclusive: string, throughInclusive: string): number {
+  return rows
+    .filter((t) => t.type === 'expense' && t.transaction_date > fromExclusive && t.transaction_date <= throughInclusive)
+    .reduce((sum, t) => sum + t.amount_minor, 0)
+}
+
+export function pickCoachingInsight(
+  transactions: WideTxRow[],
+  goals: GoalRow[],
+  categories: CategoryRow[],
+  budgets: BudgetRow[],
+  now: Date,
+  currency: string,
+): CoachingResult | null {
+  const daysAgoStr = (n: number) =>
+    toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - n)))
+  const today = daysAgoStr(0)
+
+  // Opportunity — spent noticeably less than the recent baseline this week.
+  const last7 = sumExpense(transactions, daysAgoStr(7), today)
+  const baselineWeekly = sumExpense(transactions, daysAgoStr(35), daysAgoStr(7)) / 4
+  if (baselineWeekly >= OPPORTUNITY_MIN_BASELINE_MINOR && last7 <= baselineWeekly * OPPORTUNITY_UNDERSPEND_FACTOR) {
+    const diff = Math.round(baselineWeekly - last7)
+    const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
+    return {
+      kind: 'opportunity',
+      title: 'Nice spending week',
+      body: goal
+        ? `You spent ${fmt(diff, currency)} less than usual this week — want to move it toward "${goal.name}"?`
+        : `You spent ${fmt(diff, currency)} less than usual this week. A great moment to stash it.`,
+      url: '/goals',
+      meta: { diff_minor: diff, goal_id: goal?.id ?? null },
+    }
+  }
+
+  // Observability — a real spending pattern (90 days) with no budget behind it.
+  const budgetedCategoryIds = new Set(budgets.map((b) => b.category_id).filter((id): id is string => !!id))
+  const byCategory = new Map<string, { total: number; count: number }>()
+  for (const t of transactions) {
+    if (t.type !== 'expense' || !t.category_id || budgetedCategoryIds.has(t.category_id)) continue
+    const entry = byCategory.get(t.category_id) ?? { total: 0, count: 0 }
+    entry.total += t.amount_minor
+    entry.count += 1
+    byCategory.set(t.category_id, entry)
+  }
+  const topUnbudgeted = [...byCategory.entries()]
+    .filter(([, v]) => v.count >= OBSERVABILITY_MIN_COUNT && v.total >= OBSERVABILITY_MIN_90D_TOTAL_MINOR)
+    .sort((a, b) => b[1].total - a[1].total)[0]
+  if (topUnbudgeted) {
+    const [categoryId, v] = topUnbudgeted
+    const categoryName = categories.find((c) => c.id === categoryId)?.name ?? 'that category'
+    const monthlyAvgMinor = Math.round(v.total / 3) // the transaction window is ~90 days
+    return {
+      kind: 'observability',
+      title: 'A pattern Penda noticed',
+      body: `You're spending about ${fmt(monthlyAvgMinor, currency)}/mo on ${categoryName} with no budget. Want one?`,
+      url: '/budgets',
+      meta: { category_id: categoryId, monthly_average_minor: monthlyAvgMinor },
+    }
+  }
+
+  // Celebration — a goal that's funded or nearly there.
+  const closest = goals
+    .map((g) => ({ g, pct: g.target_amount_minor > 0 ? g.current_amount_minor / g.target_amount_minor : 0 }))
+    .filter((x) => x.pct >= CELEBRATION_MIN_PCT)
+    .sort((a, b) => b.pct - a.pct)[0]
+  if (closest) {
+    const { g, pct } = closest
+    const remaining = Math.max(0, g.target_amount_minor - g.current_amount_minor)
+    return {
+      kind: 'celebration',
+      title: '🎉 Goal milestone',
+      body:
+        pct >= 1
+          ? `You fully funded "${g.name}". Time to set the next dream?`
+          : `You're ${Math.round(pct * 100)}% of the way to "${g.name}" — only ${fmt(remaining, currency)} to go!`,
+      url: '/goals',
+      meta: { goal_id: g.id },
+    }
+  }
+
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
 
@@ -67,42 +190,83 @@ Deno.serve(async (req) => {
 })
 
 async function nudgeForWallet(supabase: SupabaseClient, walletId: string, currency: string) {
-  const { data: budgets, error: budgetsError } = await supabase
+  const { data: budgetsData, error: budgetsError } = await supabase
     .from('budgets')
     .select('id, category_id, amount_minor, period')
     .eq('wallet_id', walletId)
   if (budgetsError) throw budgetsError
-  if (!budgets || budgets.length === 0) return { skipped: 'no budgets' }
+  const budgets = budgetsData ?? []
 
   const now = new Date()
-  // The earliest period start we might need is the start of the month; fetch
-  // confirmed expenses from there once and slice per budget in memory.
-  const monthStart = toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)))
-  const { data: transactions, error: txError } = await supabase
-    .from('transactions')
-    .select('amount_minor, category_id, transaction_date')
-    .eq('wallet_id', walletId)
-    .eq('user_confirmed', true)
-    .is('deleted_at', null)
-    .eq('type', 'expense')
-    .gte('transaction_date', monthStart)
-  if (txError) throw txError
-
-  const worst = pickWorstBudget(budgets as BudgetRow[], (transactions ?? []) as TxRow[], now)
-  if (!worst) return { skipped: 'nothing burning' }
-
-  // Resolve the category name for the copy (null category = the overall budget).
-  let categoryName = 'Overall'
-  if (worst.categoryId) {
-    const { data: category } = await supabase
-      .from('categories')
-      .select('name')
-      .eq('id', worst.categoryId)
-      .maybeSingle()
-    if (category?.name) categoryName = category.name
+  let worst: PaceResult | null = null
+  if (budgets.length > 0) {
+    // The earliest period start we might need is the start of the month; fetch
+    // confirmed expenses from there once and slice per budget in memory.
+    const monthStart = toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)))
+    const { data: transactions, error: txError } = await supabase
+      .from('transactions')
+      .select('amount_minor, category_id, transaction_date')
+      .eq('wallet_id', walletId)
+      .eq('user_confirmed', true)
+      .is('deleted_at', null)
+      .eq('type', 'expense')
+      .gte('transaction_date', monthStart)
+    if (txError) throw txError
+    worst = pickWorstBudget(budgets as BudgetRow[], (transactions ?? []) as TxRow[], now)
   }
 
-  const body = nudgeCopy(worst, currency, categoryName)
+  let title = 'A heads-up on your budget'
+  let url = '/budgets'
+  let body: string
+  let content: Record<string, unknown>
+
+  if (worst) {
+    // Resolve the category name for the copy (null category = the overall budget).
+    let categoryName = 'Overall'
+    if (worst.categoryId) {
+      const { data: category } = await supabase
+        .from('categories')
+        .select('name')
+        .eq('id', worst.categoryId)
+        .maybeSingle()
+      if (category?.name) categoryName = category.name
+    }
+    body = nudgeCopy(worst, currency, categoryName)
+    content = { text: body, kind: 'burn_rate', budget_id: worst.budgetId }
+  } else {
+    // Nothing burning — still see if there's something worth saying unprompted
+    // (roadmap bet #7). Needs a wider window than the burn-rate check above.
+    const wideStart = toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 90)))
+    const [{ data: wideTx }, { data: goals }, { data: categories }] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('amount_minor, category_id, transaction_date, type')
+        .eq('wallet_id', walletId)
+        .eq('user_confirmed', true)
+        .is('deleted_at', null)
+        .gte('transaction_date', wideStart),
+      supabase
+        .from('savings_goals')
+        .select('id, name, target_amount_minor, current_amount_minor')
+        .eq('wallet_id', walletId),
+      supabase.from('categories').select('id, name').or(`wallet_id.eq.${walletId},wallet_id.is.null`),
+    ])
+
+    const coaching = pickCoachingInsight(
+      (wideTx ?? []) as WideTxRow[],
+      (goals ?? []) as GoalRow[],
+      (categories ?? []) as CategoryRow[],
+      budgets as BudgetRow[],
+      now,
+      currency,
+    )
+    if (!coaching) return { skipped: 'nothing to say' }
+
+    title = coaching.title
+    url = coaching.url
+    body = coaching.body
+    content = { text: body, kind: coaching.kind, ...coaching.meta }
+  }
 
   const { data: members, error: membersError } = await supabase
     .from('wallet_members')
@@ -117,7 +281,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
     const { data: isPremium } = await supabase.rpc('is_premium', { p_user_id: member.user_id })
     if (!isPremium) continue
 
-    // At most one pace nudge per member per day, so a hot budget doesn't spam.
+    // At most one nudge per member per day — burn-rate or coaching, never both.
     const { data: existing } = await supabase
       .from('ai_insights')
       .select('id')
@@ -132,16 +296,16 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       wallet_id: walletId,
       user_id: member.user_id,
       type: 'recommendation',
-      content: { text: body, kind: 'burn_rate', budget_id: worst.budgetId },
+      content,
       period_start: day,
       period_end: day,
     })
 
-    await notifyMember(supabase, member.user_id, body)
+    await notifyMember(supabase, member.user_id, title, body, url)
     notified++
   }
 
-  return { budgetId: worst.budgetId, body, notified }
+  return { body, notified }
 }
 
 /**
@@ -197,17 +361,14 @@ function nudgeCopy(r: PaceResult, currency: string, categoryName: string): strin
   return `${categoryName} is running hot — ${pct}% spent with ${r.daysLeft} ${daysWord} left this ${periodWord}.`
 }
 
-async function notifyMember(supabase: SupabaseClient, userId: string, body: string) {
+async function notifyMember(supabase: SupabaseClient, userId: string, title: string, body: string, url: string) {
   const { data: subscriptions } = await supabase
     .from('push_subscriptions')
     .select('id, endpoint, keys')
     .eq('user_id', userId)
 
   for (const sub of subscriptions ?? []) {
-    const result = await sendPush(
-      { endpoint: sub.endpoint, keys: sub.keys },
-      { title: 'A heads-up on your budget', body, url: '/budgets' },
-    )
+    const result = await sendPush({ endpoint: sub.endpoint, keys: sub.keys }, { title, body, url })
     if (!result.ok && (result.statusCode === 404 || result.statusCode === 410)) {
       await supabase.from('push_subscriptions').delete().eq('id', sub.id)
     }
