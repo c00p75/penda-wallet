@@ -1,5 +1,6 @@
 import { Copy, Crown, LogOut, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Clay3DIcon } from '@/components/Clay'
 import {
   Sheet,
   SheetContent,
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useLeaderboard } from './hooks'
-import { TYPE_ICONS, TYPE_LABELS, daysLeft, formatTarget, formatValue, hasEnded, hasMetTarget } from './challengeMeta'
+import { TYPE_CLAY, TYPE_LABELS, daysLeft, formatTarget, formatValue, hasEnded, hasMetTarget } from './challengeMeta'
 import type { Challenge } from './types'
 
 interface ChallengeDetailSheetProps {
@@ -38,7 +39,7 @@ export function ChallengeDetailSheet({
 
   const isCreator = challenge.creator_id === currentUserId
   const ended = hasEnded(challenge)
-  const TypeIcon = TYPE_ICONS[challenge.type]
+  const clay = TYPE_CLAY[challenge.type]
   const myIndex = leaderboard.findIndex((e) => e.user_id === currentUserId)
   const ordinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd']
@@ -58,9 +59,7 @@ export function ChallengeDetailSheet({
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
-              <TypeIcon className="size-3.5" />
-            </span>
+            <Clay3DIcon name={clay.icon} accent={clay.accent} size={28} />
             {challenge.name}
           </SheetTitle>
         </SheetHeader>

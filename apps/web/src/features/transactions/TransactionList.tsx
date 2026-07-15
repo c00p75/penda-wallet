@@ -1,4 +1,5 @@
 import { Repeat } from 'lucide-react'
+import { Clay3DIcon } from '@/components/Clay'
 import { formatMoney } from '@/lib/money'
 import type { Transaction } from './types'
 
@@ -44,9 +45,12 @@ function chipStyle(type: Transaction['type']) {
 export function TransactionList({ transactions, onSelect }: TransactionListProps) {
   if (transactions.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
-        <p className="font-medium">No transactions yet</p>
-        <p className="text-sm">Tap the + button to add your first one.</p>
+      <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
+        <Clay3DIcon name="receipt" accent="var(--iris)" size={64} />
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">No transactions yet</p>
+          <p className="text-sm">Tap the + button to add your first one.</p>
+        </div>
       </div>
     )
   }

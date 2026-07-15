@@ -17,6 +17,7 @@ import { useEntitlement } from '@/features/entitlements/hooks'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useProfile, useUpdateProfile } from './hooks'
+import { PersonaAvatar } from './PersonaAvatar'
 import { PERSONALITIES, type AiPersonality } from './types'
 import { PROFILE_MODES, type ProfileMode } from './modes'
 
@@ -211,17 +212,12 @@ export function SettingsPage() {
                   aria-pressed={active}
                 >
                   <div className="flex items-center gap-3">
-                    <span
-                      className="grid size-11 shrink-0 place-items-center rounded-full"
-                      style={{
-                        background: `radial-gradient(circle at 35% 30%, ${p.accent}, color-mix(in srgb, ${p.accent} 45%, var(--iris)))`,
-                      }}
-                    >
-                      <p.icon className="size-5 text-white" />
-                    </span>
+                    <PersonaAvatar value={p.value} accent={p.accent} size={44} />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{p.label}</p>
-                      <p className="text-xs text-muted-foreground">{p.description}</p>
+                      <p className="font-medium leading-tight">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.label} · {p.description}
+                      </p>
                     </div>
                     {active && <Check className="size-4 shrink-0" style={{ color: p.accent }} />}
                   </div>

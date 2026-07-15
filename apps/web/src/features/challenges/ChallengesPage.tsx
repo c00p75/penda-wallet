@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus, Ticket, Trophy } from 'lucide-react'
+import { Plus, Ticket } from 'lucide-react'
 import { toast } from 'sonner'
+import { Clay3DIcon } from '@/components/Clay'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,7 +26,7 @@ import {
 } from './hooks'
 import { ChallengeForm } from './ChallengeForm'
 import { ChallengeDetailSheet } from './ChallengeDetailSheet'
-import { TYPE_ICONS, TYPE_LABELS, daysLeft, formatTarget, hasEnded } from './challengeMeta'
+import { TYPE_CLAY, TYPE_LABELS, daysLeft, formatTarget, hasEnded } from './challengeMeta'
 import type { Challenge, ChallengeInput } from './types'
 
 export function ChallengesPage() {
@@ -94,16 +95,14 @@ export function ChallengesPage() {
 
   function ChallengeCard({ challenge }: { challenge: Challenge }) {
     const over = hasEnded(challenge)
-    const TypeIcon = TYPE_ICONS[challenge.type]
+    const clay = TYPE_CLAY[challenge.type]
     return (
       <button
         type="button"
         onClick={() => setSelected(challenge)}
         className="flex w-full items-center gap-3 rounded-lg border p-3 text-left hover:bg-accent"
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
-          <TypeIcon className="size-4" />
-        </span>
+        <Clay3DIcon name={clay.icon} accent={clay.accent} size={36} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-medium">{challenge.name}</p>
@@ -122,7 +121,10 @@ export function ChallengesPage() {
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Am I winning?</h1>
+        <div className="flex items-center gap-2.5">
+          <Clay3DIcon name="trophy" accent="#e6b422" size={30} />
+          <h1 className="text-xl font-semibold">Am I winning?</h1>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setJoinOpen(true)}>
           <Ticket className="size-4" />
           Join with code
@@ -143,12 +145,14 @@ export function ChallengesPage() {
       )}
 
       {challenges.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
-          <Trophy className="size-8" />
-          <p className="font-medium">No challenges yet</p>
-          <p className="text-sm">
-            Create a savings or no-spend challenge and invite friends with a code.
-          </p>
+        <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
+          <Clay3DIcon name="trophy" accent="#e6b422" size={64} />
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">No challenges yet</p>
+            <p className="text-sm">
+              Create a savings or no-spend challenge and invite friends with a code.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-4">

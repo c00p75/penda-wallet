@@ -1,5 +1,5 @@
-import { CalendarOff, PiggyBank, TrendingDown, type LucideIcon } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import type { ClayGlyphName } from '@/components/Clay'
 import type { Challenge } from './types'
 
 export const TYPE_LABELS: Record<Challenge['type'], string> = {
@@ -8,10 +8,11 @@ export const TYPE_LABELS: Record<Challenge['type'], string> = {
   no_spend_streak: 'No-spend streak',
 }
 
-export const TYPE_ICONS: Record<Challenge['type'], LucideIcon> = {
-  savings_target: PiggyBank,
-  spending_limit: TrendingDown,
-  no_spend_streak: CalendarOff,
+/** Clay-3D icon + tint per challenge type. */
+export const TYPE_CLAY: Record<Challenge['type'], { icon: ClayGlyphName; accent: string }> = {
+  savings_target: { icon: 'piggybank', accent: '#22a45d' },
+  spending_limit: { icon: 'trendDown', accent: '#e0607a' },
+  no_spend_streak: { icon: 'flame', accent: '#eaa03c' },
 }
 
 export function formatTarget(challenge: Challenge): string {
