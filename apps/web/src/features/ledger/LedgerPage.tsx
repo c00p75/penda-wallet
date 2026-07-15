@@ -52,6 +52,9 @@ import { useChatStore } from '@/features/chat/chatStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { formatMoney } from '@/lib/money'
 import { BalanceSummary } from './BalanceSummary'
+import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
+import { useLatestReconciliation } from '@/features/reconciliation/hooks'
+import { shouldPromptReconciliation } from '@/features/reconciliation/reconcile'
 
 // Bold prefix each coaching insight wears in the carousel, by kind.
 const TIP_LABEL: Record<CoachingKind, string | undefined> = {
@@ -79,6 +82,7 @@ export function LedgerPage() {
 
   const { data: profile } = useProfile(session?.user.id)
   const { isPremium } = useEntitlement(session?.user.id)
+  const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -224,6 +228,32 @@ export function LedgerPage() {
       ? `You’ve spent ${formatMoney(last7Spent, wallet.base_currency)} in the last 7 days.`
       : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
 
+  // Balance reconciliation — the trust anchor (bet #2): a light daily check
+  // that the computed balance still matches reality, before anything built on
+  // top of it (safe-to-spend, cashflow, the simulator) gets trusted.
+  const balanceMinor = transactions.reduce(
+    (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
+    0,
+  )
+  const showReconcile =
+    !!session &&
+    transactions.length > 0 &&
+    latestReconciliation !== undefined &&
+    shouldPromptReconciliation(latestReconciliation, new Date())
+
+  const walletCurrency = wallet.base_currency
+  async function handleReconcileAdjust(deltaMinor: number) {
+    await createTransaction.mutateAsync({
+      category_id: null,
+      amount_minor: Math.abs(deltaMinor),
+      currency: walletCurrency,
+      type: deltaMinor > 0 ? 'income' : 'expense',
+      merchant: null,
+      description: 'Balance reconciliation adjustment',
+      transaction_date: new Date().toISOString().slice(0, 10),
+    })
+  }
+
   // The weekly read leads the deck; proactive coaching insights follow as
   // swipeable pro-tip cards, each with its one-tap action.
   const coachingInsights = detectCoachingInsights({
@@ -347,6 +377,17 @@ export function LedgerPage() {
       </section>
 
       <InsightCarousel cards={insightCards} />
+
+      {showReconcile && session && (
+        <ReconcilePrompt
+          walletId={wallet.id}
+          userId={session.user.id}
+          currency={wallet.base_currency}
+          computedBalanceMinor={balanceMinor}
+          onResolved={() => {}}
+          onAdjust={handleReconcileAdjust}
+        />
+      )}
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         {suggestions.map(({ icon: Icon, label, onTap }) => (
