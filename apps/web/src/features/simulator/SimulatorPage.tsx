@@ -4,6 +4,13 @@ import { ArrowLeft, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { formatMoney, toMinorUnits } from '@/lib/money'
@@ -11,8 +18,9 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
+import { useDebts } from '@/features/debts/hooks'
 import type { ProjectCashflowInput } from '@/features/cashflow/projection'
-import { simulateScenario } from './simulate'
+import { projectDebtPayoff, simulateScenario } from './simulate'
 
 const HORIZON_DAYS = 30
 
@@ -31,9 +39,13 @@ export function SimulatorPage() {
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
+  const { data: debts = [] } = useDebts(wallet?.id)
 
   const [purchase, setPurchase] = useState('')
   const [cutPct, setCutPct] = useState(0)
+  const payableDebts = useMemo(() => debts.filter((d) => d.direction === 'i_owe' && d.balance_minor > 0), [debts])
+  const [selectedDebtId, setSelectedDebtId] = useState('')
+  const [extraPayment, setExtraPayment] = useState('')
 
   const base: ProjectCashflowInput = useMemo(() => {
     const from = new Date()
@@ -62,8 +74,19 @@ export function SimulatorPage() {
 
   const currency = wallet.base_currency
   const oneOffMinor = toMinorUnits(Number(purchase) || 0)
-  const result = simulateScenario(base, { oneOffMinor, spendCutPct: cutPct })
+  const extraDebtPaymentMinor = toMinorUnits(Number(extraPayment) || 0)
+  const result = simulateScenario(base, { oneOffMinor, spendCutPct: cutPct, extraDebtPaymentMinor })
   const { scenario, endDeltaMinor, canAfford } = result
+
+  const selectedDebt = payableDebts.find((d) => d.id === selectedDebtId) ?? null
+  const payoff =
+    selectedDebt && extraDebtPaymentMinor > 0
+      ? projectDebtPayoff({
+          balanceMinor: selectedDebt.balance_minor,
+          annualRatePct: selectedDebt.interest_rate,
+          extraMonthlyMinor: extraDebtPaymentMinor,
+        })
+      : null
 
   let verdict: { tone: 'default' | 'warm' | 'attention'; text: string } | null = null
   if (oneOffMinor > 0) {
@@ -76,6 +99,21 @@ export function SimulatorPage() {
           tone: 'attention',
           text: `Future you might regret this. It would pull you down to ${formatMoney(scenario.lowestBalance.balanceMinor, currency)} by ${fmtDay(scenario.lowestBalance.date)}.`,
         }
+  } else if (payoff) {
+    verdict = payoff.monthsToPayoff === null
+      ? {
+          tone: 'attention',
+          text: `That payment doesn't even cover the interest building up on "${selectedDebt!.name}" — it would never actually shrink.`,
+        }
+      : !canAfford
+        ? {
+            tone: 'attention',
+            text: `That's tight — it would pull this month's balance down to ${formatMoney(scenario.lowestBalance.balanceMinor, currency)}.`,
+          }
+        : {
+            tone: 'default',
+            text: `"${selectedDebt!.name}" would be paid off in ${payoff.monthsToPayoff} month${payoff.monthsToPayoff === 1 ? '' : 's'}, ${payoff.totalInterestMinor! > 0 ? `costing about ${formatMoney(payoff.totalInterestMinor!, currency)} in interest.` : 'with no interest.'}`,
+          }
   }
 
   return (
@@ -135,6 +173,37 @@ export function SimulatorPage() {
           </p>
         )}
       </div>
+
+      {payableDebts.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
+          <Label className="flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" />
+            Pay off a debt faster
+          </Label>
+          <Select value={selectedDebtId} onValueChange={setSelectedDebtId}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Choose a debt" />
+            </SelectTrigger>
+            <SelectContent>
+              {payableDebts.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name} — {formatMoney(d.balance_minor, currency)} left
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedDebtId && (
+            <Input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={extraPayment}
+              onChange={(e) => setExtraPayment(e.target.value)}
+              placeholder={`Extra per month in ${currency}`}
+            />
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Metric label="Balance in 30 days" value={formatMoney(scenario.days.at(-1)?.balanceMinor ?? 0, currency)} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { simulateScenario } from './simulate'
+import { projectDebtPayoff, simulateScenario } from './simulate'
 import type { ProjectCashflowInput } from '@/features/cashflow/projection'
 
 const BASE: ProjectCashflowInput = {
@@ -37,5 +37,39 @@ describe('simulateScenario', () => {
     const r = simulateScenario(BASE, {})
     expect(r.endDeltaMinor).toBe(0)
     expect(r.lowestDeltaMinor).toBe(0)
+  })
+
+  it('treats an extra debt payment like a one-off draw on the balance', () => {
+    const r = simulateScenario(BASE, { extraDebtPaymentMinor: 20000 })
+    expect(r.endDeltaMinor).toBe(-20000)
+  })
+})
+
+describe('projectDebtPayoff', () => {
+  it('divides an interest-free balance evenly by the payment', () => {
+    const r = projectDebtPayoff({ balanceMinor: 500000, annualRatePct: null, extraMonthlyMinor: 100000 })
+    expect(r.monthsToPayoff).toBe(5)
+    expect(r.totalInterestMinor).toBe(0)
+  })
+
+  it('accounts for interest accrual when computing months to payoff', () => {
+    const r = projectDebtPayoff({ balanceMinor: 1000000, annualRatePct: 24, extraMonthlyMinor: 100000 })
+    // 2% monthly rate; payment well above the ~20000 first-month interest.
+    expect(r.monthsToPayoff).not.toBeNull()
+    expect(r.monthsToPayoff!).toBeGreaterThan(10) // more than the interest-free 10 months
+    expect(r.totalInterestMinor!).toBeGreaterThan(0)
+  })
+
+  it('returns null when the payment does not even cover accruing interest', () => {
+    const r = projectDebtPayoff({ balanceMinor: 1000000, annualRatePct: 24, extraMonthlyMinor: 10000 })
+    expect(r.monthsToPayoff).toBeNull()
+    expect(r.totalInterestMinor).toBeNull()
+  })
+
+  it('treats an already-cleared balance as paid off instantly', () => {
+    expect(projectDebtPayoff({ balanceMinor: 0, annualRatePct: 10, extraMonthlyMinor: 500 })).toEqual({
+      monthsToPayoff: 0,
+      totalInterestMinor: 0,
+    })
   })
 })
