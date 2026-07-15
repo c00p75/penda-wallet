@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import type { ChatResponse } from './types'
+import type { ChatResponse, ConfirmActionResponse } from './types'
 
 export async function transcribeVoice(audio: Blob, filename: string): Promise<string> {
   const formData = new FormData()
@@ -25,5 +25,18 @@ export async function sendChatMessage(
 
   if (error) throw error
   if (!data) throw new Error('Empty response from chat-message function')
+  return data
+}
+
+export async function confirmAiAction(
+  actionId: string,
+  decision: 'confirm' | 'cancel',
+): Promise<ConfirmActionResponse> {
+  const { data, error } = await supabase.functions.invoke<ConfirmActionResponse>('confirm-ai-action', {
+    body: { actionId, decision },
+  })
+
+  if (error) throw error
+  if (!data) throw new Error('Empty response from confirm-ai-action function')
   return data
 }

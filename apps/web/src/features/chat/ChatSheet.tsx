@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic } from 'lucide-react'
+import { Check, Mic, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,11 @@ import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
+import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
 import { PERSONALITIES } from '@/features/profile/types'
-import { useSendChatMessage } from './hooks'
+import { useConfirmAiAction, useSendChatMessage } from './hooks'
 import { useVoiceRecorder } from './useVoiceRecorder'
-import type { ChatMessage } from './types'
+import type { ChatMessage, PendingAction } from './types'
 
 interface ChatSheetProps {
   open: boolean
@@ -43,7 +44,11 @@ export function ChatSheet({
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [input, setInput] = useState('')
   const [recordMode, setRecordMode] = useState<RecordMode>('idle')
+  // How each staged action resolved, so its card locks after Yes/Cancel.
+  const [actionStatus, setActionStatus] = useState<Record<string, 'confirmed' | 'cancelled'>>({})
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
   const sendMessage = useSendChatMessage(walletId)
+  const confirmAction = useConfirmAiAction(walletId)
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
   const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
@@ -82,7 +87,15 @@ export function ChatSheet({
       .mutateAsync({ message: trimmed, conversationId })
       .then((result) => {
         setConversationId(result.conversationId)
-        setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: result.reply }])
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: 'assistant',
+            text: result.reply,
+            pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
+          },
+        ])
       })
       .catch((error) => {
         setMessages((prev) => [
@@ -99,6 +112,39 @@ export function ChatSheet({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     submitText(input)
+  }
+
+  // Yes/Cancel on a staged edit or deletion. The change is applied server-side
+  // only here — the model never had the power to do it itself.
+  async function resolveAction(action: PendingAction, decision: 'confirm' | 'cancel') {
+    if (actionStatus[action.id] || resolvingId) return
+    setResolvingId(action.id)
+    try {
+      const res = await confirmAction.mutateAsync({ actionId: action.id, decision })
+      setActionStatus((prev) => ({ ...prev, [action.id]: res.status }))
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          text:
+            decision === 'confirm'
+              ? `Done — ${res.summary.replace(/\.$/, '')}.`
+              : 'No worries — I left it as it was.',
+        },
+      ])
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          text: `I couldn't apply that: ${error instanceof Error ? error.message : 'something went wrong'}.`,
+        },
+      ])
+    } finally {
+      setResolvingId(null)
+    }
   }
 
   // Merge the just-finished recording's final transcript with whatever the user
@@ -188,15 +234,8 @@ export function ChatSheet({
       >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <span
-              className="grid size-7 shrink-0 place-items-center rounded-full"
-              style={{
-                background: `radial-gradient(circle at 35% 30%, ${persona.accent}, color-mix(in srgb, ${persona.accent} 45%, var(--iris)))`,
-              }}
-            >
-              <persona.icon className="size-3.5 text-white" />
-            </span>
-            Chat with Penda
+            <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
+            Chat with {persona.name}
           </SheetTitle>
         </SheetHeader>
 
@@ -209,15 +248,26 @@ export function ChatSheet({
           )}
           <div className="flex flex-col gap-3 pb-4">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={
-                  m.role === 'user'
-                    ? 'ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
-                    : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
-                }
-              >
-                {m.text}
+              <div key={m.id} className="flex flex-col gap-2">
+                <div
+                  className={
+                    m.role === 'user'
+                      ? 'ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
+                      : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
+                  }
+                >
+                  {m.text}
+                </div>
+                {m.pendingActions?.map((action) => (
+                  <PendingActionCard
+                    key={action.id}
+                    action={action}
+                    status={actionStatus[action.id]}
+                    busy={resolvingId === action.id}
+                    disabled={resolvingId !== null && resolvingId !== action.id}
+                    onResolve={resolveAction}
+                  />
+                ))}
               </div>
             ))}
             {sendMessage.isPending && (
@@ -268,5 +318,66 @@ export function ChatSheet({
         </form>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function PendingActionCard({
+  action,
+  status,
+  busy,
+  disabled,
+  onResolve,
+}: {
+  action: PendingAction
+  status: 'confirmed' | 'cancelled' | undefined
+  busy: boolean
+  disabled: boolean
+  onResolve: (action: PendingAction, decision: 'confirm' | 'cancel') => void
+}) {
+  const destructive = action.kind === 'delete'
+
+  return (
+    <div className="mr-auto max-w-[85%] rounded-lg border bg-card px-3 py-2.5 text-sm shadow-sm">
+      <p className="text-card-foreground">{action.summary}</p>
+      {status ? (
+        <p
+          className={cn(
+            'mt-1.5 flex items-center gap-1 text-xs font-medium',
+            status === 'confirmed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
+          )}
+        >
+          {status === 'confirmed' ? (
+            <>
+              <Check className="size-3.5" /> Applied
+            </>
+          ) : (
+            <>
+              <X className="size-3.5" /> Cancelled
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={destructive ? 'destructive' : 'default'}
+            disabled={busy || disabled}
+            onClick={() => onResolve(action, 'confirm')}
+          >
+            {busy ? 'Working…' : destructive ? 'Delete' : 'Confirm'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy || disabled}
+            onClick={() => onResolve(action, 'cancel')}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }

@@ -88,6 +88,30 @@ interface ModelTurn {
   toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }>
 }
 
+// A staged update/delete surfaced to the client as a Yes/Cancel card. The tool
+// layer NEVER executes these — confirm-ai-action does, on an explicit user tap.
+interface PendingAction {
+  id: string
+  kind: 'update' | 'delete'
+  domain: string
+  summary: string
+}
+
+// Everything a tool handler needs, so handlers take one ctx instead of a long
+// argument list. pendingActions is mutated in place by the staging handlers.
+interface ToolContext {
+  supabase: SupabaseClient
+  walletId: string
+  userId: string
+  conversationId: string
+  currency: string
+  symbol: string
+  categories: Category[]
+  rules: CategorizationRule[]
+  createdTransaction: Record<string, unknown> | null
+  pendingActions: PendingAction[]
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -132,7 +156,18 @@ Deno.serve(async (req) => {
     await insertMessage(supabase, conversationId, userMessage)
 
     const neutralHistory: NeutralMessage[] = [...history, userMessage]
-    let createdTransaction: Record<string, unknown> | null = null
+    const ctx: ToolContext = {
+      supabase,
+      walletId: body.walletId,
+      userId: user.id,
+      conversationId,
+      currency,
+      symbol: CURRENCY_SYMBOLS[currency] ?? currency,
+      categories,
+      rules,
+      createdTransaction: null,
+      pendingActions: [],
+    }
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
       const turn = await callModel(neutralHistory, systemInstruction, tools)
@@ -147,22 +182,19 @@ Deno.serve(async (req) => {
       neutralHistory.push(assistantMessage)
 
       if (turn.toolCalls.length === 0) {
-        return jsonResponse({ conversationId, reply: turn.text, transaction: createdTransaction })
+        return jsonResponse({
+          conversationId,
+          reply: turn.text,
+          transaction: ctx.createdTransaction,
+          pendingActions: ctx.pendingActions,
+        })
       }
 
       const toolResultParts: NeutralPart[] = []
       for (const call of turn.toolCalls) {
         let summary: string
         try {
-          if (call.name === 'create_transaction') {
-            const result = await handleCreateTransaction(supabase, body.walletId, user.id, currency, categories, rules, call.args)
-            createdTransaction = result.transaction
-            summary = result.summary
-          } else if (call.name === 'create_debt') {
-            summary = (await handleCreateDebt(supabase, body.walletId, call.args)).summary
-          } else {
-            summary = `Unknown tool "${call.name}" — no action taken.`
-          }
+          summary = await dispatchTool(ctx, call.name, call.args)
         } catch (err) {
           // Agentic reliability: a tool that throws must never abort the whole
           // turn or leave a chain half-applied. Feed the failure back so the
@@ -182,7 +214,8 @@ Deno.serve(async (req) => {
     return jsonResponse({
       conversationId,
       reply: "Sorry, I'm having trouble completing that one — could you try rephrasing?",
-      transaction: createdTransaction,
+      transaction: ctx.createdTransaction,
+      pendingActions: ctx.pendingActions,
     })
   } catch (error) {
     console.error(error)
@@ -438,8 +471,24 @@ it's a debt, or no category fits — ask ONE short clarifying question instead o
 nothing. A quick question beats a wrong entry or silence. (A merely uncertain amount is the
 exception: make a reasonable call there and let the user correct it.)
 
-After the tool result(s) come back, reply with a short, natural confirmation. Do not restate every
-field back at the user like a receipt — just confirm briefly in your own voice.`
+You can also read, edit, and remove the user's data — not just create it:
+- ANSWERING QUESTIONS ("what did I spend this week?", "how much do I owe Amara?", "show my
+  budgets"): use query_records to look things up, or get_spending_summary for totals over a period.
+  Never say you can't check — you can. Reads run immediately and freely.
+- CREATING budgets, goals, or categories: use create_budget, create_goal, create_category.
+- EDITING or DELETING something that already exists ("actually it was K15 not K10", "delete that
+  duplicate", "rename the trip goal"): you MUST first find the exact record with query_records to
+  get its id, then call update_record or delete_record with that id. NEVER create a new record to
+  "fix" an old one — that leaves a duplicate.
+
+Editing and deleting are special: update_record and delete_record do NOT take effect immediately.
+They stage the change and show the user a confirmation card they must tap. So when you edit or
+delete, DO NOT say it's done — phrase your reply as the pending question the card is asking (e.g.
+"Want me to change that to K15?" or "Delete the K10 tea entry?"). Only after the user confirms is it
+actually applied. If a tool result says a change was staged, treat it as pending, not complete.
+
+After a create or read result comes back, reply with a short, natural confirmation or answer. Do not
+restate every field back at the user like a receipt — just confirm briefly in your own voice.`
 
   const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
@@ -491,7 +540,147 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         required: ['name', 'direction', 'amount'],
       },
     },
+    {
+      name: 'create_budget',
+      description: 'Create a spending budget for a category over a weekly or monthly period.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          amount: { type: 'number', description: 'Budget limit as a decimal, e.g. 500.' },
+          period: { type: 'string', enum: ['weekly', 'monthly'] },
+          category: { type: 'string', enum: categoryNames, description: 'Category this budget caps.' },
+          rollover: { type: 'boolean', description: 'Whether unused budget carries into the next period.' },
+        },
+        required: ['amount', 'period'],
+      },
+    },
+    {
+      name: 'create_goal',
+      description: 'Create a savings goal the user is working toward.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'What the goal is, e.g. "New laptop".' },
+          target_amount: { type: 'number', description: 'Target amount to save, as a decimal.' },
+          current_amount: { type: 'number', description: 'Amount already saved, if any. Defaults to 0.' },
+          target_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD to hit the goal by.' },
+        },
+        required: ['name', 'target_amount'],
+      },
+    },
+    {
+      name: 'create_category',
+      description: 'Create a new spending/income category for this wallet.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Category name, e.g. "Transport".' },
+          icon: { type: 'string', description: 'Optional emoji for the category.' },
+        },
+        required: ['name'],
+      },
+    },
+    {
+      name: 'query_records',
+      description:
+        'Look up the user\'s existing records to answer questions or to find the id of something the ' +
+        'user wants to edit or delete. Returns each record WITH its id. Runs immediately.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category'] },
+          search: { type: 'string', description: 'Optional text to match on merchant/description/name.' },
+          since: { type: 'string', description: 'Transactions only: ISO date lower bound (inclusive).' },
+          until: { type: 'string', description: 'Transactions only: ISO date upper bound (inclusive).' },
+          limit: { type: 'number', description: 'Max rows to return. Defaults to 10.' },
+        },
+        required: ['domain'],
+      },
+    },
+    {
+      name: 'get_spending_summary',
+      description:
+        'Total the user\'s spending and income over a date range (e.g. this week, last month). Use ' +
+        'this to answer "how much did I spend" questions. Runs immediately.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: 'ISO date YYYY-MM-DD, start of the range (inclusive).' },
+          until: { type: 'string', description: 'ISO date YYYY-MM-DD, end of the range. Defaults to today.' },
+        },
+        required: ['since'],
+      },
+    },
+    {
+      name: 'update_record',
+      description:
+        'Propose an edit to an existing record. Does NOT apply immediately — it stages the change and ' +
+        'asks the user to confirm on a card. Find the record id first with query_records. Editable ' +
+        'fields by domain: transaction {amount, type, category, merchant, description, transaction_date}; ' +
+        'debt {name, direction, counterparty, amount, due_date}; budget {amount, period, category, ' +
+        'rollover}; goal {name, target_amount, current_amount, target_date}; category {name, icon}; ' +
+        'wallet {name}. Amounts are decimals; category is a category name.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category', 'wallet'] },
+          id: { type: 'string', description: 'The record id from query_records.' },
+          changes: {
+            type: 'object',
+            description: 'Object of the fields to change to their new values. Only editable fields apply.',
+          },
+        },
+        required: ['domain', 'id', 'changes'],
+      },
+    },
+    {
+      name: 'delete_record',
+      description:
+        'Propose deleting an existing record. Does NOT delete immediately — it stages the removal and ' +
+        'asks the user to confirm on a card. Find the record id first with query_records. Deleting a ' +
+        'wallet or bulk-deleting is not allowed.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category'] },
+          id: { type: 'string', description: 'The record id from query_records.' },
+        },
+        required: ['domain', 'id'],
+      },
+    },
   ]
+}
+
+// --- Tool dispatch ---------------------------------------------------------
+
+async function dispatchTool(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<string> {
+  switch (name) {
+    case 'create_transaction': {
+      const result = await handleCreateTransaction(
+        ctx.supabase, ctx.walletId, ctx.userId, ctx.currency, ctx.categories, ctx.rules, args,
+      )
+      ctx.createdTransaction = result.transaction
+      return result.summary
+    }
+    case 'create_debt':
+      return (await handleCreateDebt(ctx.supabase, ctx.walletId, args)).summary
+    case 'create_budget':
+      return await handleCreateBudget(ctx, args)
+    case 'create_goal':
+      return await handleCreateGoal(ctx, args)
+    case 'create_category':
+      return await handleCreateCategory(ctx, args)
+    case 'query_records':
+      return await handleQueryRecords(ctx, args)
+    case 'get_spending_summary':
+      return await handleSpendingSummary(ctx, args)
+    case 'update_record':
+      return await stageUpdate(ctx, args)
+    case 'delete_record':
+      return await stageDelete(ctx, args)
+    default:
+      return `Unknown tool "${name}" — no action taken.`
+  }
 }
 
 async function handleCreateTransaction(
@@ -585,6 +774,432 @@ async function handleCreateDebt(
   }
 
   return { summary: `Saved debt: ${JSON.stringify(data)}` }
+}
+
+// --- CRUD: read, create, and staged update/delete --------------------------
+
+type Row = Record<string, any>
+
+interface DomainField {
+  column: string
+  kind: 'minor' | 'category' | 'raw'
+}
+
+interface DomainCfg {
+  table: string
+  select: string
+  softDelete: boolean
+  deletable: boolean
+  fields: Record<string, DomainField>
+  guard?: (row: Row) => string | null
+  describe: (row: Row, sym: string) => string
+}
+
+// The one place that defines what the agent may edit/delete and how each field
+// maps onto a DB column. Anything not listed in `fields` is silently ignored on
+// update, which is the guardrail against structural edits (e.g. you can rename a
+// wallet but not touch its currency; you cannot delete a wallet at all).
+const CRUD_DOMAINS: Record<string, DomainCfg> = {
+  transaction: {
+    table: 'transactions',
+    select: '*, category:categories(id, name)',
+    softDelete: true,
+    deletable: true,
+    fields: {
+      amount: { column: 'amount_minor', kind: 'minor' },
+      type: { column: 'type', kind: 'raw' },
+      category: { column: 'category_id', kind: 'category' },
+      merchant: { column: 'merchant', kind: 'raw' },
+      description: { column: 'description', kind: 'raw' },
+      transaction_date: { column: 'transaction_date', kind: 'raw' },
+    },
+    describe: (row, sym) =>
+      `the ${row.type} of ${fmt(row.amount_minor, sym)}` +
+      (row.merchant ? ` at ${row.merchant}` : row.description ? ` (${row.description})` : '') +
+      ` on ${row.transaction_date}`,
+  },
+  debt: {
+    table: 'debts',
+    select: '*',
+    softDelete: false,
+    deletable: true,
+    fields: {
+      name: { column: 'name', kind: 'raw' },
+      direction: { column: 'direction', kind: 'raw' },
+      counterparty: { column: 'counterparty', kind: 'raw' },
+      amount: { column: 'principal_minor', kind: 'minor' },
+      due_date: { column: 'due_date', kind: 'raw' },
+    },
+    describe: (row, sym) => `the debt "${row.name}" (${fmt(row.balance_minor, sym)} outstanding)`,
+  },
+  budget: {
+    table: 'budgets',
+    select: '*, category:categories(id, name)',
+    softDelete: false,
+    deletable: true,
+    fields: {
+      amount: { column: 'amount_minor', kind: 'minor' },
+      period: { column: 'period', kind: 'raw' },
+      category: { column: 'category_id', kind: 'category' },
+      rollover: { column: 'rollover', kind: 'raw' },
+    },
+    describe: (row, sym) =>
+      `the ${row.period} budget of ${fmt(row.amount_minor, sym)}` +
+      (row.category ? ` for ${row.category.name}` : ''),
+  },
+  goal: {
+    table: 'savings_goals',
+    select: '*',
+    softDelete: false,
+    deletable: true,
+    fields: {
+      name: { column: 'name', kind: 'raw' },
+      target_amount: { column: 'target_amount_minor', kind: 'minor' },
+      current_amount: { column: 'current_amount_minor', kind: 'minor' },
+      target_date: { column: 'target_date', kind: 'raw' },
+    },
+    describe: (row, sym) =>
+      `the goal "${row.name}" (${fmt(row.current_amount_minor, sym)} of ${fmt(row.target_amount_minor, sym)})`,
+  },
+  category: {
+    table: 'categories',
+    select: '*',
+    softDelete: false,
+    deletable: true,
+    fields: {
+      name: { column: 'name', kind: 'raw' },
+      icon: { column: 'icon', kind: 'raw' },
+    },
+    guard: (row) =>
+      row.is_system || row.wallet_id === null
+        ? 'That is a built-in default category and cannot be changed or removed.'
+        : null,
+    describe: (row) => `the category "${row.name}"`,
+  },
+  wallet: {
+    table: 'wallets',
+    select: '*',
+    softDelete: false,
+    deletable: false,
+    fields: {
+      name: { column: 'name', kind: 'raw' },
+    },
+    describe: (row) => `the wallet "${row.name}"`,
+  },
+}
+
+function fmt(minor: unknown, sym: string): string {
+  const n = Number(minor) || 0
+  return `${sym}${(n / 100).toFixed(2)}`
+}
+
+function formatCol(column: string, value: unknown, sym: string, categories: Category[]): string {
+  if (value === null || value === undefined) return 'none'
+  if (column.endsWith('_minor')) return fmt(value, sym)
+  if (column === 'category_id') return categories.find((c) => c.id === value)?.name ?? 'Uncategorized'
+  return String(value)
+}
+
+// Turn the model's friendly {field: value} changes into a validated, column-level
+// DB patch plus a human-readable "field: old → new" diff. Unknown/unchanged
+// fields are dropped, so the returned patch is exactly what confirm will apply.
+function buildPatch(
+  cfg: DomainCfg,
+  row: Row,
+  changes: Record<string, unknown>,
+  categories: Category[],
+  sym: string,
+): { patch: Record<string, unknown>; diff: string[] } {
+  const patch: Record<string, unknown> = {}
+  const diff: string[] = []
+
+  for (const [key, raw] of Object.entries(changes)) {
+    const field = cfg.fields[key]
+    if (!field) continue
+
+    let value: unknown
+    if (field.kind === 'minor') {
+      const n = Number(raw)
+      if (!isFinite(n) || n < 0) throw new Error(`"${key}" must be a non-negative number.`)
+      value = Math.round(n * 100)
+    } else if (field.kind === 'category') {
+      const match = categories.find((c) => c.name.toLowerCase() === String(raw).toLowerCase())
+      if (!match) throw new Error(`No category named "${raw}".`)
+      value = match.id
+    } else {
+      value = raw === '' ? null : raw
+    }
+
+    if (row[field.column] === value) continue
+    patch[field.column] = value
+    diff.push(
+      `${key}: ${formatCol(field.column, row[field.column], sym, categories)} → ${formatCol(field.column, value, sym, categories)}`,
+    )
+  }
+
+  return { patch, diff }
+}
+
+async function loadTarget(ctx: ToolContext, cfg: DomainCfg, domain: string, id: string): Promise<Row> {
+  const { data, error } = await ctx.supabase.from(cfg.table).select(cfg.select).eq('id', id).maybeSingle()
+  if (error) throw new Error(`Couldn't load that ${domain}: ${error.message}`)
+  if (!data) throw new Error(`No ${domain} found with id ${id} — look it up again with query_records; it may have changed or been removed.`)
+  return data as Row
+}
+
+async function insertPendingAction(
+  ctx: ToolContext,
+  input: { kind: 'update' | 'delete'; domain: string; targetId: string; patch: Record<string, unknown> | null; summary: string },
+): Promise<PendingAction> {
+  const { data, error } = await ctx.supabase
+    .from('ai_pending_actions')
+    .insert({
+      user_id: ctx.userId,
+      wallet_id: ctx.walletId,
+      conversation_id: ctx.conversationId,
+      kind: input.kind,
+      domain: input.domain,
+      target_id: input.targetId,
+      patch: input.patch,
+      summary: input.summary,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(`Couldn't stage the change: ${error.message}`)
+  return { id: data.id, kind: input.kind, domain: input.domain, summary: input.summary }
+}
+
+async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
+  const domain = String(args.domain ?? '')
+  const cfg = CRUD_DOMAINS[domain]
+  if (!cfg) return `I can't edit "${domain}".`
+  const id = String(args.id ?? '')
+  if (!id) return 'I need the record id — find it first with query_records.'
+
+  const row = await loadTarget(ctx, cfg, domain, id)
+  if (cfg.softDelete && row.deleted_at) return `That ${domain} was already deleted.`
+  const guardMsg = cfg.guard?.(row)
+  if (guardMsg) return guardMsg
+
+  const changes = (args.changes ?? {}) as Record<string, unknown>
+  const { patch, diff } = buildPatch(cfg, row, changes, ctx.categories, ctx.symbol)
+  if (Object.keys(patch).length === 0) {
+    return `Nothing to change on ${cfg.describe(row, ctx.symbol)} — the values already match.`
+  }
+
+  const summary = `Update ${cfg.describe(row, ctx.symbol)} — ${diff.join('; ')}.`
+  ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'update', domain, targetId: id, patch, summary }))
+  return `Staged, NOT applied: ${summary} The user must confirm it on the card. Ask them to confirm; do not say it's done.`
+}
+
+async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
+  const domain = String(args.domain ?? '')
+  const cfg = CRUD_DOMAINS[domain]
+  if (!cfg) return `I can't delete "${domain}".`
+  if (!cfg.deletable) return `Deleting a ${domain} isn't allowed.`
+  const id = String(args.id ?? '')
+  if (!id) return 'I need the record id — find it first with query_records.'
+
+  const row = await loadTarget(ctx, cfg, domain, id)
+  if (cfg.softDelete && row.deleted_at) return `That ${domain} is already deleted.`
+  const guardMsg = cfg.guard?.(row)
+  if (guardMsg) return guardMsg
+
+  const summary = `Delete ${cfg.describe(row, ctx.symbol)}.`
+  ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'delete', domain, targetId: id, patch: null, summary }))
+  return `Staged, NOT applied: ${summary} The user must confirm the deletion on the card. Ask them to confirm; do not say it's done.`
+}
+
+function sanitizeSearch(raw: unknown): string {
+  // PostgREST .or() filters are comma/paren-delimited, so strip anything that
+  // could break out of the ilike pattern; keep letters, digits, and spaces.
+  return String(raw ?? '').replace(/[^\p{L}\p{N} ]/gu, '').trim()
+}
+
+async function handleQueryRecords(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
+  const domain = String(args.domain ?? '')
+  const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 50)
+  const search = sanitizeSearch(args.search)
+  const { supabase, walletId, symbol } = ctx
+
+  // Filters are applied while the builder is still a FilterBuilder; .order()/
+  // .limit() go last, on the awaited call, since they narrow the builder type.
+  let rows: Row[] = []
+  if (domain === 'transaction') {
+    let q = supabase
+      .from('transactions')
+      .select('id, transaction_date, type, amount_minor, merchant, description, category:categories(name)')
+      .eq('wallet_id', walletId)
+      .is('deleted_at', null)
+    if (args.since) q = q.gte('transaction_date', String(args.since))
+    if (args.until) q = q.lte('transaction_date', String(args.until))
+    if (search) q = q.or(`merchant.ilike.%${search}%,description.ilike.%${search}%`)
+    const { data, error } = await q
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => ({
+      id: r.id,
+      date: r.transaction_date,
+      type: r.type,
+      amount: fmt(r.amount_minor, symbol),
+      merchant: r.merchant,
+      description: r.description,
+      category: r.category?.name ?? null,
+    }))
+  } else if (domain === 'debt') {
+    let q = supabase
+      .from('debts')
+      .select('id, name, direction, counterparty, principal_minor, balance_minor, due_date')
+      .eq('wallet_id', walletId)
+    if (search) q = q.or(`name.ilike.%${search}%,counterparty.ilike.%${search}%`)
+    const { data, error } = await q.limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => ({
+      id: r.id,
+      name: r.name,
+      direction: r.direction,
+      counterparty: r.counterparty,
+      principal: fmt(r.principal_minor, symbol),
+      balance: fmt(r.balance_minor, symbol),
+      due_date: r.due_date,
+    }))
+  } else if (domain === 'budget') {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('id, amount_minor, period, rollover, category:categories(name)')
+      .eq('wallet_id', walletId)
+      .limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => ({
+      id: r.id,
+      amount: fmt(r.amount_minor, symbol),
+      period: r.period,
+      rollover: r.rollover,
+      category: r.category?.name ?? null,
+    }))
+  } else if (domain === 'goal') {
+    let q = supabase
+      .from('savings_goals')
+      .select('id, name, target_amount_minor, current_amount_minor, target_date')
+      .eq('wallet_id', walletId)
+    if (search) q = q.ilike('name', `%${search}%`)
+    const { data, error } = await q.limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => ({
+      id: r.id,
+      name: r.name,
+      target: fmt(r.target_amount_minor, symbol),
+      saved: fmt(r.current_amount_minor, symbol),
+      target_date: r.target_date,
+    }))
+  } else if (domain === 'category') {
+    let q = supabase
+      .from('categories')
+      .select('id, name, icon')
+      .or(`wallet_id.eq.${walletId},wallet_id.is.null`)
+    if (search) q = q.ilike('name', `%${search}%`)
+    const { data, error } = await q.limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []) as Row[]
+  } else {
+    return `I can't look up "${domain}".`
+  }
+
+  if (rows.length === 0) return `No ${domain} records matched.`
+  return `Found ${rows.length} ${domain}(s): ${JSON.stringify(rows)}`
+}
+
+async function handleSpendingSummary(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
+  const since = String(args.since ?? '')
+  if (!since) return 'I need a start date to total spending.'
+  const until = args.until ? String(args.until) : today()
+
+  const { data, error } = await ctx.supabase
+    .from('transactions')
+    .select('amount_minor, type, category:categories(name)')
+    .eq('wallet_id', ctx.walletId)
+    .is('deleted_at', null)
+    .gte('transaction_date', since)
+    .lte('transaction_date', until)
+    .limit(1000)
+  if (error) throw new Error(error.message)
+
+  let expense = 0
+  let income = 0
+  let expenseCount = 0
+  const byCategory: Record<string, number> = {}
+  for (const r of (data ?? []) as Row[]) {
+    const amt = Number(r.amount_minor) || 0
+    if (r.type === 'expense') {
+      expense += amt
+      expenseCount += 1
+      const name = r.category?.name ?? 'Uncategorized'
+      byCategory[name] = (byCategory[name] ?? 0) + amt
+    } else if (r.type === 'income') {
+      income += amt
+    }
+  }
+
+  const top = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, amt]) => `${name} ${fmt(amt, ctx.symbol)}`)
+
+  return (
+    `From ${since} to ${until}: spent ${fmt(expense, ctx.symbol)} across ${expenseCount} transaction(s); ` +
+    `income ${fmt(income, ctx.symbol)}.` +
+    (top.length ? ` Top spending: ${top.join(', ')}.` : '')
+  )
+}
+
+async function handleCreateBudget(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const amount = Number(input.amount)
+  if (!amount || amount <= 0) return 'Budget amount must be a positive number.'
+  const period = input.period === 'weekly' ? 'weekly' : 'monthly'
+  const categoryId = ctx.categories.find((c) => c.name === input.category)?.id ?? null
+
+  const { error } = await ctx.supabase.from('budgets').insert({
+    wallet_id: ctx.walletId,
+    category_id: categoryId,
+    amount_minor: Math.round(amount * 100),
+    period,
+    rollover: input.rollover === true,
+  })
+  if (error) return `Failed to create budget: ${error.message}`
+  return `Created a ${period} budget of ${fmt(Math.round(amount * 100), ctx.symbol)}.`
+}
+
+async function handleCreateGoal(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const target = Number(input.target_amount)
+  if (!target || target <= 0) return 'Goal target must be a positive number.'
+  const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : 'Savings goal'
+  const current = Number(input.current_amount)
+
+  const { error } = await ctx.supabase.from('savings_goals').insert({
+    wallet_id: ctx.walletId,
+    name,
+    target_amount_minor: Math.round(target * 100),
+    current_amount_minor: isFinite(current) && current > 0 ? Math.round(current * 100) : 0,
+    target_date: typeof input.target_date === 'string' ? input.target_date : null,
+  })
+  if (error) return `Failed to create goal: ${error.message}`
+  return `Created the goal "${name}" targeting ${fmt(Math.round(target * 100), ctx.symbol)}.`
+}
+
+async function handleCreateCategory(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  if (!name) return 'A category needs a name.'
+
+  const { error } = await ctx.supabase.from('categories').insert({
+    wallet_id: ctx.walletId,
+    name,
+    icon: typeof input.icon === 'string' ? input.icon : null,
+  })
+  if (error) return `Failed to create category: ${error.message}`
+  return `Created the category "${name}".`
 }
 
 function today(): string {
