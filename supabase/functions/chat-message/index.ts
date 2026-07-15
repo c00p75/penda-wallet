@@ -47,6 +47,20 @@ const PERSONALITY_PROMPTS: Record<string, string> = {
     'with the numbers — figures, rates, and projections — and skip emotional framing. No fluff.',
 }
 
+// Profile Modes (roadmap bet #3) — mirrors apps/web/src/features/profile/modes.ts'
+// MODE_CONFIG[mode].aiContext. Individual/Family/Business is a context layer
+// over the same engine: it changes how the AI frames things, not what it can do.
+const MODE_AI_CONTEXT: Record<string, string> = {
+  individual:
+    'This is a personal account. Frame guidance around personal goals, everyday spending, and peace of mind.',
+  family:
+    'This is a family account. Frame guidance around shared priorities, household bills (rent, school ' +
+    'fees, groceries), and coordinating between members.',
+  business:
+    'This is a small business / side-hustle account. Frame guidance around margins, cash runway, revenue ' +
+    'vs expenses, and setting money aside for tax.',
+}
+
 interface ChatRequestBody {
   walletId: string
   conversationId?: string
@@ -146,11 +160,12 @@ Deno.serve(async (req) => {
     const history = await fetchHistory(supabase, conversationId)
     const categories = await fetchCategories(supabase, body.walletId)
     const rules = await fetchCategorizationRules(supabase, body.walletId)
-    const personality = await fetchPersonality(supabase, user.id)
+    const profile = await fetchProfile(supabase, user.id)
+    const memories = await fetchMemories(supabase, user.id)
     const currency = await fetchWalletCurrency(supabase, body.walletId)
 
     const tools = buildTools(categories)
-    const systemInstruction = buildSystemInstruction(personality, currency)
+    const systemInstruction = buildSystemInstruction(profile.personality, profile.mode, currency, memories)
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -432,9 +447,30 @@ async function fetchCategorizationRules(supabase: SupabaseClient, walletId: stri
   return data ?? []
 }
 
-async function fetchPersonality(supabase: SupabaseClient, userId: string): Promise<string> {
-  const { data } = await supabase.from('profiles').select('ai_personality').eq('id', userId).maybeSingle()
-  return data?.ai_personality ?? 'balanced_coach'
+async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<{ personality: string; mode: string }> {
+  const { data } = await supabase.from('profiles').select('ai_personality, mode').eq('id', userId).maybeSingle()
+  return { personality: data?.ai_personality ?? 'balanced_coach', mode: data?.mode ?? 'individual' }
+}
+
+interface Memory {
+  kind: string
+  content: string
+  mood: string | null
+}
+
+// Most recent memories only — the Financial Journal (roadmap bet #10) can grow
+// unbounded, and the prompt only needs enough recent context to feel like
+// Penda remembers, not a full transcript of everything ever journaled.
+const MAX_MEMORIES_IN_PROMPT = 20
+
+async function fetchMemories(supabase: SupabaseClient, userId: string): Promise<Memory[]> {
+  const { data } = await supabase
+    .from('ai_memories')
+    .select('kind, content, mood')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(MAX_MEMORIES_IN_PROMPT)
+  return data ?? []
 }
 
 async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): Promise<string> {
@@ -442,11 +478,13 @@ async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): 
   return data?.base_currency ?? 'USD'
 }
 
-function buildSystemInstruction(personality: string, currency: string): string {
+function buildSystemInstruction(personality: string, mode: string, currency: string, memories: Memory[]): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
   const houseRules = `You are Penda, an AI assistant embedded in a personal finance app. Your job in this
 conversation is to help the user log transactions by talking naturally — you are not a generic
 chatbot, you are the primary way this user records spending and income.
+
+${MODE_AI_CONTEXT[mode] ?? MODE_AI_CONTEXT.individual}
 
 This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
 everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
@@ -490,11 +528,24 @@ delete, DO NOT say it's done — phrase your reply as the pending question the c
 actually applied. If a tool result says a change was staged, treat it as pending, not complete.
 
 After a create or read result comes back, reply with a short, natural confirmation or answer. Do not
-restate every field back at the user like a receipt — just confirm briefly in your own voice.`
+restate every field back at the user like a receipt — just confirm briefly in your own voice.
+
+You have a memory across conversations (the Financial Journal): use save_memory when the user states
+a preference ("I never want to see fast food guilt-tripped"), shares a fact worth recalling ("I freelance
+on the side"), states a goal's real motivation, or reveals a behavioral pattern (e.g. "I stress-buy after
+work" — kind "mood" with a short mood label). Use it sparingly, for things genuinely worth recalling
+later, not routine transaction chatter. Weave anything relevant from what you already remember (below)
+into your replies naturally — don't just list it back.${buildMemorySection(memories)}`
 
   const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
   return `${houseRules}\n\n${personalityFragment}\n\nToday's date is ${today()}.`
+}
+
+function buildMemorySection(memories: Memory[]): string {
+  if (memories.length === 0) return ''
+  const lines = memories.map((m) => `- (${m.kind}${m.mood ? `: ${m.mood}` : ''}) ${m.content}`)
+  return `\n\nWhat you remember about this user:\n${lines.join('\n')}`
 }
 
 function buildTools(categories: Category[]): ToolDefinition[] {
@@ -674,6 +725,23 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         required: ['domain', 'id'],
       },
     },
+    {
+      name: 'save_memory',
+      description:
+        'Save something worth remembering about the user for future conversations — a stated preference, ' +
+        'a fact they shared, a goal\'s real motivation, or a noticed behavioral/emotional pattern (kind ' +
+        '"mood", e.g. "stress-buys after work"). Runs immediately. Use sparingly — only for things ' +
+        'genuinely worth recalling later, not routine transaction logging.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['note', 'mood', 'preference', 'fact'] },
+          content: { type: 'string', description: 'The thing to remember, in a short sentence.' },
+          mood: { type: 'string', description: 'Optional short mood label, mainly for kind "mood".' },
+        },
+        required: ['kind', 'content'],
+      },
+    },
   ]
 }
 
@@ -709,6 +777,8 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       return await stageUpdate(ctx, args)
     case 'delete_record':
       return await stageDelete(ctx, args)
+    case 'save_memory':
+      return await handleSaveMemory(ctx, args)
     default:
       return `Unknown tool "${name}" — no action taken.`
   }
@@ -1294,6 +1364,25 @@ async function handleCreateCategory(ctx: ToolContext, input: Record<string, unkn
   })
   if (error) return `Failed to create category: ${error.message}`
   return `Created the category "${name}".`
+}
+
+const MEMORY_KINDS = new Set(['note', 'mood', 'preference', 'fact'])
+
+async function handleSaveMemory(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const kind = MEMORY_KINDS.has(String(input.kind)) ? String(input.kind) : 'note'
+  const content = typeof input.content === 'string' ? input.content.trim() : ''
+  if (!content) return 'A memory needs some content to save.'
+  const mood = typeof input.mood === 'string' && input.mood.trim() ? input.mood.trim() : null
+
+  const { error } = await ctx.supabase.from('ai_memories').insert({
+    user_id: ctx.userId,
+    wallet_id: ctx.walletId,
+    kind,
+    content,
+    mood,
+  })
+  if (error) return `Failed to save that memory: ${error.message}`
+  return `Remembered: ${content}`
 }
 
 function today(): string {
