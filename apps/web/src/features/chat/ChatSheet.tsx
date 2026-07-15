@@ -20,6 +20,10 @@ interface ChatSheetProps {
   onOpenChange: (open: boolean) => void
   walletId: string | undefined
   initialInput?: string
+  /** Send `initialInput` immediately on open so Penda replies first. */
+  autoSend?: boolean
+  /** Called once the auto-send has fired, so the caller can clear the flag. */
+  onAutoSendConsumed?: () => void
   currency?: string
 }
 
@@ -37,6 +41,8 @@ export function ChatSheet({
   onOpenChange,
   walletId,
   initialInput,
+  autoSend = false,
+  onAutoSendConsumed,
   currency = 'USD',
 }: ChatSheetProps) {
   const sym = currencySymbol(currency)
@@ -60,10 +66,26 @@ export function ChatSheet({
   const baseInputRef = useRef('')
   const pressStartRef = useRef(0)
   const pointerHandledRef = useRef(false)
+  // Guards the auto-send so a seeded prompt fires once per open, not on every
+  // re-render while the sheet is up.
+  const autoSentRef = useRef(false)
 
   useEffect(() => {
-    if (open && initialInput) setInput(initialInput)
-  }, [open, initialInput])
+    if (!open) {
+      autoSentRef.current = false
+      return
+    }
+    if (!initialInput) return
+    if (autoSend && !autoSentRef.current) {
+      autoSentRef.current = true
+      onAutoSendConsumed?.()
+      submitText(initialInput)
+    } else if (!autoSend) {
+      setInput(initialInput)
+    }
+    // submitText is a stable closure over state we intentionally read at fire time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialInput, autoSend])
 
   const voice = useVoiceRecorder({
     onLiveTranscript: (transcript) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Target } from 'lucide-react'
+import { Sparkles, Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -8,8 +8,11 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
 import type { Transaction } from '@/features/transactions/types'
+import type { RecurringTransaction } from '@/features/recurring/types'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
-import { computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
+import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
+import { splitActualSpend, upcomingFixedCosts } from './fixedCosts'
 
 const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> = {
   ahead: { label: 'Ahead of plan', className: 'text-emerald-600 dark:text-emerald-400' },
@@ -22,14 +25,39 @@ function monthStartOf(now: Date): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 
+function monthEndOf(now: Date): string {
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+  return end.toISOString().slice(0, 10)
+}
+
+function todayStr(now: Date): string {
+  return now.toISOString().slice(0, 10)
+}
+
+/**
+ * The seed Penda replies to when the user asks for help planning. Framed as the
+ * user's own ask so it reads naturally in the thread, but it carries the guard
+ * rails from the roadmap: propose a few items, infer what you can, keep it short.
+ */
+function assistPrompt(amount: number, currency: string, monthLabel: string): string {
+  return (
+    `I just set my ${monthLabel} spending plan at ${currency} ${amount.toLocaleString()}. ` +
+    `Help me split it into a few budget categories — look at how I've been spending, ` +
+    `suggest 2–3 amounts that fit the plan, and only ask me about things you can't work ` +
+    `out yourself. Keep it short.`
+  )
+}
+
 export function SpendingPlanCard({
   walletId,
   currency,
   transactions,
+  recurring = [],
 }: {
   walletId: string
   currency: string
   transactions: Transaction[]
+  recurring?: RecurringTransaction[]
 }) {
   const now = new Date()
   const month = monthStartOf(now)
@@ -37,6 +65,7 @@ export function SpendingPlanCard({
 
   const { data: plan } = useSpendingPlan(walletId, month)
   const upsert = useUpsertSpendingPlan(walletId)
+  const openChat = useChatStore((s) => s.openChat)
 
   const [editing, setEditing] = useState(false)
   const [amount, setAmount] = useState('')
@@ -53,6 +82,8 @@ export function SpendingPlanCard({
   async function saveIntention() {
     const value = Number(amount)
     if (!value || value <= 0) return
+    // A brand-new plan (not an edit) triggers the AI-first assist below.
+    const wasNew = !plan
     try {
       await upsert.mutateAsync({
         month,
@@ -60,10 +91,25 @@ export function SpendingPlanCard({
         reflection: plan?.reflection ?? null,
       })
       setEditing(false)
-      toast(`Plan set for ${monthLabel}.`)
+      // The plan is already saved — the assist is an offer on top, never a gate.
+      // Penda speaks first (autoSend) with a few tappable category suggestions;
+      // the sheet is freely dismissible for anyone who'd rather do it themselves.
+      if (wasNew) {
+        toast(`Plan set for ${monthLabel}. Penda has a few ideas…`)
+        openChat(assistPrompt(value, currency, monthLabel), { autoSend: true })
+      } else {
+        toast(`Plan updated for ${monthLabel}.`)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
+  }
+
+  function planWithPenda() {
+    if (!plan) return
+    openChat(assistPrompt(fromMinorUnits(plan.intended_amount_minor), currency, monthLabel), {
+      autoSend: true,
+    })
   }
 
   async function saveReflection() {
@@ -104,6 +150,7 @@ export function SpendingPlanCard({
         </div>
         <p className="text-xs text-muted-foreground">
           A single intention for {monthLabel} — Penda paces you against it. Amounts in {currency}.
+          Set it and Penda will help you break it into budgets (or skip and do it yourself).
         </p>
       </div>
     )
@@ -118,6 +165,20 @@ export function SpendingPlanCard({
   const pace = PACE_COPY[status.pace]
   const pct = Math.min(100, Math.round((spentMinor / plan.intended_amount_minor) * 100))
   const nearMonthEnd = status.daysLeft <= 5
+
+  // Safe-to-spend: reserve the fixed bills still due this month, then see what's
+  // genuinely free per day. Fixed vs flexible actuals give the reserve context.
+  const split = splitActualSpend(transactions, month)
+  const upcomingFixed = upcomingFixedCosts(recurring, todayStr(now), monthEndOf(now))
+  const safe = computeSafeToSpend({
+    intendedMinor: plan.intended_amount_minor,
+    spentMinor,
+    upcomingFixedMinor: upcomingFixed.totalMinor,
+    monthStart: month,
+    now,
+  })
+  const hasReserve = upcomingFixed.totalMinor > 0
+  const overcommitted = safe.discretionaryRemainingMinor < 0
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
@@ -136,19 +197,49 @@ export function SpendingPlanCard({
         </button>
       </div>
 
+      {/* The headline number — what's genuinely free after reserving fixed bills. */}
+      <div className={cn('rounded-xl px-3 py-2.5', overcommitted ? 'bg-rose-500/5' : 'bg-primary/5')}>
+        <p className="text-xs text-muted-foreground">Safe to spend</p>
+        {status.daysLeft > 0 && !overcommitted ? (
+          <p className="text-2xl font-semibold text-primary">
+            {formatMoney(safe.perDayMinor, currency)}
+            <span className="text-sm font-normal text-muted-foreground">/day</span>
+          </p>
+        ) : (
+          <p className={cn('text-2xl font-semibold', overcommitted ? 'text-rose-600 dark:text-rose-400' : 'text-primary')}>
+            {overcommitted ? 'Nothing spare' : 'Last day'}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {hasReserve
+            ? `After reserving ${formatMoney(upcomingFixed.totalMinor, currency)} for bills still due this month.`
+            : 'No fixed bills left this month — this is your everyday spend.'}
+        </p>
+      </div>
+
       <Progress value={pct} />
 
       <div className="flex items-center justify-between text-sm">
         <span className={cn('font-medium', pace.className)}>{pace.label}</span>
         <span className="text-muted-foreground">
-          {status.daysLeft > 0
-            ? `${formatMoney(status.dailyAllowanceMinor, currency)}/day left`
-            : 'Last day'}
+          {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
         On this pace you’ll finish around {formatMoney(status.projectedMinor, currency)}.
+        {split.fixedMinor > 0 &&
+          ` So far ${formatMoney(split.fixedMinor, currency)} fixed · ${formatMoney(split.flexibleMinor, currency)} flexible.`}
       </p>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={planWithPenda}
+        className="self-start gap-1.5 text-primary"
+      >
+        <Sparkles className="size-4" />
+        Plan it with Penda
+      </Button>
 
       {nearMonthEnd && (
         <div className="flex flex-col gap-2 border-t pt-3">

@@ -49,3 +49,41 @@ export function computeSpendingPlanStatus(input: SpendingPlanInput): SpendingPla
 
   return { intendedMinor, spentMinor, remainingMinor, projectedMinor, dailyAllowanceMinor, daysLeft, pace }
 }
+
+export interface SafeToSpendInput {
+  intendedMinor: number
+  spentMinor: number
+  /** Fixed commitments still due before the period ends — reserve these. */
+  upcomingFixedMinor: number
+  /** First day of the plan month (YYYY-MM-DD). */
+  monthStart: string
+  now?: Date
+}
+
+export interface SafeToSpend {
+  /** Plan money left after reserving for upcoming fixed commitments. */
+  discretionaryRemainingMinor: number
+  reservedFixedMinor: number
+  /** What you can comfortably spend today and still land on plan. */
+  perDayMinor: number
+  /** Remaining days counting today. */
+  daysLeftInclusive: number
+}
+
+/**
+ * The headline number: after what's already spent AND the fixed bills still due
+ * this period, how much is genuinely free — as a per-day figure that answers
+ * "can I buy this today?" without quietly spending money already spoken for.
+ */
+export function computeSafeToSpend(input: SafeToSpendInput): SafeToSpend {
+  const now = input.now ?? new Date()
+  const daysInMonth = daysInMonthOf(input.monthStart)
+  const dayOfMonth = Math.min(Math.max(1, now.getUTCDate()), daysInMonth)
+  const daysLeftInclusive = daysInMonth - dayOfMonth + 1
+
+  const reservedFixedMinor = Math.max(0, input.upcomingFixedMinor)
+  const discretionaryRemainingMinor = input.intendedMinor - input.spentMinor - reservedFixedMinor
+  const perDayMinor = Math.round(Math.max(0, discretionaryRemainingMinor) / daysLeftInclusive)
+
+  return { discretionaryRemainingMinor, reservedFixedMinor, perDayMinor, daysLeftInclusive }
+}

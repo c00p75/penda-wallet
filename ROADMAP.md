@@ -4,7 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-14 (rev 8)
+Last updated: 2026-07-15 (rev 9)
 
 ---
 
@@ -98,8 +98,34 @@ Make voice the free hook; monetize depth (insights history, unlimited members) i
 Penda remembers what you told it, your goals, and preferences. Users can log emotional states (*"I stress-buy after work"*), allowing the AI to spot behavioral patterns.
 - **Includes:** A Memory Timeline (*"One year ago you wanted to stop living paycheck-to-paycheck. Today you have K14,000 saved."*)
 
-### 11. AI-assisted budget & goal creation · **onboarding + activation**
+### 11. AI-first budget & goal creation · **onboarding + activation**
 Penda proposes budgets based on the last 2-3 months of spending. For goals, the AI uses a **Dream Builder** (asking *"Why?"*) to connect goals to outcomes (e.g., *"This laptop could increase your income"*).
+
+**The set-plan flow — instant plan + AI assist, never a chat gate.** When the user enters an amount and taps *Set plan*, the plan is created **instantly and always succeeds** — no waiting on the model, no forced conversation. The AI then shows up *on* the plan as a proactive assistant: it opens with something specific (it already knows income, recurring spend, persona) and proposes 2-3 tappable budget items rather than interrogating. Every AI-first principle here is a guardrail against friction:
+  - **Skippable, always.** A clear "I'll do it myself" path. AI-first ≠ AI-only.
+  - **Suggestions over interrogation.** Tappable proposed items (accept / dismiss / edit) beat open-ended Q&A. Every turn is friction; minimize turns.
+  - **Ask only what can't be inferred.** Reserve questions for genuine unknowns (goals, upcoming one-offs), never for income/rent we already hold.
+  - **Writes go through the tiered-confirmation matrix** (bet #4): item creates flow freely, edits/removes confirm.
+
+**Value-adds that make the budget *real* (not just novel):**
+
+*v1 — build with the set-plan flow:*
+  - **Safe-to-spend — the headline number.** After fixed costs and savings, how much is actually free this period (and *per day*). Most users don't want a budget table; they want one number that answers "can I buy this?" This is what the AI surfaces and defends. Supersedes the standalone **Safe Spending Radar** candidate (now folded here).
+  - **Fixed vs. flexible auto-detection.** Detect recurring spend (rent, subscriptions, utilities) from transaction history and pre-fill those as fixed lines, so the AI only asks about the *flexible* remainder. Directly shortens the assist flow (fewer questions = less friction).
+  - **Actuals mapped to budget lines automatically.** Auto-categorize real transactions against their budget items (reuses the agent's transaction categorization). Without this the budget is a wish, not a tracker.
+
+*Pairs with fresh push infra — build next:*
+  - **Burn-rate / pace nudges via push.** *"You're 60% through the month but 85% through groceries."* The AI's recurring, personalized reason to reach out — the natural justification for the notification permission we just shipped. (Overlaps the Rituals cadence in bet #2.)
+
+*Upfront data-model decision (decide now, don't migrate later):*
+  - **Rollover: per-period vs. cumulative.** Decide whether a budget line resets each period or carries unspent/overspent forward *before* shipping, so envelope budgeting isn't a painful migration. Builds the **Envelope / rollover** candidate on top of this.
+
+*Fast-follow backlog (named so we don't design into a corner):*
+  - **Goals as budget lines.** A savings goal is a budget item that accrues — wire budgeting and goals as the same primitive.
+  - **End-of-period retro.** AI recaps how the period went and seeds the next plan, giving the AI memory across cycles (ties into bet #2 rituals and #10 memory).
+  - **Cash-flow timing.** Not just "how much" but "will the money be there *when* rent hits?" (this is bet #5, the Living Cashflow Timeline — the budget should hand off to it).
+  - **Variable/irregular income handling.** Budget off a conservative baseline or rolling average for lumpy income (ties into the **Buffer Engine** candidate).
+  - **Persona-based starter budgets.** Offer a sensible starting budget per persona so cold-start users with no history aren't staring at zero.
 
 ---
 
@@ -127,9 +153,9 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **Impulse / cooling-off pause** — *"Want to sit on this K1,500 for 24h?"*
 
 ### Money management depth
-- **Safe Spending Radar** — Actionable daily guidance: *"You can comfortably spend K410 today."*
+- **Safe Spending Radar** — Actionable daily guidance: *"You can comfortably spend K410 today."* *(Promoted into bet #11 as "safe-to-spend" — the headline number of the new budget flow.)*
 - **Split expenses & settle-up** — Splitwise-style per-member balances.
-- **Envelope / rollover budgeting** — build the envelope UX around existing rollover flags.
+- **Envelope / rollover budgeting** — build the envelope UX around existing rollover flags. *(Depends on the per-period-vs-cumulative data decision now called out in bet #11.)*
 - **Multi-currency & FX** — per-wallet currency conversion.
 
 ### Intelligence & Trust

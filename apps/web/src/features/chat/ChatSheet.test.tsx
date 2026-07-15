@@ -60,6 +60,51 @@ describe('ChatSheet currency in the UI', () => {
   })
 })
 
+describe('ChatSheet auto-send (Penda speaks first)', () => {
+  it('sends the seed immediately when autoSend is set, and reports it consumed', async () => {
+    sendMock.mockResolvedValue(reply({ reply: 'Here are a few ideas…' }))
+    const onConsumed = vi.fn()
+    render(
+      <ChatSheet
+        open
+        onOpenChange={() => {}}
+        walletId="w1"
+        currency="ZMW"
+        initialInput="Help me plan my budget"
+        autoSend
+        onAutoSendConsumed={onConsumed}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(sendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Help me plan my budget' }),
+      ),
+    )
+    // The seed shows as the user's turn and Penda replies first.
+    expect(screen.getByText('Help me plan my budget')).toBeInTheDocument()
+    expect(await screen.findByText('Here are a few ideas…')).toBeInTheDocument()
+    expect(onConsumed).toHaveBeenCalledTimes(1)
+    // Fires once — not on every re-render while the sheet is open.
+    expect(sendMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('only prefills the input (no send) when autoSend is not set', () => {
+    render(
+      <ChatSheet
+        open
+        onOpenChange={() => {}}
+        walletId="w1"
+        currency="ZMW"
+        initialInput="I spent K12 on coffee"
+      />,
+    )
+
+    expect(screen.getByRole('textbox')).toHaveValue('I spent K12 on coffee')
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('ChatSheet staged edit/delete confirmation', () => {
   const pending = {
     id: 'a1',

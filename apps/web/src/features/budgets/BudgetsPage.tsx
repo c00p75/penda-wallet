@@ -18,6 +18,9 @@ import { BudgetProgressCard } from './BudgetProgressCard'
 import { BudgetSuggestionsSheet } from './BudgetSuggestionsSheet'
 import { suggestBudgets, type BudgetSuggestion } from './suggestBudgets'
 import { SpendingPlanCard } from '@/features/planning/SpendingPlanCard'
+import { useSpendingPlan } from '@/features/planning/hooks'
+import { computeSafeToSpend } from '@/features/planning/spendingPlan'
+import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
 import type { Budget, BudgetInput } from './types'
 import {
   useCreateRecurringTransaction,
@@ -41,6 +44,10 @@ export function BudgetsPage() {
   const createBudget = useCreateBudget(wallet?.id)
   const updateBudget = useUpdateBudget(wallet?.id)
   const deleteBudget = useDeleteBudget(wallet?.id)
+
+  const now = new Date()
+  const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+  const { data: plan } = useSpendingPlan(wallet?.id, monthStart)
 
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
   const createRecurring = useCreateRecurringTransaction(wallet?.id)
@@ -133,12 +140,43 @@ export function BudgetsPage() {
     }
   }
 
-  // AI speaks first: a real read of this page's own data, tab-aware.
+  const monthLabel = now.toLocaleDateString(undefined, { month: 'long' })
+
+  // The headline number, when a plan exists: what's genuinely free per day after
+  // reserving the fixed bills still due this month. Leads the budgets-tab insight.
+  const safeToSpendInsight: { tone: 'default' | 'warm' | 'attention'; text: string } | null = (() => {
+    if (!plan) return null
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10)
+    const spentMinor = transactions
+      .filter((tx) => tx.type === 'expense' && tx.transaction_date >= monthStart)
+      .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    const upcoming = upcomingFixedCosts(recurring, now.toISOString().slice(0, 10), monthEnd)
+    const safe = computeSafeToSpend({
+      intendedMinor: plan.intended_amount_minor,
+      spentMinor,
+      upcomingFixedMinor: upcoming.totalMinor,
+      monthStart,
+      now,
+    })
+    if (safe.discretionaryRemainingMinor < 0)
+      return {
+        tone: 'attention',
+        text: `Your ${monthLabel} plan is already spoken for once bills are covered — want to rebalance?`,
+      }
+    return {
+      tone: 'default',
+      text: `You can safely spend about ${formatMoney(safe.perDayMinor, wallet.base_currency)}/day for the rest of ${monthLabel}.`,
+    }
+  })()
+
+  // AI speaks first: a real read of this page's own data, tab-aware. Safe-to-spend
+  // leads when a plan is set; otherwise fall back to how the budgets are tracking.
   const insight: { tone: 'default' | 'warm' | 'attention'; text: string } | null =
     tab === 'budgets'
-      ? progress.length === 0
-        ? null
-        : (() => {
+      ? (safeToSpendInsight ??
+        (progress.length === 0
+          ? null
+          : (() => {
             const worst = progress
               .map((p) => ({
                 name: categories.find((c) => c.id === p.category_id)?.name ?? 'Overall',
@@ -157,7 +195,7 @@ export function BudgetsPage() {
               tone: 'default',
               text: `You’re comfortable across all ${progress.length} budget${progress.length === 1 ? '' : 's'}. Nice work.`,
             }
-          })()
+          })()))
       : recurring.length === 0
         ? null
         : {
@@ -184,7 +222,12 @@ export function BudgetsPage() {
       </ToggleGroup>
 
       {tab === 'budgets' && (
-        <SpendingPlanCard walletId={wallet.id} currency={wallet.base_currency} transactions={transactions} />
+        <SpendingPlanCard
+          walletId={wallet.id}
+          currency={wallet.base_currency}
+          transactions={transactions}
+          recurring={recurring}
+        />
       )}
 
       {tab === 'budgets' && suggestions.length > 0 && (

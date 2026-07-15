@@ -19,8 +19,10 @@ export function AmbientChat() {
 
   const open = useChatStore((s) => s.open)
   const prefill = useChatStore((s) => s.prefill)
+  const autoSend = useChatStore((s) => s.autoSend)
   const setOpen = useChatStore((s) => s.setOpen)
   const openChat = useChatStore((s) => s.openChat)
+  const consumeAutoSend = useChatStore((s) => s.consumeAutoSend)
 
   if (!session || !wallet || location.pathname === '/login') return null
 
@@ -34,6 +36,8 @@ export function AmbientChat() {
         onOpenChange={setOpen}
         walletId={wallet.id}
         initialInput={prefill}
+        autoSend={autoSend}
+        onAutoSendConsumed={consumeAutoSend}
         currency={wallet.base_currency}
       />
     </>
