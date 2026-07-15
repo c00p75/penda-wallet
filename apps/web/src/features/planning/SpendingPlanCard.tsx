@@ -16,6 +16,7 @@ import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
 import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
 import { detectRecurringSpend, splitActualSpend, upcomingFixedCosts, type RecurringCandidate } from './fixedCosts'
 import { computeRetro, previousMonthStart } from './retro'
+import { computeIncomeBaseline } from './incomeBaseline'
 
 const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> = {
   ahead: { label: 'Ahead of plan', className: 'text-emerald-600 dark:text-emerald-400' },
@@ -159,7 +160,15 @@ export function SpendingPlanCard({
   // new month starts with no plan yet — it seeds the next plan (a rounded
   // read of last month's actual spend) instead of leaving the input blank.
   const retro = !plan && prevPlan ? computeRetro(prevPlan.intended_amount_minor, prevMonth, transactions) : null
-  const seedAmountMinor = retro ? Math.round(retro.spentMinor / 10_000) * 10_000 : null
+  const retroSeedMinor = retro ? Math.round(retro.spentMinor / 10_000) * 10_000 : null
+
+  // Variable/irregular income: when income swings enough that the average
+  // would overstate what's reliably there, plan off the conservative
+  // baseline instead — and prefer it over the retro seed, since it protects
+  // against a lean month rather than just repeating last month's spend.
+  const incomeBaseline = !plan ? computeIncomeBaseline(transactions, now) : null
+  const seedAmountMinor =
+    incomeBaseline?.isIrregular ? incomeBaseline.conservativeMinor : (retroSeedMinor ?? incomeBaseline?.conservativeMinor ?? null)
 
   // Empty / editing state — set the intention.
   if (!plan || editing) {
@@ -178,6 +187,14 @@ export function SpendingPlanCard({
               `You spent ${formatMoney(retro.spentMinor, currency)} — ${formatMoney(-retro.deltaMinor, currency)} over plan.`}
             {retro.pace === 'on-target' &&
               `You landed right on plan at ${formatMoney(retro.spentMinor, currency)}.`}
+          </div>
+        )}
+        {incomeBaseline?.isIrregular && (
+          <div className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Income varies month to month — </span>
+            planning around {formatMoney(incomeBaseline.conservativeMinor, currency)} (your leanest of the last{' '}
+            {incomeBaseline.monthsConsidered} months) rather than your average, so a quiet month doesn't catch you
+            out.
           </div>
         )}
         <div className="flex gap-2">
