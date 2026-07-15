@@ -6,7 +6,10 @@
 -- envelope-style budgeting (spec'd in the candidate backlog) can build on a
 -- real running balance instead of a one-period lookback.
 
-create or replace function get_budget_progress(p_wallet_id uuid)
+-- Adds new output columns, which Postgres won't allow via CREATE OR REPLACE.
+drop function if exists get_budget_progress(uuid);
+
+create function get_budget_progress(p_wallet_id uuid)
 returns table (
   budget_id uuid,
   category_id uuid,
