@@ -32,7 +32,8 @@ import { useSavingsGoals } from '@/features/goals/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
-import { CoachingCard } from '@/features/coaching/CoachingCard'
+import type { CoachingAction, CoachingKind } from '@/features/coaching/detectCoachingInsights'
+import { InsightCarousel, type InsightCard } from '@/features/coaching/InsightCarousel'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
 import {
@@ -48,9 +49,16 @@ import { parseMoMoText } from '@/features/transactions/momoParser'
 import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
-import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
 import { BalanceSummary } from './BalanceSummary'
+
+// Bold prefix each coaching insight wears in the carousel, by kind.
+const TIP_LABEL: Record<CoachingKind, string | undefined> = {
+  attention: 'Heads up:',
+  opportunity: 'Pro tip:',
+  observability: 'Pro tip:',
+  celebration: undefined,
+}
 
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
@@ -215,14 +223,40 @@ export function LedgerPage() {
       ? `You’ve spent ${formatMoney(last7Spent, wallet.base_currency)} in the last 7 days.`
       : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
 
-  // Proactive coaching leads when Penda has something worth saying; otherwise
-  // fall back to the plain weekly read.
-  const topInsight = detectCoachingInsights({
+  // The weekly read leads the deck; proactive coaching insights follow as
+  // swipeable pro-tip cards, each with its one-tap action.
+  const coachingInsights = detectCoachingInsights({
     transactions,
     budgets,
     goals,
     currency: wallet.base_currency,
-  })[0]
+  })
+  const insightCards: InsightCard[] = [
+    { id: 'week-read', variant: 'read', tone: 'default', text: weekInsight },
+    ...coachingInsights.map((insight) => ({
+      id: insight.id,
+      variant: 'tip' as const,
+      tone: insight.tone,
+      label: TIP_LABEL[insight.kind],
+      text: insight.text,
+      action: insight.action
+        ? { label: insight.action.label, onTap: () => runInsightAction(insight.action!) }
+        : undefined,
+    })),
+  ]
+
+  function runInsightAction(action: CoachingAction) {
+    switch (action.kind) {
+      case 'create-budget':
+      case 'view-budgets':
+        navigate('/budgets')
+        break
+      case 'fund-goal':
+      case 'view-goals':
+        navigate('/goals')
+        break
+    }
+  }
 
   const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
     { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
@@ -309,7 +343,7 @@ export function LedgerPage() {
         <BalanceSummary transactions={transactions} currency={wallet.base_currency} mode={profile?.mode} />
       </section>
 
-      {topInsight ? <CoachingCard insight={topInsight} /> : <AiInsight>{weekInsight}</AiInsight>}
+      <InsightCarousel cards={insightCards} />
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
         {suggestions.map(({ icon: Icon, label, onTap }) => (
