@@ -21,6 +21,7 @@ import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
 import { useOfflineQueue } from '@/pwa/useOfflineQueue'
+import { InstallBanner } from '@/pwa/InstallBanner'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { useWalletPresence } from '@/features/wallets/useWalletPresence'
@@ -321,6 +322,8 @@ export function LedgerPage() {
           </Link>
         </Button>
       </header>
+
+      <InstallBanner />
 
       <section
         className="flex flex-col gap-5 rounded-3xl p-5 pt-7"

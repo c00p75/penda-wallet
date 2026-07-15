@@ -9,8 +9,13 @@ import App from './App.tsx'
 import { Toaster } from '@/components/ui/sonner'
 import { useAuthStore } from '@/store/authStore'
 import { useThemeStore } from '@/store/themeStore'
+import { initInstallCapture } from '@/pwa/installStore'
 
 const queryClient = new QueryClient()
+
+// `beforeinstallprompt` fires once, early — capture it before React mounts so
+// the install offer survives navigation and never gets missed.
+initInstallCapture()
 
 // The .dark class drives every theme token. Mode 'system' follows the OS
 // setting live; 'light'/'dark' pin it regardless of the OS.
