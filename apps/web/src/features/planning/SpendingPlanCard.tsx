@@ -15,6 +15,7 @@ import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
 import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
 import { detectRecurringSpend, splitActualSpend, upcomingFixedCosts, type RecurringCandidate } from './fixedCosts'
+import { computeRetro, previousMonthStart } from './retro'
 
 const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> = {
   ahead: { label: 'Ahead of plan', className: 'text-emerald-600 dark:text-emerald-400' },
@@ -83,8 +84,11 @@ export function SpendingPlanCard({
   const now = new Date()
   const month = monthStartOf(now)
   const monthLabel = now.toLocaleDateString(undefined, { month: 'long' })
+  const prevMonth = previousMonthStart(month)
+  const prevMonthLabel = new Date(`${prevMonth}T00:00:00Z`).toLocaleDateString(undefined, { month: 'long' })
 
   const { data: plan } = useSpendingPlan(walletId, month)
+  const { data: prevPlan } = useSpendingPlan(walletId, prevMonth)
   const upsert = useUpsertSpendingPlan(walletId)
   const openChat = useChatStore((s) => s.openChat)
 
@@ -151,6 +155,12 @@ export function SpendingPlanCard({
     }
   }
 
+  // End-of-period retro: how last month actually went, computed the moment a
+  // new month starts with no plan yet — it seeds the next plan (a rounded
+  // read of last month's actual spend) instead of leaving the input blank.
+  const retro = !plan && prevPlan ? computeRetro(prevPlan.intended_amount_minor, prevMonth, transactions) : null
+  const seedAmountMinor = retro ? Math.round(retro.spentMinor / 10_000) * 10_000 : null
+
   // Empty / editing state — set the intention.
   if (!plan || editing) {
     return (
@@ -159,6 +169,17 @@ export function SpendingPlanCard({
           <Target className="size-5 text-primary" />
           <p className="font-medium">This month, I intend to spend…</p>
         </div>
+        {retro && (
+          <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{prevMonthLabel} recap: </span>
+            {retro.pace === 'under' &&
+              `You spent ${formatMoney(retro.spentMinor, currency)} — ${formatMoney(retro.deltaMinor, currency)} under plan. Nice.`}
+            {retro.pace === 'over' &&
+              `You spent ${formatMoney(retro.spentMinor, currency)} — ${formatMoney(-retro.deltaMinor, currency)} over plan.`}
+            {retro.pace === 'on-target' &&
+              `You landed right on plan at ${formatMoney(retro.spentMinor, currency)}.`}
+          </div>
+        )}
         <div className="flex gap-2">
           <Input
             type="number"
@@ -167,7 +188,13 @@ export function SpendingPlanCard({
             autoFocus
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={plan ? fromMinorUnits(plan.intended_amount_minor).toString() : '12000'}
+            placeholder={
+              plan
+                ? fromMinorUnits(plan.intended_amount_minor).toString()
+                : seedAmountMinor
+                  ? fromMinorUnits(seedAmountMinor).toString()
+                  : '12000'
+            }
           />
           <Button onClick={saveIntention} disabled={upsert.isPending}>
             Set plan
