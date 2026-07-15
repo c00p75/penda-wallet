@@ -12,11 +12,13 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
+import { useProfile } from '@/features/profile/hooks'
 import { useBudgetProgress, useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from './hooks'
 import { BudgetForm } from './BudgetForm'
 import { BudgetProgressCard } from './BudgetProgressCard'
 import { BudgetSuggestionsSheet } from './BudgetSuggestionsSheet'
 import { suggestBudgets, type BudgetSuggestion } from './suggestBudgets'
+import { starterBudgetsForPersona } from './starterBudgets'
 import { SpendingPlanCard } from '@/features/planning/SpendingPlanCard'
 import { useSpendingPlan } from '@/features/planning/hooks'
 import { computeSafeToSpend } from '@/features/planning/spendingPlan'
@@ -37,6 +39,7 @@ export function BudgetsPage() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
+  const { data: profile } = useProfile(session?.user.id)
 
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: progress = [] } = useBudgetProgress(wallet?.id)
@@ -62,13 +65,32 @@ export function BudgetsPage() {
   const [recurringFormOpen, setRecurringFormOpen] = useState(false)
   const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null)
 
-  const suggestions = useMemo(
-    () =>
-      suggestBudgets(transactions, {
-        existingCategoryIds: budgets.map((b) => b.category_id).filter((id): id is string => !!id),
-      }),
-    [transactions, budgets],
+  const existingBudgetCategoryIds = useMemo(
+    () => budgets.map((b) => b.category_id).filter((id): id is string => !!id),
+    [budgets],
   )
+
+  const historySuggestions = useMemo(
+    () => suggestBudgets(transactions, { existingCategoryIds: existingBudgetCategoryIds }),
+    [transactions, existingBudgetCategoryIds],
+  )
+
+  // Cold start: no spending pattern to learn from yet, but a plan is set —
+  // offer a sensible persona-flavored split instead of leaving budgets at zero.
+  const starterSuggestions = useMemo(
+    () =>
+      historySuggestions.length === 0 && plan
+        ? starterBudgetsForPersona(
+            profile?.ai_personality ?? 'balanced_coach',
+            plan.intended_amount_minor,
+            categories,
+            existingBudgetCategoryIds,
+          )
+        : [],
+    [historySuggestions, plan, profile?.ai_personality, categories, existingBudgetCategoryIds],
+  )
+
+  const suggestions = historySuggestions.length > 0 ? historySuggestions : starterSuggestions
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
@@ -237,7 +259,9 @@ export function BudgetsPage() {
           className="justify-start gap-2 border-dashed"
         >
           <Sparkles className="size-4 text-primary" />
-          Suggest {suggestions.length} budget{suggestions.length === 1 ? '' : 's'} from your spending
+          {historySuggestions.length > 0
+            ? `Suggest ${suggestions.length} budget${suggestions.length === 1 ? '' : 's'} from your spending`
+            : `Get ${suggestions.length} starter budget${suggestions.length === 1 ? '' : 's'} to begin`}
         </Button>
       )}
 

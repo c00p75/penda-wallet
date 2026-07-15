@@ -4,11 +4,13 @@ export interface BudgetSuggestion {
   categoryId: string
   categoryName: string
   categoryIcon: string | null
-  /** Rounded average monthly spend over the window. */
+  /** Rounded average monthly spend over the window. Zero for persona-sourced suggestions. */
   monthlyAverageMinor: number
   /** The proposed monthly budget (average rounded up to a clean step). */
   suggestedAmountMinor: number
   transactionCount: number
+  /** `history` = derived from past spend; `persona` = a cold-start starter budget (see starterBudgets.ts). */
+  source: 'history' | 'persona'
 }
 
 export interface SuggestBudgetsOptions {
@@ -81,6 +83,7 @@ export function suggestBudgets(
       monthlyAverageMinor: Math.round(avg),
       suggestedAmountMinor: Math.ceil(avg / step) * step,
       transactionCount: bucket.count,
+      source: 'history',
     })
   }
 

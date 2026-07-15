@@ -35,6 +35,7 @@ export function BudgetSuggestionsSheet({
 
   const chosen = suggestions.filter((s) => selected.has(s.categoryId))
   const total = chosen.reduce((sum, s) => sum + s.suggestedAmountMinor, 0)
+  const isStarter = suggestions.length > 0 && suggestions.every((s) => s.source === 'persona')
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -51,11 +52,12 @@ export function BudgetSuggestionsSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-primary" />
-            Budgets from your spending
+            {isStarter ? 'A starting point' : 'Budgets from your spending'}
           </SheetTitle>
           <SheetDescription>
-            Based on your last few months. I rounded each one just above what you usually spend —
-            tweak any later.
+            {isStarter
+              ? "No spending history yet, so here's a sensible starting split for your plan — tweak any later."
+              : 'Based on your last few months. I rounded each one just above what you usually spend — tweak any later.'}
           </SheetDescription>
         </SheetHeader>
 
@@ -79,7 +81,9 @@ export function BudgetSuggestionsSheet({
                 <span className="flex-1">
                   <span className="block text-sm font-medium">{s.categoryName}</span>
                   <span className="block text-xs text-muted-foreground">
-                    You average {formatMoney(s.monthlyAverageMinor, currency)}/mo
+                    {s.source === 'persona'
+                      ? 'Suggested starting point'
+                      : `You average ${formatMoney(s.monthlyAverageMinor, currency)}/mo`}
                   </span>
                 </span>
                 <span className="text-sm font-semibold">
