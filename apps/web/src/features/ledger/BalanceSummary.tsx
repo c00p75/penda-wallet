@@ -1,6 +1,7 @@
 import { formatMoney } from '@/lib/money'
 import type { Transaction } from '@/features/transactions/types'
 import { termFor, type ProfileMode } from '@/features/profile/modes'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 
 interface BalanceSummaryProps {
   transactions: Transaction[]
@@ -27,12 +28,14 @@ export function BalanceSummary({ transactions, currency, mode = 'individual' }: 
       <div>
         <p className="text-xs text-muted-foreground">{termFor(mode, 'income')} this month</p>
         <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-          {formatMoney(income, currency)}
+          <HiddenAmount>{formatMoney(income, currency)}</HiddenAmount>
         </p>
       </div>
       <div>
         <p className="text-xs text-muted-foreground">{termFor(mode, 'expense')} this month</p>
-        <p className="text-lg font-semibold">{formatMoney(expenses, currency)}</p>
+        <p className="text-lg font-semibold">
+          <HiddenAmount>{formatMoney(expenses, currency)}</HiddenAmount>
+        </p>
       </div>
     </div>
   )

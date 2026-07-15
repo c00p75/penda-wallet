@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Check, Download, Monitor, Moon, Share, Smartphone, Sparkles, Sun } from 'lucide-react'
+import { Check, Download, Lock, Monitor, Moon, Share, Smartphone, Sparkles, Sun } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
+import { useLockStore } from '@/store/lockStore'
+import { SetupLockSheet } from '@/features/lock/SetupLockSheet'
 import { useThemeStore, type ThemeMode } from '@/store/themeStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
@@ -38,9 +41,14 @@ export function SettingsPage() {
   const themeMode = useThemeStore((s) => s.mode)
   const setThemeMode = useThemeStore((s) => s.setMode)
 
+  const lockEnabled = useLockStore((s) => s.enabled)
+  const lockHasBiometric = useLockStore((s) => !!s.credentialId)
+  const disableLock = useLockStore((s) => s.disable)
+
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
   const [mode, setMode] = useState<ProfileMode>('individual')
+  const [setupLockOpen, setSetupLockOpen] = useState(false)
 
   useEffect(() => {
     if (!profile) return
@@ -176,6 +184,30 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Lock className="size-4" />
+            Balance privacy
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm">Hide exact balances until unlocked</p>
+            <Switch
+              checked={lockEnabled}
+              onCheckedChange={(on) => (on ? setSetupLockOpen(true) : disableLock())}
+              aria-label="Hide balances"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {lockEnabled
+              ? `On — reveal with ${lockHasBiometric ? 'biometrics or your PIN' : 'your PIN'}. Tap a hidden balance to unlock.`
+              : 'Balances stay masked on shared or lost phones. Your PIN is kept on this device only, never sent to Penda.'}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Categories</CardTitle>
         </CardHeader>
         <CardContent>
@@ -274,6 +306,8 @@ export function SettingsPage() {
       <Button variant="outline" onClick={() => supabase.auth.signOut()}>
         Sign out
       </Button>
+
+      <SetupLockSheet open={setupLockOpen} onOpenChange={setSetupLockOpen} />
 
       <BottomNav />
     </main>

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { LedgerPage } from '@/features/ledger/LedgerPage'
 import { AmbientChat } from '@/features/chat/AmbientChat'
+import { LockPrompt } from '@/features/lock/UnlockSheet'
 
 // Every other route is code-split — the home ledger is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
@@ -44,6 +45,7 @@ function App() {
         </Routes>
       </Suspense>
       <AmbientChat />
+      <LockPrompt />
     </>
   )
 }
