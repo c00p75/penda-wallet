@@ -25,6 +25,10 @@ import { SpendingPlanCard } from '@/features/planning/SpendingPlanCard'
 import { useSpendingPlan } from '@/features/planning/hooks'
 import { computeSafeToSpend } from '@/features/planning/spendingPlan'
 import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
+import { usePacts, useCreatePact, useDeletePact } from '@/features/pacts/hooks'
+import { PactCard } from '@/features/pacts/PactCard'
+import { PactForm } from '@/features/pacts/PactForm'
+import type { CommitmentPactInput } from '@/features/pacts/types'
 import type { Budget, BudgetInput } from './types'
 import {
   useCreateRecurringTransaction,
@@ -60,6 +64,11 @@ export function BudgetsPage() {
   const updateRecurring = useUpdateRecurringTransaction(wallet?.id)
   const setRecurringActive = useSetRecurringActive(wallet?.id)
   const deleteRecurring = useDeleteRecurringTransaction(wallet?.id)
+
+  const { data: pacts = [] } = usePacts(wallet?.id)
+  const createPact = useCreatePact(wallet?.id)
+  const deletePact = useDeletePact(wallet?.id)
+  const [pactFormOpen, setPactFormOpen] = useState(false)
 
   const [tab, setTab] = useState<'budgets' | 'recurring'>('budgets')
   const [budgetFormOpen, setBudgetFormOpen] = useState(false)
@@ -135,6 +144,23 @@ export function BudgetsPage() {
       }
       setSuggestOpen(false)
       toast(`Created ${selected.length} budget${selected.length === 1 ? '' : 's'}.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handlePactSubmit(input: CommitmentPactInput) {
+    try {
+      await createPact.mutateAsync(input)
+      toast('Pact set — I\'ll hold you to it.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handlePactDelete(id: string) {
+    try {
+      await deletePact.mutateAsync(id)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -257,6 +283,27 @@ export function BudgetsPage() {
         />
       )}
 
+      {tab === 'budgets' && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-muted-foreground">Commitment pacts</p>
+            <button type="button" onClick={() => setPactFormOpen(true)} className="text-sm text-primary">
+              + New pact
+            </button>
+          </div>
+          {pacts.map((pact) => (
+            <PactCard
+              key={pact.id}
+              pact={pact}
+              transactions={transactions}
+              category={categories.find((c) => c.id === pact.category_id) ?? null}
+              currency={wallet.base_currency}
+              onDelete={() => handlePactDelete(pact.id)}
+            />
+          ))}
+        </div>
+      )}
+
       {tab === 'budgets' && suggestions.length > 0 && (
         <Button
           variant="outline"
@@ -345,6 +392,14 @@ export function BudgetsPage() {
         currency={wallet.base_currency}
         onCreate={handleCreateSuggested}
         isCreating={createBudget.isPending}
+      />
+
+      <PactForm
+        open={pactFormOpen}
+        onOpenChange={setPactFormOpen}
+        categories={categories}
+        onSubmit={handlePactSubmit}
+        isSubmitting={createPact.isPending}
       />
 
       <RecurringForm
