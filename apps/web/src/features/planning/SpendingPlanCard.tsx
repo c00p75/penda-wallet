@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
 import type { Transaction } from '@/features/transactions/types'
 import type { RecurringTransaction } from '@/features/recurring/types'
+import type { SavingsGoal } from '@/features/goals/types'
+import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
 import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
@@ -70,11 +72,13 @@ export function SpendingPlanCard({
   currency,
   transactions,
   recurring = [],
+  goals = [],
 }: {
   walletId: string
   currency: string
   transactions: Transaction[]
   recurring?: RecurringTransaction[]
+  goals?: SavingsGoal[]
 }) {
   const now = new Date()
   const month = monthStartOf(now)
@@ -187,18 +191,22 @@ export function SpendingPlanCard({
   const pct = Math.min(100, Math.round((spentMinor / plan.intended_amount_minor) * 100))
   const nearMonthEnd = status.daysLeft <= 5
 
-  // Safe-to-spend: reserve the fixed bills still due this month, then see what's
-  // genuinely free per day. Fixed vs flexible actuals give the reserve context.
+  // Safe-to-spend: reserve the fixed bills still due this month AND what's
+  // needed to stay on pace toward savings goals (goals as budget lines —
+  // a goal you're not funding this month shouldn't quietly count as "free"),
+  // then see what's genuinely left. Fixed vs flexible actuals give the reserve
+  // context.
   const split = splitActualSpend(transactions, month, new Set(detected.map((d) => d.key)))
   const upcomingFixed = upcomingFixedCosts(recurring, todayStr(now), monthEndOf(now))
+  const goalReserve = totalMonthlyGoalReserve(goals, now)
   const safe = computeSafeToSpend({
     intendedMinor: plan.intended_amount_minor,
     spentMinor,
-    upcomingFixedMinor: upcomingFixed.totalMinor,
+    upcomingFixedMinor: upcomingFixed.totalMinor + goalReserve,
     monthStart: month,
     now,
   })
-  const hasReserve = upcomingFixed.totalMinor > 0
+  const hasReserve = upcomingFixed.totalMinor > 0 || goalReserve > 0
   const overcommitted = safe.discretionaryRemainingMinor < 0
 
   return (
@@ -233,8 +241,10 @@ export function SpendingPlanCard({
         )}
         <p className="text-xs text-muted-foreground">
           {hasReserve
-            ? `After reserving ${formatMoney(upcomingFixed.totalMinor, currency)} for bills still due this month.`
-            : 'No fixed bills left this month — this is your everyday spend.'}
+            ? `After reserving ${formatMoney(upcomingFixed.totalMinor, currency)} for bills${
+                goalReserve > 0 ? ` and ${formatMoney(goalReserve, currency)} toward goals` : ''
+              } still due this month.`
+            : 'No fixed bills or goal contributions left this month — this is your everyday spend.'}
         </p>
       </div>
 

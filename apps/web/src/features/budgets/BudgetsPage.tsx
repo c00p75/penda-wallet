@@ -13,6 +13,8 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useProfile } from '@/features/profile/hooks'
+import { useSavingsGoals } from '@/features/goals/hooks'
+import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useBudgetProgress, useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from './hooks'
 import { BudgetForm } from './BudgetForm'
 import { BudgetProgressCard } from './BudgetProgressCard'
@@ -44,6 +46,7 @@ export function BudgetsPage() {
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: progress = [] } = useBudgetProgress(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
+  const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const createBudget = useCreateBudget(wallet?.id)
   const updateBudget = useUpdateBudget(wallet?.id)
   const deleteBudget = useDeleteBudget(wallet?.id)
@@ -173,10 +176,11 @@ export function BudgetsPage() {
       .filter((tx) => tx.type === 'expense' && tx.transaction_date >= monthStart)
       .reduce((sum, tx) => sum + tx.amount_minor, 0)
     const upcoming = upcomingFixedCosts(recurring, now.toISOString().slice(0, 10), monthEnd)
+    const goalReserve = totalMonthlyGoalReserve(goals, now)
     const safe = computeSafeToSpend({
       intendedMinor: plan.intended_amount_minor,
       spentMinor,
-      upcomingFixedMinor: upcoming.totalMinor,
+      upcomingFixedMinor: upcoming.totalMinor + goalReserve,
       monthStart,
       now,
     })
@@ -249,6 +253,7 @@ export function BudgetsPage() {
           currency={wallet.base_currency}
           transactions={transactions}
           recurring={recurring}
+          goals={goals}
         />
       )}
 
