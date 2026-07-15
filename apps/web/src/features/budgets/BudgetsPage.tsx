@@ -180,8 +180,8 @@ export function BudgetsPage() {
             const worst = progress
               .map((p) => ({
                 name: categories.find((c) => c.id === p.category_id)?.name ?? 'Overall',
-                pct: p.amount_minor > 0 ? p.spent_minor / p.amount_minor : 0,
-                remaining: p.amount_minor - p.spent_minor,
+                pct: p.effective_amount_minor > 0 ? p.spent_minor / p.effective_amount_minor : 0,
+                remaining: p.effective_amount_minor - p.spent_minor,
               }))
               .sort((a, b) => b.pct - a.pct)[0]
             if (worst.pct >= 1)

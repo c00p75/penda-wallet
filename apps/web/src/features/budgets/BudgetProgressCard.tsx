@@ -22,9 +22,10 @@ function statusFor(pct: number) {
 }
 
 export function BudgetProgressCard({ progress, category, currency, onSelect }: BudgetProgressCardProps) {
-  const pct = progress.amount_minor > 0 ? progress.spent_minor / progress.amount_minor : 0
+  const cap = progress.effective_amount_minor
+  const pct = cap > 0 ? progress.spent_minor / cap : 0
   const status = statusFor(pct)
-  const remaining = progress.amount_minor - progress.spent_minor
+  const remaining = cap - progress.spent_minor
   const ringPct = Math.round(Math.min(pct, 1) * 100)
 
   return (
@@ -51,7 +52,13 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
           <p className="shrink-0 text-xs capitalize text-muted-foreground">{progress.period}</p>
         </div>
         <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
-          {formatMoney(progress.spent_minor, currency)} of {formatMoney(progress.amount_minor, currency)}
+          {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
+          {progress.carried_over_minor !== 0 && (
+            <span className="ml-1">
+              ({progress.carried_over_minor > 0 ? '+' : '−'}
+              {formatMoney(Math.abs(progress.carried_over_minor), currency)} rolled over)
+            </span>
+          )}
         </p>
         <p className="mt-1 text-sm font-medium" style={{ color: status.color }}>
           {status.label}

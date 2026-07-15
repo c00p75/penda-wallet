@@ -12,7 +12,7 @@ import type { RecurringTransaction } from '@/features/recurring/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
 import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
-import { splitActualSpend, upcomingFixedCosts } from './fixedCosts'
+import { detectRecurringSpend, splitActualSpend, upcomingFixedCosts, type RecurringCandidate } from './fixedCosts'
 
 const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> = {
   ahead: { label: 'Ahead of plan', className: 'text-emerald-600 dark:text-emerald-400' },
@@ -38,13 +38,30 @@ function todayStr(now: Date): string {
  * The seed Penda replies to when the user asks for help planning. Framed as the
  * user's own ask so it reads naturally in the thread, but it carries the guard
  * rails from the roadmap: propose a few items, infer what you can, keep it short.
+ * Detected recurring spend is named explicitly so the AI treats it as already
+ * known — "ask only what can't be inferred" — instead of asking about it.
  */
-function assistPrompt(amount: number, currency: string, monthLabel: string): string {
-  return (
+function assistPrompt(
+  amount: number,
+  currency: string,
+  monthLabel: string,
+  detected: RecurringCandidate[],
+): string {
+  const base =
     `I just set my ${monthLabel} spending plan at ${currency} ${amount.toLocaleString()}. ` +
     `Help me split it into a few budget categories — look at how I've been spending, ` +
     `suggest 2–3 amounts that fit the plan, and only ask me about things you can't work ` +
     `out yourself. Keep it short.`
+  if (detected.length === 0) return base
+  const fixedList = detected
+    .slice(0, 5)
+    .map(
+      (d) =>
+        `${d.label} (~${currency} ${fromMinorUnits(d.averageAmountMinor).toLocaleString()}/${d.cadence === 'weekly' ? 'wk' : 'mo'})`,
+    )
+    .join(', ')
+  return (
+    `${base} I already treat these as fixed recurring costs, so don't ask me about them: ${fixedList}.`
   )
 }
 
@@ -79,6 +96,10 @@ export function SpendingPlanCard({
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= month)
     .reduce((sum, tx) => sum + tx.amount_minor, 0)
 
+  // Fixed spend Penda has noticed on its own (rent, subscriptions) even where
+  // no recurring rule was registered — so the assist can skip asking about it.
+  const detected = detectRecurringSpend(transactions, { now })
+
   async function saveIntention() {
     const value = Number(amount)
     if (!value || value <= 0) return
@@ -96,7 +117,7 @@ export function SpendingPlanCard({
       // the sheet is freely dismissible for anyone who'd rather do it themselves.
       if (wasNew) {
         toast(`Plan set for ${monthLabel}. Penda has a few ideas…`)
-        openChat(assistPrompt(value, currency, monthLabel), { autoSend: true })
+        openChat(assistPrompt(value, currency, monthLabel, detected), { autoSend: true })
       } else {
         toast(`Plan updated for ${monthLabel}.`)
       }
@@ -107,7 +128,7 @@ export function SpendingPlanCard({
 
   function planWithPenda() {
     if (!plan) return
-    openChat(assistPrompt(fromMinorUnits(plan.intended_amount_minor), currency, monthLabel), {
+    openChat(assistPrompt(fromMinorUnits(plan.intended_amount_minor), currency, monthLabel, detected), {
       autoSend: true,
     })
   }
@@ -168,7 +189,7 @@ export function SpendingPlanCard({
 
   // Safe-to-spend: reserve the fixed bills still due this month, then see what's
   // genuinely free per day. Fixed vs flexible actuals give the reserve context.
-  const split = splitActualSpend(transactions, month)
+  const split = splitActualSpend(transactions, month, new Set(detected.map((d) => d.key)))
   const upcomingFixed = upcomingFixedCosts(recurring, todayStr(now), monthEndOf(now))
   const safe = computeSafeToSpend({
     intendedMinor: plan.intended_amount_minor,
