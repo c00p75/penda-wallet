@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
         let summary: string
         try {
           if (call.name === 'create_transaction') {
-            const result = await handleCreateTransaction(supabase, body.walletId, user.id, categories, rules, call.args)
+            const result = await handleCreateTransaction(supabase, body.walletId, user.id, currency, categories, rules, call.args)
             createdTransaction = result.transaction
             summary = result.summary
           } else if (call.name === 'create_debt') {
@@ -498,6 +498,7 @@ async function handleCreateTransaction(
   supabase: SupabaseClient,
   walletId: string,
   userId: string,
+  currency: string,
   categories: Category[],
   rules: CategorizationRule[],
   input: Record<string, unknown>,
@@ -526,7 +527,7 @@ async function handleCreateTransaction(
       created_by: userId,
       category_id: categoryId,
       amount_minor: Math.round(amount * 100),
-      currency: 'USD',
+      currency,
       type: input.type,
       merchant,
       description,

@@ -101,6 +101,16 @@ Deno.serve(async (req) => {
     const categories = await fetchCategories(supabase, body.walletId)
     const rules = await fetchCategorizationRules(supabase, body.walletId)
 
+    // The wallet is single-currency and the UI renders each transaction in its
+    // own stored currency, so always store the wallet's currency — never the
+    // symbol the model happened to read off the receipt.
+    const { data: walletRow } = await supabase
+      .from('wallets')
+      .select('base_currency')
+      .eq('id', body.walletId)
+      .maybeSingle()
+    const currency = walletRow?.base_currency ?? 'USD'
+
     const extraction = await extractReceipt(base64, mimeType, categories)
 
     const merchant = extraction.merchant ?? null
@@ -122,7 +132,7 @@ Deno.serve(async (req) => {
         created_by: user.id,
         category_id: categoryId,
         amount_minor: Math.round(extraction.total_minor),
-        currency: extraction.currency || 'USD',
+        currency,
         type: 'expense',
         merchant,
         transaction_date: transactionDate,
