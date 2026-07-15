@@ -43,3 +43,8 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: 'DKK', name: 'Danish Krone', symbol: 'kr' },
   { code: 'NZD', name: 'New Zealand Dollar', symbol: '$' },
 ]
+
+/** Short symbol for a currency code (falls back to the code itself). */
+export function currencySymbol(code: string): string {
+  return CURRENCIES.find((c) => c.code === code)?.symbol ?? code
+}

@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
@@ -18,6 +19,7 @@ interface ChatSheetProps {
   onOpenChange: (open: boolean) => void
   walletId: string | undefined
   initialInput?: string
+  currency?: string
 }
 
 // A press shorter than this counts as a tap (hands-free record); longer counts
@@ -34,7 +36,9 @@ export function ChatSheet({
   onOpenChange,
   walletId,
   initialInput,
+  currency = 'USD',
 }: ChatSheetProps) {
+  const sym = currencySymbol(currency)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | undefined>()
   const [input, setInput] = useState('')
@@ -199,8 +203,8 @@ export function ChatSheet({
         <div className="flex-1 overflow-y-auto px-4">
           {messages.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Tell me about a purchase or payment — "spent $12 on coffee at Blue Bottle", or hold the
-              mic to say it and release to send.
+              Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or hold
+              the mic to say it and release to send.
             </p>
           )}
           <div className="flex flex-col gap-3 pb-4">
@@ -238,7 +242,7 @@ export function ChatSheet({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isRecording ? 'Listening…' : 'I spent $12 on coffee...'}
+              placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
               autoComplete="off"
             />
             <Button

@@ -29,7 +29,13 @@ export function AmbientChat() {
   return (
     <>
       {showHandle && <PullUpHandle onOpen={() => openChat()} />}
-      <ChatSheet open={open} onOpenChange={setOpen} walletId={wallet.id} initialInput={prefill} />
+      <ChatSheet
+        open={open}
+        onOpenChange={setOpen}
+        walletId={wallet.id}
+        initialInput={prefill}
+        currency={wallet.base_currency}
+      />
     </>
   )
 }
