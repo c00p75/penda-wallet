@@ -1,10 +1,8 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ChevronUp, Mic } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
-import { useEntitlement } from '@/features/entitlements/hooks'
-import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import { ChatSheet } from './ChatSheet'
 import { useChatStore } from './chatStore'
 
@@ -18,14 +16,11 @@ export function AmbientChat() {
   const session = useAuthStore((s) => s.session)
   const location = useLocation()
   const { data: wallet } = useCurrentWallet()
-  const { isPremium } = useEntitlement(session?.user.id)
 
   const open = useChatStore((s) => s.open)
   const prefill = useChatStore((s) => s.prefill)
   const setOpen = useChatStore((s) => s.setOpen)
   const openChat = useChatStore((s) => s.openChat)
-
-  const [voicePaywallOpen, setVoicePaywallOpen] = useState(false)
 
   if (!session || !wallet || location.pathname === '/login') return null
 
@@ -34,20 +29,7 @@ export function AmbientChat() {
   return (
     <>
       {showHandle && <PullUpHandle onOpen={() => openChat()} />}
-
-      <ChatSheet
-        open={open}
-        onOpenChange={setOpen}
-        walletId={wallet.id}
-        initialInput={prefill}
-        isVoicePremium={isPremium}
-        onRequireVoicePremium={() => setVoicePaywallOpen(true)}
-      />
-
-      <PaywallSheet
-        feature={voicePaywallOpen ? 'voice' : null}
-        onOpenChange={(o) => !o && setVoicePaywallOpen(false)}
-      />
+      <ChatSheet open={open} onOpenChange={setOpen} walletId={wallet.id} initialInput={prefill} />
     </>
   )
 }

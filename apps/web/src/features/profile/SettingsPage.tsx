@@ -92,8 +92,9 @@ export function SettingsPage() {
         {!isPremium && (
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Premium unlocks voice entry, receipt scanning, weekly AI insights, and unlimited
-              shared wallet members. Not available to purchase yet — check back soon.
+              Voice is free for everyone. Premium unlocks the depth: receipt scanning, weekly AI
+              insights history, and unlimited shared wallet members. Not available to purchase yet —
+              check back soon.
             </p>
           </CardContent>
         )}

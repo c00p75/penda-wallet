@@ -18,8 +18,6 @@ interface ChatSheetProps {
   onOpenChange: (open: boolean) => void
   walletId: string | undefined
   initialInput?: string
-  isVoicePremium: boolean
-  onRequireVoicePremium: () => void
 }
 
 // A press shorter than this counts as a tap (hands-free record); longer counts
@@ -36,8 +34,6 @@ export function ChatSheet({
   onOpenChange,
   walletId,
   initialInput,
-  isVoicePremium,
-  onRequireVoicePremium,
 }: ChatSheetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | undefined>()
@@ -131,10 +127,6 @@ export function ChatSheet({
       return
     }
     if (recordMode !== 'idle') return
-    if (!isVoicePremium) {
-      onRequireVoicePremium()
-      return
-    }
 
     pressStartRef.current = performance.now()
     setRecordMode('holding')
@@ -164,10 +156,6 @@ export function ChatSheet({
       return
     }
     if (recordMode === 'idle') {
-      if (!isVoicePremium) {
-        onRequireVoicePremium()
-        return
-      }
       setRecordMode('locked')
       beginRecording()
     } else {

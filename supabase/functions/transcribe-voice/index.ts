@@ -31,16 +31,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Invalid or expired session' }, 401)
     }
 
-    const { data: isPremium, error: entitlementError } = await supabase.rpc('is_premium', {
-      p_user_id: user.id,
-    })
-    if (entitlementError) throw entitlementError
-    if (!isPremium) {
-      return jsonResponse(
-        { error: 'premium_required', message: 'Voice entry is a Penda Premium feature.' },
-        402,
-      )
-    }
+    // Voice is the free hero (roadmap bet 9): the most demo-able interaction is
+    // ungated. Depth (insights history, unlimited members, receipts) monetises
+    // instead — so no entitlement check here.
 
     const incomingForm = await req.formData()
     const audio = incomingForm.get('audio')
