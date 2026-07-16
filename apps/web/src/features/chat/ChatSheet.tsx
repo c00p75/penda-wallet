@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
+import { useCloseOnBack } from '@/lib/useCloseOnBack'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
@@ -60,6 +61,7 @@ export function ChatSheet({
   const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
 
   const keyboardInset = useKeyboardInset()
+  useCloseOnBack(open, () => onOpenChange(false))
 
   // Text present before recording started, so live transcription appends
   // rather than clobbering what the user already typed.
@@ -249,7 +251,11 @@ export function ChatSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="flex h-[85svh] flex-col"
+        // `data-[side=bottom]:h-[85svh]` matches the base sheet's own
+        // `data-[side=bottom]:h-auto` in specificity (both are attribute-
+        // scoped), so it actually overrides it — a plain `h-[85svh]` loses to
+        // that attribute selector and the sheet grows unbounded with content.
+        className="flex h-[85svh] flex-col data-[side=bottom]:h-[85svh]"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
         // and buttons stay visible while typing.
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
