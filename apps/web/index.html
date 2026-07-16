@@ -5,14 +5,283 @@
     <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="preload" as="image" href="/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="Penda — an AI-first money tracker and budgeting app." />
     <title>Penda</title>
+    <style>
+      /* ── Boot splash ─────────────────────────────────────────────────────
+         Inlined so it paints on the very first frame — before the JS bundle
+         parses — and there is never a white flash on cold launch. The colours
+         mirror the app's hero-bloom + Iris/mint brand tokens. main.tsx fades
+         it out the moment auth boot resolves. */
+      :root {
+        --bs-from: #f4f7ff;
+        --bs-via: #dfe9fe;
+        --bs-to: #c8d9fb;
+        --bs-glow: #b8b6f6;
+        --bs-iris: #5b4be6;
+        --bs-mint: #22c39a;
+        --bs-word: #241d54;
+        --bs-tag: #6a6494;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bs-from: #0c1120;
+          --bs-via: #142137;
+          --bs-to: #1a2c49;
+          --bs-glow: #3a3f8f;
+          --bs-iris: #8a7cff;
+          --bs-mint: #34d6aa;
+          --bs-word: #eef1ff;
+          --bs-tag: #9a9ac2;
+        }
+      }
+      html,
+      body {
+        background: var(--bs-via);
+      }
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background:
+          radial-gradient(120% 90% at 50% 8%, var(--bs-from) 0%, transparent 55%),
+          radial-gradient(90% 70% at 50% 108%, var(--bs-to) 0%, transparent 60%),
+          linear-gradient(160deg, var(--bs-from), var(--bs-via) 52%, var(--bs-to));
+        transition: opacity 0.55s ease, transform 0.55s ease;
+        will-change: opacity, transform;
+      }
+      #boot-splash.bs-hidden {
+        opacity: 0;
+        transform: scale(1.05);
+        pointer-events: none;
+      }
+      .bs-stage {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .bs-logo-wrap {
+        position: relative;
+        display: grid;
+        place-items: center;
+      }
+      .bs-glow {
+        position: absolute;
+        width: 240px;
+        height: 240px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--bs-glow) 0%, transparent 68%);
+        opacity: 0.55;
+        filter: blur(6px);
+        animation: bs-breathe 3.4s ease-in-out infinite;
+      }
+      .bs-logo {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 34px rgba(46, 33, 120, 0.32));
+        animation: bs-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both,
+          bs-float 4.5s ease-in-out 0.9s infinite;
+      }
+      .bs-word {
+        margin-top: 26px;
+        font-family: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: var(--bs-word);
+        opacity: 0;
+        animation: bs-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
+      }
+      .bs-tag {
+        margin-top: 8px;
+        font-family: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 14px;
+        font-weight: 450;
+        letter-spacing: 0.01em;
+        color: var(--bs-tag);
+        opacity: 0;
+        animation: bs-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.34s both;
+      }
+      .bs-dots {
+        display: flex;
+        gap: 8px;
+        margin-top: 34px;
+        opacity: 0;
+        animation: bs-fade 0.6s ease 0.6s both;
+      }
+      .bs-dots i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--bs-iris);
+        animation: bs-bounce 1.15s ease-in-out infinite;
+      }
+      .bs-dots i:nth-child(2) {
+        background: color-mix(in srgb, var(--bs-iris), var(--bs-mint));
+        animation-delay: 0.15s;
+      }
+      .bs-dots i:nth-child(3) {
+        background: var(--bs-mint);
+        animation-delay: 0.3s;
+      }
+      /* Twinkling sparkles echoing the logo's stars */
+      .bs-spark {
+        position: absolute;
+        clip-path: polygon(
+          50% 0%,
+          61% 39%,
+          100% 50%,
+          61% 61%,
+          50% 100%,
+          39% 61%,
+          0% 50%,
+          39% 39%
+        );
+        opacity: 0;
+        animation: bs-twinkle 2.6s ease-in-out infinite;
+      }
+      .bs-spark--1 {
+        top: -6px;
+        right: 4px;
+        width: 26px;
+        height: 26px;
+        background: var(--bs-iris);
+        animation-delay: 0.7s;
+      }
+      .bs-spark--2 {
+        top: 46px;
+        right: -30px;
+        width: 16px;
+        height: 16px;
+        background: var(--bs-mint);
+        animation-delay: 1.3s;
+      }
+      .bs-spark--3 {
+        top: 30px;
+        left: -34px;
+        width: 20px;
+        height: 20px;
+        background: var(--bs-iris);
+        animation-delay: 1s;
+      }
+      .bs-spark--4 {
+        bottom: -2px;
+        left: -8px;
+        width: 14px;
+        height: 14px;
+        background: var(--bs-mint);
+        animation-delay: 1.7s;
+      }
+      @keyframes bs-rise {
+        from {
+          opacity: 0;
+          transform: translateY(16px) scale(0.94);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes bs-fade {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes bs-float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-8px);
+        }
+      }
+      @keyframes bs-breathe {
+        0%,
+        100% {
+          opacity: 0.4;
+          transform: scale(0.92);
+        }
+        50% {
+          opacity: 0.65;
+          transform: scale(1.06);
+        }
+      }
+      @keyframes bs-bounce {
+        0%,
+        100% {
+          transform: translateY(0);
+          opacity: 0.55;
+        }
+        50% {
+          transform: translateY(-7px);
+          opacity: 1;
+        }
+      }
+      @keyframes bs-twinkle {
+        0%,
+        100% {
+          opacity: 0;
+          transform: scale(0.5) rotate(0deg);
+        }
+        50% {
+          opacity: 0.9;
+          transform: scale(1) rotate(20deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bs-glow,
+        .bs-logo,
+        .bs-word,
+        .bs-tag,
+        .bs-dots,
+        .bs-dots i,
+        .bs-spark {
+          animation: none !important;
+        }
+        .bs-word,
+        .bs-tag,
+        .bs-dots {
+          opacity: 1;
+        }
+        .bs-spark {
+          opacity: 0.85;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-splash" aria-hidden="true" role="presentation">
+      <div class="bs-stage">
+        <div class="bs-logo-wrap">
+          <span class="bs-spark bs-spark--1"></span>
+          <span class="bs-spark bs-spark--2"></span>
+          <span class="bs-spark bs-spark--3"></span>
+          <span class="bs-spark bs-spark--4"></span>
+          <div class="bs-glow"></div>
+          <img class="bs-logo" src="/icons/icon-192.png" alt="Penda" width="132" height="132" />
+        </div>
+        <div class="bs-word">Penda</div>
+        <div class="bs-tag">AI-first money tracking</div>
+        <div class="bs-dots"><i></i><i></i><i></i></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

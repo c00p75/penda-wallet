@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { useLockStore } from '@/store/lockStore'
 import { SetupLockSheet } from '@/features/lock/SetupLockSheet'
+import { DeleteAccountDialog } from '@/features/account/DeleteAccountDialog'
 import { useThemeStore, type ThemeMode } from '@/store/themeStore'
 import { supabase } from '@/lib/supabase/client'
 import { useInstallPrompt } from '@/pwa/useInstallPrompt'
@@ -329,6 +330,18 @@ export function SettingsPage() {
       <Button variant="outline" onClick={() => supabase.auth.signOut()}>
         Sign out
       </Button>
+
+      <Card className="border-rose-200 dark:border-rose-950">
+        <CardHeader>
+          <CardTitle className="text-base text-rose-600 dark:text-rose-400">Danger zone</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted-foreground">
+            Delete your account and all your data. Wallets you share with others stay with them.
+          </p>
+          <DeleteAccountDialog />
+        </CardContent>
+      </Card>
 
       <SetupLockSheet open={setupLockOpen} onOpenChange={setSetupLockOpen} />
 

@@ -29,6 +29,39 @@ applyTheme()
 darkMedia.addEventListener('change', applyTheme)
 useThemeStore.subscribe(applyTheme)
 
+// Fade out the inlined boot splash (see index.html) once auth boot resolves.
+// A short floor keeps it from flickering on a warm/instant load; a hard cap
+// guarantees it never gets stuck if the session never resolves (e.g. offline).
+const SPLASH_MIN_MS = 1400
+const SPLASH_MAX_MS = 4000
+const splashStart = performance.now()
+let splashHidden = false
+
+function hideBootSplash() {
+  if (splashHidden) return
+  splashHidden = true
+  const el = document.getElementById('boot-splash')
+  if (!el) return
+  el.classList.add('bs-hidden')
+  const remove = () => el.remove()
+  el.addEventListener('transitionend', remove, { once: true })
+  window.setTimeout(remove, 800) // fallback if transitionend never fires
+}
+
+function maybeHideSplash() {
+  if (useAuthStore.getState().isLoading) return
+  const wait = Math.max(0, SPLASH_MIN_MS - (performance.now() - splashStart))
+  window.setTimeout(hideBootSplash, wait)
+}
+
+const stopSplashWatch = useAuthStore.subscribe(() => {
+  if (!useAuthStore.getState().isLoading) {
+    stopSplashWatch()
+    maybeHideSplash()
+  }
+})
+window.setTimeout(hideBootSplash, SPLASH_MAX_MS)
+
 const updateSW = registerSW({
   onNeedRefresh() {
     toast('A new version of Penda is available.', {
