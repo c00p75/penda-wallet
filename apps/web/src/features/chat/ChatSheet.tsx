@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Mic, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -237,6 +237,32 @@ export function ChatSheet({
     }
   }
 
+  // Drag-to-close on the top handle, iOS/Android bottom-sheet style. Only the
+  // handle initiates a drag (not the header or message list) so it doesn't
+  // fight with scrolling the conversation.
+  const DRAG_CLOSE_THRESHOLD = 120
+  const [dragY, setDragY] = useState(0)
+  const draggingRef = useRef(false)
+  const dragStartYRef = useRef(0)
+
+  function onHandlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    draggingRef.current = true
+    dragStartYRef.current = e.clientY
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function onHandlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return
+    setDragY(Math.max(0, e.clientY - dragStartYRef.current))
+  }
+
+  function onHandlePointerEnd() {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    if (dragY > DRAG_CLOSE_THRESHOLD) onOpenChange(false)
+    setDragY(0)
+  }
+
   const isRecording = recordMode !== 'idle'
   const statusText =
     voice.state === 'transcribing'
@@ -251,99 +277,126 @@ export function ChatSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
+        showCloseButton={false}
         // `data-[side=bottom]:h-[85svh]` matches the base sheet's own
         // `data-[side=bottom]:h-auto` in specificity (both are attribute-
         // scoped), so it actually overrides it — a plain `h-[85svh]` loses to
         // that attribute selector and the sheet grows unbounded with content.
-        className="flex h-[85svh] flex-col data-[side=bottom]:h-[85svh]"
+        // `rounded-t-[2rem]` + `overflow-hidden` match the ledger's
+        // transactions card so the two sheet surfaces read as one system.
+        className="flex h-[85svh] flex-col gap-0 overflow-hidden rounded-t-[2rem] p-0 data-[side=bottom]:h-[85svh]"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
         // and buttons stay visible while typing.
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
       >
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
-            Chat with {persona.name}
-          </SheetTitle>
-        </SheetHeader>
+        <div
+          className="flex h-full flex-col"
+          style={{
+            transform: dragY ? `translateY(${dragY}px)` : undefined,
+            transition: draggingRef.current ? 'none' : 'transform 200ms ease-out',
+          }}
+        >
+          <div
+            className="flex shrink-0 touch-none justify-center pt-3 pb-1"
+            onPointerDown={onHandlePointerDown}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerEnd}
+            onPointerCancel={onHandlePointerEnd}
+          >
+            <div className="h-1 w-10 rounded-full bg-border" />
+          </div>
 
-        <div className="flex-1 overflow-y-auto px-4">
-          {messages.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or hold
-              the mic to say it and release to send.
-            </p>
-          )}
-          <div className="flex flex-col gap-3 pb-4">
-            {messages.map((m) => (
-              <div key={m.id} className="flex flex-col gap-2">
-                <div
-                  className={
-                    m.role === 'user'
-                      ? 'ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
-                      : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
-                  }
-                >
-                  {m.text}
+          <SheetHeader className="flex-row items-center justify-between">
+            <SheetTitle className="flex items-center gap-2">
+              <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
+              Chat with {persona.name}
+            </SheetTitle>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon-sm">
+                <X className="size-4" />
+                <span className="sr-only">Close</span>
+              </Button>
+            </SheetClose>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-4">
+            {messages.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or hold
+                the mic to say it and release to send.
+              </p>
+            )}
+            <div className="flex flex-col gap-3 pb-4">
+              {messages.map((m) => (
+                <div key={m.id} className="flex flex-col gap-2">
+                  <div
+                    className={
+                      m.role === 'user'
+                        ? 'ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
+                        : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
+                    }
+                  >
+                    {m.text}
+                  </div>
+                  {m.pendingActions?.map((action) => (
+                    <PendingActionCard
+                      key={action.id}
+                      action={action}
+                      status={actionStatus[action.id]}
+                      busy={resolvingId === action.id}
+                      disabled={resolvingId !== null && resolvingId !== action.id}
+                      onResolve={resolveAction}
+                    />
+                  ))}
                 </div>
-                {m.pendingActions?.map((action) => (
-                  <PendingActionCard
-                    key={action.id}
-                    action={action}
-                    status={actionStatus[action.id]}
-                    busy={resolvingId === action.id}
-                    disabled={resolvingId !== null && resolvingId !== action.id}
-                    onResolve={resolveAction}
-                  />
-                ))}
-              </div>
-            ))}
-            {sendMessage.isPending && (
-              <div className="mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-                Thinking…
+              ))}
+              {sendMessage.isPending && (
+                <div className="mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  Thinking…
+                </div>
+              )}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="border-t p-4">
+            {statusText && (
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span className="relative flex size-2.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
+                </span>
+                {statusText}
               </div>
             )}
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="border-t p-4">
-          {statusText && (
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span className="relative flex size-2.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
-              </span>
-              {statusText}
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
+                autoComplete="off"
+              />
+              <Button
+                type="button"
+                variant={isRecording ? 'destructive' : 'outline'}
+                size="icon"
+                disabled={voice.state === 'transcribing'}
+                onPointerDown={onMicPointerDown}
+                onPointerUp={onMicPointerUp}
+                onPointerCancel={onMicPointerCancel}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={onMicClick}
+                className={cn('touch-none', isRecording && 'animate-pulse')}
+                aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
+                aria-pressed={isRecording}
+              >
+                <Mic className="size-4" />
+              </Button>
+              <Button type="submit" disabled={sendMessage.isPending}>
+                Send
+              </Button>
             </div>
-          )}
-          <div className="flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
-              autoComplete="off"
-            />
-            <Button
-              type="button"
-              variant={isRecording ? 'destructive' : 'outline'}
-              size="icon"
-              disabled={voice.state === 'transcribing'}
-              onPointerDown={onMicPointerDown}
-              onPointerUp={onMicPointerUp}
-              onPointerCancel={onMicPointerCancel}
-              onContextMenu={(e) => e.preventDefault()}
-              onClick={onMicClick}
-              className={cn('touch-none', isRecording && 'animate-pulse')}
-              aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
-              aria-pressed={isRecording}
-            >
-              <Mic className="size-4" />
-            </Button>
-            <Button type="submit" disabled={sendMessage.isPending}>
-              Send
-            </Button>
-          </div>
-        </form>
+          </form>
+        </div>
       </SheetContent>
     </Sheet>
   )
