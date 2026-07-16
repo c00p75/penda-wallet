@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Plus, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { Clay3DIcon } from '@/components/Clay'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
@@ -257,8 +256,7 @@ export function BudgetsPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header className="flex items-center gap-2.5">
-        <Clay3DIcon name="piggybank" accent="#22a45d" size={30} />
+      <header>
         <h1 className="text-xl font-semibold">How am I doing?</h1>
       </header>
 
@@ -319,12 +317,9 @@ export function BudgetsPage() {
 
       {tab === 'budgets' ? (
         budgets.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
-            <Clay3DIcon name="piggybank" accent="#22a45d" size={64} />
-            <div className="flex flex-col gap-1">
-              <p className="font-medium">No budgets yet</p>
-              <p className="text-sm">Tap + to set a weekly or monthly spending limit.</p>
-            </div>
+          <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
+            <p className="font-medium">No budgets yet</p>
+            <p className="text-sm">Tap + to set a weekly or monthly spending limit.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">

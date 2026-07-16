@@ -1,5 +1,4 @@
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import { Clay3DIcon } from '@/components/Clay'
 import { formatMoney } from '@/lib/money'
 import type { Transaction } from '@/features/transactions/types'
 
@@ -22,12 +21,7 @@ export function CategoryBarChart({ transactions, currency }: CategoryBarChartPro
     .slice(0, 8)
 
   if (data.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
-        <Clay3DIcon name="chart" accent="#5b6ee6" size={56} />
-        <p className="text-sm">No spending yet this month.</p>
-      </div>
-    )
+    return <p className="py-8 text-center text-sm text-muted-foreground">No spending yet this month.</p>
   }
 
   return (

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Clay3DIcon } from '@/components/Clay'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
@@ -190,12 +189,7 @@ export function GoalsPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header className="flex items-center gap-2.5">
-        <Clay3DIcon
-          name={tab === 'goals' ? 'target' : 'coins'}
-          accent={tab === 'goals' ? '#eaa03c' : '#d98a3c'}
-          size={30}
-        />
+      <header>
         <h1 className="text-xl font-semibold">{tab === 'goals' ? 'Will I make it?' : 'What do I owe?'}</h1>
       </header>
 
@@ -212,12 +206,9 @@ export function GoalsPage() {
 
       {tab === 'goals' ? (
         goals.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
-            <Clay3DIcon name="target" accent="#eaa03c" size={64} />
-            <div className="flex flex-col gap-1">
-              <p className="font-medium">No savings goals yet</p>
-              <p className="text-sm">Tap + to start saving toward something.</p>
-            </div>
+          <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
+            <p className="font-medium">No savings goals yet</p>
+            <p className="text-sm">Tap + to start saving toward something.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -236,12 +227,9 @@ export function GoalsPage() {
           </div>
         )
       ) : debts.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
-          <Clay3DIcon name="coins" accent="#d98a3c" size={64} />
-          <div className="flex flex-col gap-1">
-            <p className="font-medium">No debts tracked</p>
-            <p className="text-sm">Tap + to track a loan or an IOU either direction.</p>
-          </div>
+        <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
+          <p className="font-medium">No debts tracked</p>
+          <p className="text-sm">Tap + to track a loan or an IOU either direction.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
