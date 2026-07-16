@@ -4,7 +4,7 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-15 (rev 10)
+Last updated: 2026-07-16 (rev 11)
 
 ---
 
@@ -129,4 +129,4 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 ### Security & Data Control
 *Table stakes for a money app, and a trust play — hardens who can open the app, complementing the AI-action guardrails that harden what the AI can do. (App lock shipped — see above.)*
 - **Data export** — ✅ shipped. Download the wallet's full financial history as structured JSON or a flat transactions CSV, client-side against the user's own RLS-scoped data.
-- **Account & data deletion** — 🟡 in progress (a self-serve delete path is being built; not yet verified complete as of this writing). Compliance requirement the moment we publish.
+- **Account & data deletion** — ✅ shipped. Type-DELETE-to-confirm dialog in Settings → `delete-account` edge function: authenticates the caller, then a service-role client wipes their data. Shared-wallet policy: a wallet with any other member survives (authorship hands off, promoting the most-tenured member to owner if you were the only one); only a wallet where you're the last member is deleted. Compliance requirement met for publish.
