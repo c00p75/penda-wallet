@@ -1,4 +1,5 @@
 import type { ProfileMode } from './modes'
+import type { Gender, IncomeRange, PrimaryGoal } from './onboardingOptions'
 
 export type AiPersonality =
   | 'balanced_coach'
@@ -19,13 +20,23 @@ export interface Profile {
   default_currency: string
   ai_personality: AiPersonality
   mode: ProfileMode
+  household_size: number | null
+  primary_goal: PrimaryGoal | null
+  income_range: IncomeRange | null
+  gender: Gender
+  notification_opt_in: boolean
   created_at: string
 }
 
 export interface ProfileInput {
-  display_name: string | null
-  ai_personality: AiPersonality
-  mode: ProfileMode
+  display_name?: string | null
+  ai_personality?: AiPersonality
+  mode?: ProfileMode
+  household_size?: number | null
+  primary_goal?: PrimaryGoal | null
+  income_range?: IncomeRange | null
+  gender?: Gender
+  notification_opt_in?: boolean
 }
 
 export interface PersonalityMeta {

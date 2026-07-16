@@ -51,6 +51,7 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
   const [mode, setMode] = useState<ProfileMode>('individual')
+  const [notificationOptIn, setNotificationOptIn] = useState(true)
   const [setupLockOpen, setSetupLockOpen] = useState(false)
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export function SettingsPage() {
     setDisplayName(profile.display_name ?? '')
     setPersonality(profile.ai_personality)
     setMode(profile.mode)
+    setNotificationOptIn(profile.notification_opt_in)
   }, [profile])
 
   if (!session) return <Navigate to="/login" replace />
@@ -68,6 +70,7 @@ export function SettingsPage() {
         display_name: displayName.trim() || null,
         ai_personality: personality,
         mode,
+        notification_opt_in: notificationOptIn,
       })
       toast('Settings saved.')
     } catch (error) {
@@ -79,7 +82,8 @@ export function SettingsPage() {
     !!profile &&
     (displayName !== (profile.display_name ?? '') ||
       personality !== profile.ai_personality ||
-      mode !== profile.mode)
+      mode !== profile.mode ||
+      notificationOptIn !== profile.notification_opt_in)
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
@@ -211,6 +215,16 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-3">
+          <p className="text-sm">Budget alerts &amp; bill reminders</p>
+          <Switch checked={notificationOptIn} onCheckedChange={setNotificationOptIn} aria-label="Notifications" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Categories</CardTitle>
         </CardHeader>
         <CardContent>
@@ -331,9 +345,9 @@ export function SettingsPage() {
         Sign out
       </Button>
 
-      <Card className="border-rose-200 dark:border-rose-950">
+      <Card className="border-[var(--rose-soft)]">
         <CardHeader>
-          <CardTitle className="text-base text-rose-600 dark:text-rose-400">Danger zone</CardTitle>
+          <CardTitle className="text-base text-[var(--rose)]">Danger zone</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-start gap-2">
           <p className="text-sm text-muted-foreground">

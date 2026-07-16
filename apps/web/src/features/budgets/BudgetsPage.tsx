@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus, Sparkles } from 'lucide-react'
+import { Lightbulb, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -272,12 +272,75 @@ export function BudgetsPage() {
       </ToggleGroup>
 
       {tab === 'budgets' && (
-        <SpendingPlanCard
-          walletId={wallet.id}
-          currency={wallet.base_currency}
-          transactions={transactions}
+        <SpendingPlanCard walletId={wallet.id} currency={wallet.base_currency} transactions={transactions} />
+      )}
+
+      {tab === 'budgets' && suggestions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setSuggestOpen(true)}
+          className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left transition-colors hover:bg-accent/60"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+            <Lightbulb className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Suggest budgets</p>
+            <p className="text-sm text-muted-foreground">
+              {historySuggestions.length > 0
+                ? 'Optimize based on your spending habits'
+                : `Get ${suggestions.length} starter budget${suggestions.length === 1 ? '' : 's'} to begin`}
+            </p>
+          </div>
+        </button>
+      )}
+
+      {tab === 'budgets' ? (
+        <div className="flex flex-col gap-2">
+          <h2 className="px-1 text-base font-semibold">Categories</h2>
+          {budgets.length === 0 && (
+            <p className="px-1 text-sm text-muted-foreground">
+              No budgets yet — tap Add New to set a weekly or monthly spending limit.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            {progress.map((p) => (
+              <BudgetProgressCard
+                key={p.budget_id}
+                progress={p}
+                category={categories.find((c) => c.id === p.category_id) ?? null}
+                currency={wallet.base_currency}
+                onSelect={() => {
+                  const budget = budgets.find((b) => b.id === p.budget_id)
+                  if (budget) {
+                    setEditingBudget(budget)
+                    setBudgetFormOpen(true)
+                  }
+                }}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingBudget(null)
+                setBudgetFormOpen(true)
+              }}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              <Plus className="size-5" />
+              <span className="text-sm font-medium">Add New</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <RecurringList
           recurring={recurring}
-          goals={goals}
+          categories={categories}
+          onSelect={(rule) => {
+            setEditingRecurring(rule)
+            setRecurringFormOpen(true)
+          }}
+          onToggleActive={(rule, isActive) => setRecurringActive.mutate({ id: rule.id, isActive })}
         />
       )}
 
@@ -302,72 +365,19 @@ export function BudgetsPage() {
         </div>
       )}
 
-      {tab === 'budgets' && suggestions.length > 0 && (
+      {tab === 'recurring' && (
         <Button
-          variant="outline"
-          onClick={() => setSuggestOpen(true)}
-          className="justify-start gap-2 border-dashed"
-        >
-          <Sparkles className="size-4 text-primary" />
-          {historySuggestions.length > 0
-            ? `Suggest ${suggestions.length} budget${suggestions.length === 1 ? '' : 's'} from your spending`
-            : `Get ${suggestions.length} starter budget${suggestions.length === 1 ? '' : 's'} to begin`}
-        </Button>
-      )}
-
-      {tab === 'budgets' ? (
-        budgets.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
-            <p className="font-medium">No budgets yet</p>
-            <p className="text-sm">Tap + to set a weekly or monthly spending limit.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {progress.map((p) => (
-              <BudgetProgressCard
-                key={p.budget_id}
-                progress={p}
-                category={categories.find((c) => c.id === p.category_id) ?? null}
-                currency={wallet.base_currency}
-                onSelect={() => {
-                  const budget = budgets.find((b) => b.id === p.budget_id)
-                  if (budget) {
-                    setEditingBudget(budget)
-                    setBudgetFormOpen(true)
-                  }
-                }}
-              />
-            ))}
-          </div>
-        )
-      ) : (
-        <RecurringList
-          recurring={recurring}
-          categories={categories}
-          onSelect={(rule) => {
-            setEditingRecurring(rule)
-            setRecurringFormOpen(true)
-          }}
-          onToggleActive={(rule, isActive) => setRecurringActive.mutate({ id: rule.id, isActive })}
-        />
-      )}
-
-      <Button
-        onClick={() => {
-          if (tab === 'budgets') {
-            setEditingBudget(null)
-            setBudgetFormOpen(true)
-          } else {
+          onClick={() => {
             setEditingRecurring(null)
             setRecurringFormOpen(true)
-          }
-        }}
-        size="icon"
-        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-lg"
-        aria-label={tab === 'budgets' ? 'Add budget' : 'Add recurring transaction'}
-      >
-        <Plus className="size-6" />
-      </Button>
+          }}
+          size="icon"
+          className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-lg"
+          aria-label="Add recurring transaction"
+        >
+          <Plus className="size-6" />
+        </Button>
+      )}
 
       <BudgetForm
         open={budgetFormOpen}

@@ -1,42 +1,13 @@
-import { useRef, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
-import {
-  BarChart3,
-  CalendarRange,
-  Camera,
-  ClipboardPaste,
-  CloudOff,
-  MessageCircle,
-  Mic,
-  NotebookPen,
-  PiggyBank,
-  Plus,
-  Settings,
-  Sparkles,
-  Users,
-} from 'lucide-react'
+import { useState } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
-import { enqueueTransaction } from '@/pwa/offlineQueue'
-import { useOfflineQueue } from '@/pwa/useOfflineQueue'
-import { InstallBanner } from '@/pwa/InstallBanner'
 import { useCurrentWallet } from '@/features/wallets/hooks'
-import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
-import { useWalletPresence } from '@/features/wallets/useWalletPresence'
-import { WalletSheet } from '@/features/wallets/WalletSheet'
-import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { useCategories } from '@/features/categories/hooks'
 import { useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
-import { useProfile } from '@/features/profile/hooks'
-import { useEntitlement } from '@/features/entitlements/hooks'
-import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
-import type { CoachingAction, CoachingKind } from '@/features/coaching/detectCoachingInsights'
-import { InsightCarousel, type InsightCard } from '@/features/coaching/InsightCarousel'
-import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
-import type { PremiumFeature } from '@/features/entitlements/types'
 import {
   useCreateTransaction,
   useDeleteTransaction,
@@ -45,31 +16,66 @@ import {
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
 import { TransactionList } from '@/features/transactions/TransactionList'
-import { MoMoPasteSheet, parsedToDraft } from '@/features/transactions/MoMoPasteSheet'
-import { parseMoMoText } from '@/features/transactions/momoParser'
-import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
-import { useChatStore } from '@/features/chat/chatStore'
-import { useUploadReceipt } from '@/features/receipts/hooks'
-import { formatMoney } from '@/lib/money'
-import { BalanceSummary } from './BalanceSummary'
+import type { Transaction, TransactionInput } from '@/features/transactions/types'
+import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
+import type { CoachingAction, CoachingInsight } from '@/features/coaching/detectCoachingInsights'
 import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { shouldPromptReconciliation } from '@/features/reconciliation/reconcile'
+import { cn } from '@/lib/utils'
 
-// Bold prefix each coaching insight wears in the carousel, by kind.
-const TIP_LABEL: Record<CoachingKind, string | undefined> = {
-  attention: 'Heads up:',
-  opportunity: 'Pro tip:',
-  observability: 'Pro tip:',
-  celebration: undefined,
+function AiInsightActionCard({
+  insight,
+  onAction,
+  onDismiss,
+}: {
+  insight: CoachingInsight
+  onAction: (action: CoachingAction) => void
+  onDismiss: () => void
+}) {
+  return (
+    <div
+      className="relative rounded-2xl border-2 p-4"
+      style={{ borderColor: 'var(--iris)', background: 'color-mix(in srgb, var(--iris) 8%, var(--card))' }}
+    >
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss insight"
+        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+      >
+        <X className="size-4" />
+      </button>
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--iris)' }}>
+        <Sparkles className="size-3.5" />
+        AI Insight
+      </div>
+      <p className="pr-6 text-sm leading-snug">{insight.text}</p>
+      {insight.action && (
+        <div className="mt-3 flex gap-2">
+          <Button
+            size="sm"
+            className="rounded-full"
+            onClick={() => {
+              onAction(insight.action!)
+              onDismiss()
+            }}
+          >
+            {insight.action.label}
+          </Button>
+          <Button size="sm" variant="secondary" className="rounded-full" onClick={onDismiss}>
+            Ignore
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
-  const isAuthLoading = useAuthStore((s) => s.isLoading)
   const navigate = useNavigate()
-  const openChat = useChatStore((s) => s.openChat)
-  const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
+  const { data: wallet } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
   const { data: budgets = [] } = useBudgets(wallet?.id)
@@ -78,74 +84,24 @@ export function LedgerPage() {
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
   const deleteTransaction = useDeleteTransaction(wallet?.id)
-  const uploadReceipt = useUploadReceipt(wallet?.id)
 
-  const { data: profile } = useProfile(session?.user.id)
-  const { isPremium } = useEntitlement(session?.user.id)
   const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
-  const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
-  const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteInitialText, setPasteInitialText] = useState('')
-  const [walletSheetOpen, setWalletSheetOpen] = useState(false)
-  const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
-  const receiptInputRef = useRef<HTMLInputElement>(null)
-
-  useWalletRealtime(wallet?.id)
-  const present = useWalletPresence(wallet?.id, session?.user.id, session?.user.email ?? '')
-  const offlineQueue = useOfflineQueue()
+  const [dismissedInsightIds, setDismissedInsightIds] = useState<Set<string>>(new Set())
 
   function openAddForm() {
     setEditing(null)
-    setMomoDraft(null)
     setFormOpen(true)
-  }
-
-  // Tapping the paste chip first tries the clipboard silently; if that yields a
-  // parseable MoMo message we skip straight to the confirm form. Otherwise we
-  // open the paste sheet (prefilled with whatever was on the clipboard).
-  async function openPaste() {
-    let clip = ''
-    try {
-      clip = (await navigator.clipboard?.readText()) ?? ''
-    } catch {
-      // Clipboard read blocked (permissions / unsupported) — fall back to paste.
-    }
-    const parsed = clip ? parseMoMoText(clip) : null
-    if (parsed) {
-      setEditing(null)
-      setMomoDraft(parsedToDraft(parsed))
-      setFormOpen(true)
-      return
-    }
-    setPasteInitialText(clip)
-    setPasteOpen(true)
   }
 
   function openEditForm(tx: Transaction) {
     setEditing(tx)
-    setMomoDraft(null)
     setFormOpen(true)
   }
 
-  async function saveOffline(input: TransactionInput) {
-    if (!wallet || !session) return
-    await enqueueTransaction(wallet.id, session.user.id, input)
-    await offlineQueue.refreshCount()
-    toast("Saved offline — it'll sync when you're back online.")
-  }
-
   async function handleSubmit(input: TransactionInput) {
-    // Queue new entries immediately when offline rather than letting the
-    // request hang on the auth lock until reconnect. Edits are never queued:
-    // they carry a version check that must run against the live row.
-    if (!editing && !navigator.onLine) {
-      await saveOffline(input)
-      return
-    }
-
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
@@ -156,11 +112,6 @@ export function LedgerPage() {
         toast('Transaction added.')
       }
     } catch (error) {
-      // Fallback for a network that broke without navigator.onLine noticing.
-      if (!editing && error instanceof TypeError) {
-        await saveOffline(input)
-        return
-      }
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
   }
@@ -177,76 +128,26 @@ export function LedgerPage() {
     }
   }
 
-  async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  if (!session) return <Navigate to="/login" replace />
+  if (!wallet) return null
 
-    const toastId = toast.loading('Scanning receipt…')
-    try {
-      const draft = await uploadReceipt.mutateAsync(file)
-      toast.dismiss(toastId)
-      setEditing(draft)
-      setFormOpen(true)
-    } catch (error) {
-      toast.dismiss(toastId)
-      toast.error(error instanceof Error ? error.message : 'Could not read that receipt.')
-    }
-  }
+  const currency = wallet.base_currency
 
-  if (isAuthLoading) {
-    return null
-  }
-
-  if (!session) {
-    return <Navigate to="/login" replace />
-  }
-
-  if (isWalletLoading) {
-    return null
-  }
-
-  if (wallets.length === 0) {
-    return <OnboardingScreen />
-  }
-
-  if (!wallet) {
-    return null
-  }
-
-  const firstName = profile?.display_name?.split(' ')[0]
-
-  // AI speaks first: a grounded read of the last 7 days from real transactions.
-  const weekCutoff = new Date()
-  weekCutoff.setDate(weekCutoff.getDate() - 7)
-  const weekCutoffStr = weekCutoff.toISOString().slice(0, 10)
-  const last7Spent = transactions
-    .filter((tx) => tx.type === 'expense' && tx.transaction_date >= weekCutoffStr)
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
-  const weekInsight =
-    last7Spent > 0
-      ? `You’ve spent ${formatMoney(last7Spent, wallet.base_currency)} in the last 7 days.`
-      : 'Nothing logged this week yet — tell me about a purchase and I’ll take it from there.'
-
-  // Balance reconciliation — the trust anchor (bet #2): a light daily check
-  // that the computed balance still matches reality, before anything built on
-  // top of it (safe-to-spend, cashflow, the simulator) gets trusted.
   const balanceMinor = transactions.reduce(
     (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
     0,
   )
+
   const showReconcile =
-    !!session &&
     transactions.length > 0 &&
     latestReconciliation !== undefined &&
     shouldPromptReconciliation(latestReconciliation, new Date())
 
-  const walletCurrency = wallet.base_currency
   async function handleReconcileAdjust(deltaMinor: number) {
     await createTransaction.mutateAsync({
       category_id: null,
       amount_minor: Math.abs(deltaMinor),
-      currency: walletCurrency,
+      currency,
       type: deltaMinor > 0 ? 'income' : 'expense',
       merchant: null,
       description: 'Balance reconciliation adjustment',
@@ -254,27 +155,9 @@ export function LedgerPage() {
     })
   }
 
-  // The weekly read leads the deck; proactive coaching insights follow as
-  // swipeable pro-tip cards, each with its one-tap action.
-  const coachingInsights = detectCoachingInsights({
-    transactions,
-    budgets,
-    goals,
-    currency: wallet.base_currency,
-  })
-  const insightCards: InsightCard[] = [
-    { id: 'week-read', variant: 'read', tone: 'default', text: weekInsight },
-    ...coachingInsights.map((insight) => ({
-      id: insight.id,
-      variant: 'tip' as const,
-      tone: insight.tone,
-      label: TIP_LABEL[insight.kind],
-      text: insight.text,
-      action: insight.action
-        ? { label: insight.action.label, onTap: () => runInsightAction(insight.action!) }
-        : undefined,
-    })),
-  ]
+  const coachingInsights = detectCoachingInsights({ transactions, budgets, goals, currency }).filter(
+    (insight) => !dismissedInsightIds.has(insight.id),
+  )
 
   function runInsightAction(action: CoachingAction) {
     switch (action.kind) {
@@ -289,181 +172,80 @@ export function LedgerPage() {
     }
   }
 
-  const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
-    { icon: ClipboardPaste, label: 'Paste MoMo text', onTap: openPaste },
-    { icon: CalendarRange, label: 'Cashflow timeline', onTap: () => navigate('/cashflow') },
-    { icon: NotebookPen, label: 'Journal', onTap: () => navigate('/journal') },
-    { icon: Sparkles, label: 'What if…', onTap: () => navigate('/simulator') },
-    { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
-    {
-      icon: Camera,
-      label: 'Scan a receipt',
-      onTap: () => (isPremium ? receiptInputRef.current?.click() : setPaywallFeature('receipt-scan')),
-    },
-    { icon: BarChart3, label: 'What did I spend this week?', onTap: () => openChat('What did I spend this week?') },
-    { icon: PiggyBank, label: 'How are my budgets?', onTap: () => openChat('How are my budgets doing?') },
-  ]
+  function dismissInsight(id: string) {
+    setDismissedInsightIds((prev) => new Set(prev).add(id))
+  }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-36">
-      <header className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setWalletSheetOpen(true)}
-          className="flex items-center gap-2 rounded-full border bg-card py-1.5 pl-3 pr-2 text-left shadow-xs"
-        >
-          <span className="text-sm font-medium">{wallet.name}</span>
-          {offlineQueue.pendingCount > 0 && (
-            <span
-              className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-              title="Waiting to sync"
-            >
-              <CloudOff className="size-3" />
-              {offlineQueue.pendingCount}
-            </span>
-          )}
-          <span className="flex -space-x-1.5">
-            {present.length > 1 ? (
-              present.slice(0, 3).map((p) => (
-                <span
-                  key={p.userId}
-                  title={p.label}
-                  className="flex size-5 items-center justify-center rounded-full border-2 border-background bg-primary text-[9px] font-medium text-primary-foreground"
-                >
-                  {p.label.slice(0, 1).toUpperCase()}
-                </span>
-              ))
-            ) : (
-              <Users className="size-4 text-muted-foreground" />
-            )}
-          </span>
-        </button>
-        <input
-          ref={receiptInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleReceiptSelected}
-        />
-        <Button variant="ghost" size="icon" className="rounded-full border bg-card shadow-xs" asChild>
-          <Link to="/settings" aria-label="Settings">
-            <Settings className="size-5" />
-          </Link>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-28">
+      <header className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+          <ArrowLeft className="size-5" />
         </Button>
+        <h1 className="text-xl font-semibold">Transactions</h1>
       </header>
 
-      <InstallBanner />
-
-      <section
-        className="flex flex-col gap-5 rounded-3xl p-5 pt-7"
-        style={{
-          background:
-            'radial-gradient(120% 90% at 50% 110%, var(--hero-glow) -40%, transparent 60%), linear-gradient(180deg, var(--hero-from) 0%, var(--hero-via) 60%, var(--hero-to) 100%)',
-        }}
-      >
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="rounded-full bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            AI money assistant
-          </span>
-          <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight">
-            Hello{firstName ? ` ${firstName}` : ''},
-            <br />
-            how can I help today?
-          </h1>
+      {coachingInsights.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {coachingInsights.map((insight) => (
+            <AiInsightActionCard
+              key={insight.id}
+              insight={insight}
+              onAction={runInsightAction}
+              onDismiss={() => dismissInsight(insight.id)}
+            />
+          ))}
         </div>
-
-        <BalanceSummary transactions={transactions} currency={wallet.base_currency} mode={profile?.mode} />
-      </section>
-
-      <InsightCarousel cards={insightCards} />
+      )}
 
       {showReconcile && session && (
         <ReconcilePrompt
           walletId={wallet.id}
           userId={session.user.id}
-          currency={wallet.base_currency}
+          currency={currency}
           computedBalanceMinor={balanceMinor}
           onResolved={() => {}}
           onAdjust={handleReconcileAdjust}
         />
       )}
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-        {suggestions.map(({ icon: Icon, label, onTap }) => (
-          <button
-            key={label}
-            type="button"
-            onClick={onTap}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-3.5 py-2 text-sm font-medium shadow-xs hover:bg-accent"
-          >
-            <Icon className="size-4 text-primary" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {isTransactionsLoading ? null : (
+      {isTransactionsLoading ? (
+        <div className={cn('flex flex-col gap-3 pt-2')}>
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-1 py-2">
+              <div className="size-10 animate-pulse rounded-full bg-muted" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <div className="h-3 w-32 animate-pulse rounded-full bg-muted" />
+                <div className="h-2.5 w-20 animate-pulse rounded-full bg-muted" />
+              </div>
+              <div className="h-3 w-16 animate-pulse rounded-full bg-muted" />
+            </div>
+          ))}
+        </div>
+      ) : (
         <TransactionList transactions={transactions} onSelect={openEditForm} />
       )}
 
-      <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40">
-        <div className="mx-auto flex max-w-md items-center gap-2 px-4 pb-2">
-          <Button
-            onClick={openAddForm}
-            size="icon"
-            className="size-12 shrink-0 rounded-full shadow-lg"
-            aria-label="Add transaction"
-          >
-            <Plus className="size-5" />
-          </Button>
-          <button
-            type="button"
-            onClick={() => openChat()}
-            className="flex h-12 flex-1 items-center justify-between rounded-full border bg-card pl-4 pr-1.5 text-left shadow-lg"
-            aria-label="Ask Penda"
-          >
-            <span className="text-sm text-muted-foreground">Ask Penda anything…</span>
-            <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Mic className="size-4" />
-            </span>
-          </button>
-        </div>
-      </div>
+      <Button
+        onClick={openAddForm}
+        size="icon"
+        className="fixed bottom-6 right-6 size-14 rounded-full shadow-lg"
+        aria-label="Add transaction"
+      >
+        <Plus className="size-6" />
+      </Button>
 
       <TransactionForm
         open={formOpen}
         onOpenChange={setFormOpen}
         categories={categories}
-        currency={wallet.base_currency}
+        currency={currency}
         transaction={editing}
-        draft={momoDraft}
+        draft={null}
         onSubmit={handleSubmit}
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
       />
-
-      <MoMoPasteSheet
-        open={pasteOpen}
-        onOpenChange={setPasteOpen}
-        initialText={pasteInitialText}
-        onParsed={(draft) => {
-          setPasteOpen(false)
-          setEditing(null)
-          setMomoDraft(draft)
-          setFormOpen(true)
-        }}
-        onFallbackToAi={(text) => {
-          setPasteOpen(false)
-          openChat(text)
-        }}
-      />
-
-      <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
-
-      <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
-
-      <BottomNav />
     </main>
   )
 }

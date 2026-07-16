@@ -221,7 +221,7 @@ function Metric({ label, value, alert }: { label: string; value: string; alert?:
   return (
     <div className="rounded-2xl border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn('text-lg font-semibold', alert && 'text-rose-600 dark:text-rose-400')}>{value}</p>
+      <p className={cn('text-lg font-semibold', alert && 'text-[var(--rose)]')}>{value}</p>
     </div>
   )
 }

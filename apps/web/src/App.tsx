@@ -1,12 +1,13 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { LedgerPage } from '@/features/ledger/LedgerPage'
+import { HomePage } from '@/features/home/HomePage'
 import { AmbientChat } from '@/features/chat/AmbientChat'
 import { LockPrompt } from '@/features/lock/UnlockSheet'
 
-// Every other route is code-split — the home ledger is the only page that
+// Every other route is code-split — the home dashboard is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
 const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
+const LedgerPage = lazy(() => import('@/features/ledger/LedgerPage').then((m) => ({ default: m.LedgerPage })))
 const AnalyticsPage = lazy(() =>
   import('@/features/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })),
 )
@@ -31,7 +32,8 @@ function App() {
     <>
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<LedgerPage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/transactions" element={<LedgerPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/budgets" element={<BudgetsPage />} />

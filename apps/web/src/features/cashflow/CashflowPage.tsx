@@ -121,7 +121,7 @@ function TimelineRow({ day, currency, isLowest }: { day: ProjectedDay; currency:
       <span
         className={cn(
           'absolute -left-[1.3rem] top-3 size-2.5 rounded-full border-2 border-background',
-          negative ? 'bg-rose-500' : hasEvents ? 'bg-primary' : 'bg-muted-foreground/40',
+          negative ? 'bg-[var(--rose)]' : hasEvents ? 'bg-primary' : 'bg-muted-foreground/40',
         )}
         aria-hidden
       />
@@ -137,8 +137,8 @@ function TimelineRow({ day, currency, isLowest }: { day: ProjectedDay; currency:
                   className={cn(
                     'rounded-full px-2 py-0.5 text-xs font-medium',
                     e.kind === 'income'
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                      ? 'bg-[var(--mint-soft)] text-[var(--mint)]'
+                      : 'bg-[var(--rose-soft)] text-[var(--rose)]',
                   )}
                 >
                   {e.amountMinor > 0 ? '+' : ''}
@@ -151,7 +151,7 @@ function TimelineRow({ day, currency, isLowest }: { day: ProjectedDay; currency:
       <span
         className={cn(
           'shrink-0 text-sm tabular-nums',
-          negative ? 'font-semibold text-rose-600 dark:text-rose-400' : isLowest ? 'font-semibold text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+          negative ? 'font-semibold text-[var(--rose)]' : isLowest ? 'font-semibold text-[var(--apricot)]' : 'text-muted-foreground',
         )}
       >
         {formatMoney(day.balanceMinor, currency)}

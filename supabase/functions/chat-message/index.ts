@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
     const currency = await fetchWalletCurrency(supabase, body.walletId)
 
     const tools = buildTools(categories)
-    const systemInstruction = buildSystemInstruction(profile.personality, profile.mode, currency, memories)
+    const systemInstruction = buildSystemInstruction(profile, currency, memories)
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -503,9 +503,86 @@ async function fetchCategorizationRules(supabase: SupabaseClient, walletId: stri
   return data ?? []
 }
 
-async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<{ personality: string; mode: string }> {
-  const { data } = await supabase.from('profiles').select('ai_personality, mode').eq('id', userId).maybeSingle()
-  return { personality: data?.ai_personality ?? 'balanced_coach', mode: data?.mode ?? 'individual' }
+interface ChatProfile {
+  personality: string
+  mode: string
+  primaryGoal: string | null
+  householdSize: number | null
+  incomeRange: string | null
+  gender: string
+}
+
+async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<ChatProfile> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('ai_personality, mode, primary_goal, household_size, income_range, gender')
+    .eq('id', userId)
+    .maybeSingle()
+  return {
+    personality: data?.ai_personality ?? 'balanced_coach',
+    mode: data?.mode ?? 'individual',
+    primaryGoal: data?.primary_goal ?? null,
+    householdSize: data?.household_size ?? null,
+    incomeRange: data?.income_range ?? null,
+    gender: data?.gender ?? 'prefer_not_to_say',
+  }
+}
+
+// Third-person phrasing for the goal, kept separate from any user-facing UI
+// label since this is echoed straight into the system prompt.
+const GOAL_LABELS: Record<string, string> = {
+  build_emergency_fund: 'build an emergency fund',
+  pay_off_debt: 'pay off debt',
+  save_for_something: 'save for something specific',
+  track_spending: 'track their spending more closely',
+}
+
+const INCOME_RANGE_LABELS: Record<string, string> = {
+  tight: 'Tight',
+  stable: 'Stable',
+  comfortable: 'Comfortable',
+}
+
+const GENDER_LABELS: Record<string, string> = {
+  woman: 'a woman',
+  man: 'a man',
+  non_binary: 'non-binary',
+}
+
+// Onboarding-collected context, woven into the system prompt. The gender line
+// is a hard requirement, not a suggestion: it may only ever shape tone, never
+// financial advice, calculations, or any other logic — see migration
+// 0029_onboarding_profile_fields.sql.
+function buildUserContextSection(profile: ChatProfile): string {
+  const lines: string[] = []
+
+  if (profile.primaryGoal && GOAL_LABELS[profile.primaryGoal]) {
+    lines.push(
+      `Their stated primary financial goal right now is to ${GOAL_LABELS[profile.primaryGoal]}. Where relevant, connect your guidance back to this without being repetitive about it.`,
+    )
+  }
+
+  if (profile.householdSize && profile.mode !== 'individual') {
+    const noun = profile.mode === 'business' ? 'team' : 'household'
+    lines.push(`They are managing money for a ${noun} of ${profile.householdSize} people.`)
+  }
+
+  if (profile.incomeRange && INCOME_RANGE_LABELS[profile.incomeRange]) {
+    lines.push(
+      `They describe their financial situation as "${INCOME_RANGE_LABELS[profile.incomeRange]}" — a qualitative ` +
+        'band, not an exact figure. Never ask for or assume a specific income number from this alone.',
+    )
+  }
+
+  if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {
+    lines.push(
+      `The user identifies as ${GENDER_LABELS[profile.gender]}. Use this ONLY to make tone and phrasing feel ` +
+        'natural — it must NEVER influence financial advice, calculations, risk framing, or any other logic. ' +
+        'Treat all users identically in the substance of your guidance regardless of this field.',
+    )
+  }
+
+  return lines.length > 0 ? `\n\n${lines.join(' ')}` : ''
 }
 
 interface Memory {
@@ -534,16 +611,16 @@ async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): 
   return data?.base_currency ?? 'USD'
 }
 
-function buildSystemInstruction(personality: string, mode: string, currency: string, memories: Memory[]): string {
+function buildSystemInstruction(profile: ChatProfile, currency: string, memories: Memory[]): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
-  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
+  const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
   const houseRules = `You are ${personaName}, an AI assistant persona embedded in Penda, a personal finance
 app. Penda is the app you live in, not your name — always introduce and refer to yourself as
 ${personaName}, never as "Penda". Your job in this conversation is to help the user log
 transactions by talking naturally — you are not a generic chatbot, you are the primary way this
 user records spending and income.
 
-${MODE_AI_CONTEXT[mode] ?? MODE_AI_CONTEXT.individual}
+${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
 
 This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
 everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
@@ -596,7 +673,7 @@ work" — kind "mood" with a short mood label). Use it sparingly, for things gen
 later, not routine transaction chatter. Weave anything relevant from what you already remember (below)
 into your replies naturally — don't just list it back.${buildMemorySection(memories)}`
 
-  const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
   return `${houseRules}\n\n${personalityFragment}\n\nToday's date is ${today()}.`
 }

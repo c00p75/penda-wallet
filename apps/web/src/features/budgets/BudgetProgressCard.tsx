@@ -11,60 +11,64 @@ interface BudgetProgressCardProps {
 
 // Coaching over shaming: over-budget goes warm rose with an offer to help,
 // never an alarm-red failure state.
-function statusFor(pct: number) {
-  if (pct >= 1) {
-    return { color: 'var(--rose)', label: 'Over — let’s rebalance' }
+function statusColorFor(pct: number) {
+  if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)' }
+  if (pct >= 0.8) return { bg: 'var(--apricot-soft)', fg: 'var(--apricot)' }
+  return { bg: 'var(--mint-soft)', fg: 'var(--mint)' }
+}
+
+// A category without a custom color still needs visual variety in the grid —
+// pick one of the brand tints deterministically from its id so the same
+// category always lands on the same color.
+const FALLBACK_TINTS = [
+  { bg: 'var(--iris-soft)', fg: 'var(--iris)' },
+  { bg: 'var(--apricot-soft)', fg: 'var(--apricot)' },
+  { bg: 'var(--mint-soft)', fg: 'var(--mint)' },
+  { bg: 'var(--rose-soft)', fg: 'var(--rose)' },
+]
+
+function iconTintFor(category: Category | null) {
+  if (category?.color) {
+    return { bg: `color-mix(in srgb, ${category.color} 20%, transparent)`, fg: category.color }
   }
-  if (pct >= 0.8) {
-    return { color: 'var(--apricot)', label: 'Running warm' }
-  }
-  return { color: 'var(--mint)', label: 'Comfortable' }
+  const seed = category?.id ?? 'overall'
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  return FALLBACK_TINTS[hash % FALLBACK_TINTS.length]
 }
 
 export function BudgetProgressCard({ progress, category, currency, onSelect }: BudgetProgressCardProps) {
   const cap = progress.effective_amount_minor
   const pct = cap > 0 ? progress.spent_minor / cap : 0
-  const status = statusFor(pct)
-  const remaining = cap - progress.spent_minor
-  const ringPct = Math.round(Math.min(pct, 1) * 100)
+  const pctLabel = Math.round(pct * 100)
+  const status = statusColorFor(pct)
+  const iconTint = iconTintFor(category)
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+      className="flex flex-col gap-3 rounded-2xl border bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
     >
-      <div
-        className="grid size-16 shrink-0 place-items-center rounded-full"
-        style={{ background: `conic-gradient(${status.color} ${ringPct}%, color-mix(in srgb, ${status.color} 16%, transparent) 0)` }}
-      >
-        <div className="grid size-[52px] place-items-center rounded-full bg-card text-sm font-semibold tabular-nums">
-          {ringPct}%
-        </div>
+      <div className="flex items-center justify-between">
+        <span
+          className="grid size-10 shrink-0 place-items-center rounded-full text-lg"
+          style={{ background: iconTint.bg, color: iconTint.fg }}
+        >
+          {category?.icon ?? '💰'}
+        </span>
+        <span
+          className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
+          style={{ background: status.bg, color: status.fg }}
+        >
+          {pctLabel}% used
+        </span>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate font-medium">
-            {category?.icon && <span aria-hidden>{category.icon} </span>}
-            {category?.name ?? 'Overall'}
-          </p>
-          <p className="shrink-0 text-xs capitalize text-muted-foreground">{progress.period}</p>
-        </div>
-        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
-          {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
-          {progress.carried_over_minor !== 0 && (
-            <span className="ml-1">
-              ({progress.carried_over_minor > 0 ? '+' : '−'}
-              {formatMoney(Math.abs(progress.carried_over_minor), currency)} rolled over)
-            </span>
-          )}
-        </p>
-        <p className="mt-1 text-sm font-medium" style={{ color: status.color }}>
-          {status.label}
-          {remaining >= 0
-            ? ` · ${formatMoney(remaining, currency)} left`
-            : ` · ${formatMoney(-remaining, currency)} over`}
+      <div className="min-w-0">
+        <p className="truncate font-medium">{category?.name ?? 'Overall'}</p>
+        <p className="mt-0.5 truncate text-sm tabular-nums text-muted-foreground">
+          {formatMoney(progress.spent_minor, currency)}
         </p>
       </div>
     </button>

@@ -104,6 +104,14 @@ A backlog to pull from. Grouped by theme; not yet sequenced or committed.
 - **Allowances / Kids' Sub-Wallets:** Pocket money management.
 - **Family Intelligence:** AI understands shared grocery budgets, school fees, and rent responsibilities.
 
+### Onboarding Enrichment
+*Today onboarding collects almost nothing beyond email/OAuth, wallet name, and currency — display name, AI persona, and mode are only set later in Settings. No financial context is captured at signup at all.*
+- **Primary financial goal (single-select at signup)** — e.g. "build an emergency fund" / "pay off debt" / "save for something" / "just track spending better." Seeds a starter `savings_goal` or budget template instead of an empty state. Highest-leverage candidate since it plugs directly into goals/budgets already shipped (bet #11).
+- **Household/team size** — conditional step shown only when mode = family or business (mode already branches elsewhere, see bet #3); pre-configures shared-wallet invites instead of the user discovering that feature later.
+- **Notification preference toggle** — budget alerts / bill reminders, asked explicitly rather than defaulted silently either way.
+- **Income range (optional, bucketed, skippable)** — the one genuinely sensitive field worth considering; unlike demographic fields it has direct causal use (budget-split defaults, analytics baselines). Only ever ship as clearly optional.
+- **Gender (optional, inclusive options, skippable)** — first demographic field Penda would collect; new privacy-policy surface and consent copy needed. Scope it narrowly: feed into system-prompt tone/relatability only (alongside AI persona, bet #3), never into financial-advice content or defaults, to avoid the AI encoding stereotyped coaching into actual money guidance. Offer an inclusive option set plus "prefer not to say" as the default, not a binary picker.
+
 ### Money in & Automations
 - **Bank sync API** — longer-term integration beyond MoMo SMS.
 - **The "Buffer" Engine** — actively manage irregular income (e.g., *"Move K1,500 of this large cash-in to a buffer for next month"*). Builds on the variable-income detection shipped in bet #11.

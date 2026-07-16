@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Sparkles, Target } from 'lucide-react'
+import { ChevronRight, Sparkles, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -8,13 +9,10 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
 import type { Transaction } from '@/features/transactions/types'
-import type { RecurringTransaction } from '@/features/recurring/types'
-import type { SavingsGoal } from '@/features/goals/types'
-import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
-import { computeSafeToSpend, computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
-import { detectRecurringSpend, splitActualSpend, upcomingFixedCosts, type RecurringCandidate } from './fixedCosts'
+import { computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
+import { detectRecurringSpend, type RecurringCandidate } from './fixedCosts'
 import { computeRetro, previousMonthStart } from './retro'
 import { computeIncomeBaseline } from './incomeBaseline'
 
@@ -32,10 +30,6 @@ function monthStartOf(now: Date): string {
 function monthEndOf(now: Date): string {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
   return end.toISOString().slice(0, 10)
-}
-
-function todayStr(now: Date): string {
-  return now.toISOString().slice(0, 10)
 }
 
 /**
@@ -73,14 +67,10 @@ export function SpendingPlanCard({
   walletId,
   currency,
   transactions,
-  recurring = [],
-  goals = [],
 }: {
   walletId: string
   currency: string
   transactions: Transaction[]
-  recurring?: RecurringTransaction[]
-  goals?: SavingsGoal[]
 }) {
   const now = new Date()
   const month = monthStartOf(now)
@@ -235,89 +225,86 @@ export function SpendingPlanCard({
   const pct = Math.min(100, Math.round((spentMinor / plan.intended_amount_minor) * 100))
   const nearMonthEnd = status.daysLeft <= 5
 
-  // Safe-to-spend: reserve the fixed bills still due this month AND what's
-  // needed to stay on pace toward savings goals (goals as budget lines —
-  // a goal you're not funding this month shouldn't quietly count as "free"),
-  // then see what's genuinely left. Fixed vs flexible actuals give the reserve
-  // context.
-  const split = splitActualSpend(transactions, month, new Set(detected.map((d) => d.key)))
-  const upcomingFixed = upcomingFixedCosts(recurring, todayStr(now), monthEndOf(now))
-  const goalReserve = totalMonthlyGoalReserve(goals, now)
-  const safe = computeSafeToSpend({
-    intendedMinor: plan.intended_amount_minor,
-    spentMinor,
-    upcomingFixedMinor: upcomingFixed.totalMinor + goalReserve,
-    monthStart: month,
-    now,
-  })
-  const hasReserve = upcomingFixed.totalMinor > 0 || goalReserve > 0
-  const overcommitted = safe.discretionaryRemainingMinor < 0
+  // How this month's spend-to-date compares with last month's, for the overview card's trend line.
+  const prevMonthEnd = monthEndOf(new Date(`${prevMonth}T00:00:00Z`))
+  const prevMonthSpentMinor = transactions
+    .filter((tx) => tx.type === 'expense' && tx.transaction_date >= prevMonth && tx.transaction_date <= prevMonthEnd)
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const vsLastMonthMinor = prevMonthSpentMinor - spentMinor
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground">{monthLabel} plan</p>
-          <p className="text-lg font-semibold">
-            {formatMoney(spentMinor, currency)}{' '}
-            <span className="text-sm font-normal text-muted-foreground">
-              of {formatMoney(plan.intended_amount_minor, currency)}
-            </span>
-          </p>
-        </div>
-        <button type="button" onClick={() => setEditing(true)} className="text-sm text-primary">
-          Edit
-        </button>
-      </div>
-
-      {/* The headline number — what's genuinely free after reserving fixed bills. */}
-      <div className={cn('rounded-xl px-3 py-2.5', overcommitted ? 'bg-rose-500/5' : 'bg-primary/5')}>
-        <p className="text-xs text-muted-foreground">Safe to spend</p>
-        {status.daysLeft > 0 && !overcommitted ? (
-          <p className="text-2xl font-semibold text-primary">
-            {formatMoney(safe.perDayMinor, currency)}
-            <span className="text-sm font-normal text-muted-foreground">/day</span>
-          </p>
-        ) : (
-          <p className={cn('text-2xl font-semibold', overcommitted ? 'text-rose-600 dark:text-rose-400' : 'text-primary')}>
-            {overcommitted ? 'Nothing spare' : 'Last day'}
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          {hasReserve
-            ? `After reserving ${formatMoney(upcomingFixed.totalMinor, currency)} for bills${
-                goalReserve > 0 ? ` and ${formatMoney(goalReserve, currency)} toward goals` : ''
-              } still due this month.`
-            : 'No fixed bills or goal contributions left this month — this is your everyday spend.'}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 px-1">
+        <p className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Current overview
         </p>
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-medium">{monthLabel} plan</p>
+          <button type="button" onClick={() => setEditing(true)} className="text-sm font-semibold text-primary">
+            {pct}% used
+          </button>
+        </div>
       </div>
 
-      <Progress value={pct} />
+      <div className="rounded-3xl border bg-card p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-3xl font-bold leading-none tracking-tight text-primary">
+              {formatMoney(spentMinor, currency)}
+            </p>
+            <p className="mt-1.5 text-sm text-muted-foreground">Spent so far</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-sm font-semibold">{formatMoney(plan.intended_amount_minor, currency)}</p>
+            <p className="text-xs text-muted-foreground">Total budget</p>
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between text-sm">
+        <Progress value={pct} className="mt-4 h-2" />
+
+        {prevMonthSpentMinor > 0 && (
+          <div className="mt-4 flex items-center gap-1.5 border-t pt-3 text-sm">
+            {vsLastMonthMinor >= 0 ? (
+              <TrendingDown className="size-3.5 shrink-0 text-[var(--mint)]" />
+            ) : (
+              <TrendingUp className="size-3.5 shrink-0 text-[var(--rose)]" />
+            )}
+            <span className={cn('font-medium', vsLastMonthMinor >= 0 ? 'text-[var(--mint)]' : 'text-[var(--rose)]')}>
+              {formatMoney(Math.abs(vsLastMonthMinor), currency)} {vsLastMonthMinor >= 0 ? 'less' : 'more'} than{' '}
+              {prevMonthLabel}
+            </span>
+            <Link to="/analytics" className="ml-auto flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary">
+              View Details
+              <ChevronRight className="size-3.5" />
+            </Link>
+          </div>
+        )}
+      </div>
+
+      <p className="px-1 text-xs text-muted-foreground">
         <span className={cn('font-medium', pace.className)}>{pace.label}</span>
-        <span className="text-muted-foreground">
-          {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        On this pace you’ll finish around {formatMoney(status.projectedMinor, currency)}.
-        {split.fixedMinor > 0 &&
-          ` So far ${formatMoney(split.fixedMinor, currency)} fixed · ${formatMoney(split.flexibleMinor, currency)} flexible.`}
+        {' · '}
+        {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
+        {' · '}
+        projected to finish around {formatMoney(status.projectedMinor, currency)}
       </p>
 
-      <Button
-        variant="outline"
-        size="sm"
+      <button
+        type="button"
         onClick={planWithPenda}
-        className="self-start gap-1.5 text-primary"
+        className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
       >
-        <Sparkles className="size-4" />
-        Plan it with Penda
-      </Button>
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+          <Sparkles className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Plan it with Penda</p>
+          <p className="text-sm text-muted-foreground">AI-generated financial strategy for {monthLabel}</p>
+        </div>
+      </button>
 
       {nearMonthEnd && (
-        <div className="flex flex-col gap-2 border-t pt-3">
+        <div className="flex flex-col gap-2 rounded-2xl border p-4">
           <p className="text-sm font-medium">What felt worth it this month?</p>
           <Textarea
             value={reflection}

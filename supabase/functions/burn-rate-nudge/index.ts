@@ -301,7 +301,16 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       period_end: day,
     })
 
-    await notifyMember(supabase, member.user_id, title, body, url)
+    // The insight itself always lands in-app (read via the analytics feed,
+    // independent of push) — only the push send respects the opt-out.
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('notification_opt_in')
+      .eq('id', member.user_id)
+      .maybeSingle()
+    if (profileRow?.notification_opt_in !== false) {
+      await notifyMember(supabase, member.user_id, title, body, url)
+    }
     notified++
   }
 

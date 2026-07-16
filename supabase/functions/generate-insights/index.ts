@@ -142,7 +142,9 @@ async function generateForWallet(
 
   const digestText = await generateDigestText(
     { totalSpentMinor, totalIncomeMinor, topCategories, currency },
-    members?.[0]?.user_id ? await fetchPersonality(supabase, members[0].user_id) : 'balanced_coach',
+    members?.[0]?.user_id
+      ? await fetchProfileContext(supabase, members[0].user_id)
+      : { personality: 'balanced_coach', primaryGoal: null, gender: 'prefer_not_to_say' },
   )
 
   const content = { text: digestText, total_spent_minor: totalSpentMinor, total_income_minor: totalIncomeMinor, top_categories: topCategories }
@@ -187,16 +189,46 @@ async function notifyMember(supabase: SupabaseClient, userId: string, digestText
   }
 }
 
-async function fetchPersonality(supabase: SupabaseClient, userId: string): Promise<string> {
-  const { data } = await supabase.from('profiles').select('ai_personality').eq('id', userId).maybeSingle()
-  return data?.ai_personality ?? 'balanced_coach'
+interface InsightProfileContext {
+  personality: string
+  primaryGoal: string | null
+  gender: string
+}
+
+// Kept in sync with the same maps in supabase/functions/chat-message/index.ts
+// (duplicated rather than shared — matches this codebase's existing
+// convention of copying MODE_AI_CONTEXT/PERSONALITY_PROMPTS per function).
+const GOAL_LABELS: Record<string, string> = {
+  build_emergency_fund: 'build an emergency fund',
+  pay_off_debt: 'pay off debt',
+  save_for_something: 'save for something specific',
+  track_spending: 'track their spending more closely',
+}
+
+const GENDER_LABELS: Record<string, string> = {
+  woman: 'a woman',
+  man: 'a man',
+  non_binary: 'non-binary',
+}
+
+async function fetchProfileContext(supabase: SupabaseClient, userId: string): Promise<InsightProfileContext> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('ai_personality, primary_goal, gender')
+    .eq('id', userId)
+    .maybeSingle()
+  return {
+    personality: data?.ai_personality ?? 'balanced_coach',
+    primaryGoal: data?.primary_goal ?? null,
+    gender: data?.gender ?? 'prefer_not_to_say',
+  }
 }
 
 async function generateDigestText(
   stats: { totalSpentMinor: number; totalIncomeMinor: number; topCategories: CategoryTotal[]; currency: string },
-  personality: string,
+  profile: InsightProfileContext,
 ): Promise<string> {
-  const prompt = buildPrompt(stats, personality)
+  const prompt = buildPrompt(stats, profile)
   try {
     return await generateWithGemini(prompt)
   } catch (error) {
@@ -207,19 +239,36 @@ async function generateDigestText(
 
 function buildPrompt(
   stats: { totalSpentMinor: number; totalIncomeMinor: number; topCategories: CategoryTotal[]; currency: string },
-  personality: string,
+  profile: InsightProfileContext,
 ): string {
   const fmt = (minor: number) => (minor / 100).toFixed(2)
   const categoryLines = stats.topCategories
     .map((c) => `- ${c.category}: ${fmt(c.amount_minor)} ${stats.currency}`)
     .join('\n')
 
-  const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
-  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
+  const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
+
+  // Hard requirement, not a suggestion: gender may only ever shape tone here,
+  // never the numbers or the advice — see chat-message/index.ts for the
+  // matching (and more heavily used) instance of this same guardrail.
+  const contextLines: string[] = []
+  if (profile.primaryGoal && GOAL_LABELS[profile.primaryGoal]) {
+    contextLines.push(
+      `Their stated primary financial goal right now is to ${GOAL_LABELS[profile.primaryGoal]}. Connect this digest back to it where it fits naturally.`,
+    )
+  }
+  if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {
+    contextLines.push(
+      `The user identifies as ${GENDER_LABELS[profile.gender]}. Use this ONLY to make tone feel natural — it ` +
+        'must NEVER influence the numbers, advice, or any other logic in this digest.',
+    )
+  }
+  const contextSection = contextLines.length > 0 ? `\n\n${contextLines.join(' ')}` : ''
 
   return `You are ${personaName}, an AI assistant persona in Penda, a personal finance app, writing a
 short weekly spending digest for the user. Penda is the app, not your name — write in your own
-voice as ${personaName}, never referring to yourself as "Penda". ${personalityFragment}
+voice as ${personaName}, never referring to yourself as "Penda". ${personalityFragment}${contextSection}
 
 This week's numbers:
 - Total spent: ${fmt(stats.totalSpentMinor)} ${stats.currency}

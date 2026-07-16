@@ -28,7 +28,9 @@ export function JournalPage() {
 
   if (!session) return <Navigate to="/login" replace />
 
-  const journal = memories.filter((m) => m.kind === 'note' || m.kind === 'mood')
+  const journal = memories.filter(
+    (m) => m.kind === 'note' || m.kind === 'mood' || m.kind === 'fact' || m.kind === 'preference',
+  )
   const oldest = journal[journal.length - 1]
 
   async function handleSave() {
@@ -100,7 +102,7 @@ export function JournalPage() {
       ) : (
         <ol className="flex flex-col gap-3">
           {journal.map((m) => (
-            <li key={m.id} className="flex items-start gap-3 rounded-xl border bg-card p-3">
+            <li key={m.id} className="flex items-start gap-3 rounded-2xl border bg-card p-3">
               <span className="text-xl" aria-hidden>
                 {m.mood ?? '📝'}
               </span>
