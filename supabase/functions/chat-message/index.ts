@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenAI, type Content, type Part } from 'npm:@google/genai@2.11.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeadersFor } from '../_shared/cors.ts'
+import { checkRateLimits } from '../_shared/rateLimit.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -10,6 +11,15 @@ const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ITERATIONS = 4
+const MAX_OUTPUT_TOKENS = 1024
+const MODEL_TIMEOUT_MS = 20_000
+
+// Bounds cost/abuse from any single account: a tight burst window (keeps a
+// runaway client/loop from hammering the model) plus a loose daily cap.
+const CHAT_RATE_LIMITS = {
+  burst: { maxRequests: 20, windowMinutes: 5 },
+  daily: { maxRequests: 200, windowMinutes: 60 * 24 },
+}
 
 // Symbols for the currencies the app offers (mirrors apps/web/src/lib/currencies.ts).
 // Used only to help the model speak money in the wallet's currency; falls back to the code.
@@ -144,14 +154,16 @@ interface ToolContext {
 }
 
 Deno.serve(async (req) => {
+  const cors = corsHeadersFor(req)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+  const respond = (body: unknown, status = 200) => jsonResponse(body, cors, status)
 
   try {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return jsonResponse({ error: 'Missing Authorization header' }, 401)
+      return respond({ error: 'Missing Authorization header' }, 401)
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -165,12 +177,20 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
-      return jsonResponse({ error: 'Invalid or expired session' }, 401)
+      return respond({ error: 'Invalid or expired session' }, 401)
+    }
+
+    // Cost/abuse guard (audit finding): bound how often any one account can
+    // hit the model before doing any LLM work. Fails open on a DB hiccup —
+    // see checkRateLimits — so a broken limiter never takes down chat itself.
+    const limitMessage = await checkRateLimits(supabase, user.id, 'chat-message', CHAT_RATE_LIMITS)
+    if (limitMessage) {
+      return respond({ error: limitMessage }, 429)
     }
 
     const body = (await req.json()) as ChatRequestBody
     if (!body.walletId || !body.message) {
-      return jsonResponse({ error: 'walletId and message are required' }, 400)
+      return respond({ error: 'walletId and message are required' }, 400)
     }
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
@@ -214,7 +234,7 @@ Deno.serve(async (req) => {
       neutralHistory.push(assistantMessage)
 
       if (turn.toolCalls.length === 0) {
-        return jsonResponse({
+        return respond({
           conversationId,
           reply: turn.text,
           transaction: ctx.createdTransaction,
@@ -232,7 +252,9 @@ Deno.serve(async (req) => {
           // turn or leave a chain half-applied. Feed the failure back so the
           // model can recover or tell the user, and so every tool_call keeps a
           // matching result (unbalanced pairs break the provider's next turn).
-          console.error(`Tool ${call.name} threw:`, err)
+          // Log only the message, never the raw error object — it can carry
+          // row data (e.g. a Postgres constraint error echoing values).
+          console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
           summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
         }
         toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
@@ -243,19 +265,28 @@ Deno.serve(async (req) => {
       neutralHistory.push(toolResultMessage)
     }
 
-    return jsonResponse({
+    return respond({
       conversationId,
       reply: "Sorry, I'm having trouble completing that one — could you try rephrasing?",
       transaction: ctx.createdTransaction,
       pendingActions: ctx.pendingActions,
     })
   } catch (error) {
-    console.error(error)
-    return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    console.error(error instanceof Error ? error.message : String(error))
+    return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
   }
 })
 
 // --- Model orchestration -----------------------------------------------
+
+// Bounds the worst case of a hung upstream call — without this, a stalled
+// Gemini/Groq request left "Thinking…" indefinitely with no way to recover.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ])
+}
 
 async function callModel(
   history: NeutralMessage[],
@@ -263,10 +294,10 @@ async function callModel(
   tools: ToolDefinition[],
 ): Promise<ModelTurn> {
   try {
-    return await callGemini(history, systemInstruction, tools)
+    return await withTimeout(callGemini(history, systemInstruction, tools), MODEL_TIMEOUT_MS, 'Gemini')
   } catch (error) {
-    console.error('Gemini call failed, falling back to Groq:', error)
-    return await callGroq(history, systemInstruction, tools)
+    console.error('Gemini call failed, falling back to Groq:', error instanceof Error ? error.message : String(error))
+    return await withTimeout(callGroq(history, systemInstruction, tools), MODEL_TIMEOUT_MS, 'Groq')
   }
 }
 
@@ -281,7 +312,7 @@ async function callGemini(
   const response = await genAI.models.generateContent({
     model: GEMINI_MODEL,
     contents,
-    config: { systemInstruction, tools: [{ functionDeclarations: tools }] },
+    config: { systemInstruction, tools: [{ functionDeclarations: tools }], maxOutputTokens: MAX_OUTPUT_TOKENS },
   })
 
   const toolCalls = (response.functionCalls ?? []).map((call, index) => ({
@@ -307,7 +338,7 @@ async function callGroq(
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, tools: groqTools }),
+    body: JSON.stringify({ model: GROQ_MODEL, messages, tools: groqTools, max_tokens: MAX_OUTPUT_TOKENS }),
   })
 
   if (!res.ok) {
@@ -317,14 +348,22 @@ async function callGroq(
   const data = await res.json()
   const message = data.choices[0].message
 
+  // A model can emit malformed tool-call JSON; letting JSON.parse throw here
+  // used to escape callGroq entirely (this is the fallback provider, so
+  // nothing catches it) and 500 the whole request. Drop just that call
+  // instead — dispatchTool's default branch handles an empty/unknown name.
   const toolCalls = (message.tool_calls ?? []).map((call: {
     id: string
     function: { name: string; arguments: string }
-  }) => ({
-    id: call.id,
-    name: call.function.name,
-    args: JSON.parse(call.function.arguments || '{}'),
-  }))
+  }) => {
+    let args: Record<string, unknown> = {}
+    try {
+      args = JSON.parse(call.function.arguments || '{}')
+    } catch {
+      console.error(`Groq returned malformed tool args for ${call.function.name}:`, call.function.arguments)
+    }
+    return { id: call.id, name: call.function.name, args }
+  })
 
   return { text: message.content ?? '', toolCalls }
 }
@@ -392,10 +431,10 @@ function toGroqMessages(messages: NeutralMessage[], systemInstruction: string): 
 
 // --- Supabase helpers ------------------------------------------------------
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, cors: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   })
 }
 
