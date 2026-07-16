@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeadersFor } from '../_shared/cors.ts'
+import { checkRateLimits } from '../_shared/rateLimit.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -7,15 +8,24 @@ const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 
 const GROQ_WHISPER_MODEL = 'whisper-large-v3-turbo'
 
+// Voice is free/ungated (below), so this is the only cost guard on it —
+// looser than chat's since a single utterance is cheap, but still bounded.
+const VOICE_RATE_LIMITS = {
+  burst: { maxRequests: 30, windowMinutes: 5 },
+  daily: { maxRequests: 300, windowMinutes: 60 * 24 },
+}
+
 Deno.serve(async (req) => {
+  const cors = corsHeadersFor(req)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+  const respond = (body: unknown, status = 200) => jsonResponse(body, cors, status)
 
   try {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return jsonResponse({ error: 'Missing Authorization header' }, 401)
+      return respond({ error: 'Missing Authorization header' }, 401)
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -28,17 +38,22 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
-      return jsonResponse({ error: 'Invalid or expired session' }, 401)
+      return respond({ error: 'Invalid or expired session' }, 401)
     }
 
     // Voice is the free hero (roadmap bet 9): the most demo-able interaction is
     // ungated. Depth (insights history, unlimited members, receipts) monetises
-    // instead — so no entitlement check here.
+    // instead — so no entitlement check here. Rate limiting is the cost guard
+    // an entitlement gate would otherwise have provided (audit finding).
+    const limitMessage = await checkRateLimits(supabase, user.id, 'transcribe-voice', VOICE_RATE_LIMITS)
+    if (limitMessage) {
+      return respond({ error: limitMessage }, 429)
+    }
 
     const incomingForm = await req.formData()
     const audio = incomingForm.get('audio')
     if (!(audio instanceof File)) {
-      return jsonResponse({ error: 'audio file is required' }, 400)
+      return respond({ error: 'audio file is required' }, 400)
     }
 
     const groqForm = new FormData()
@@ -52,20 +67,20 @@ Deno.serve(async (req) => {
     })
 
     if (!res.ok) {
-      return jsonResponse({ error: `Groq transcription error ${res.status}: ${await res.text()}` }, 502)
+      return respond({ error: `Groq transcription error ${res.status}: ${await res.text()}` }, 502)
     }
 
     const data = await res.json()
-    return jsonResponse({ transcript: data.text ?? '' })
+    return respond({ transcript: data.text ?? '' })
   } catch (error) {
-    console.error(error)
-    return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    console.error(error instanceof Error ? error.message : String(error))
+    return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
   }
 })
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, cors: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   })
 }
