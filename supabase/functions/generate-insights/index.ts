@@ -35,6 +35,23 @@ const PERSONALITY_PROMPTS: Record<string, string> = {
     'with the numbers and skip emotional framing. No fluff.',
 }
 
+// The character's given name — mirrors PERSONALITIES[].name in
+// apps/web/src/features/profile/types.ts (and PERSONALITY_NAMES in the
+// chat-message function). The digest is written in this persona's voice, so
+// it must refer to itself by name, not the app's.
+const PERSONALITY_NAMES: Record<string, string> = {
+  balanced_coach: 'Amara',
+  angry_mom: 'Mama Rose',
+  wise_mentor: 'Sena',
+  chill_friend: 'Kabwe',
+  drill_sergeant: 'Sarge',
+  funny_comedian: 'Bobo',
+  gen_z: 'Zee',
+  hustler: 'Musa',
+  gogo: 'Gogo',
+  analyst: 'Nomsa',
+}
+
 interface CategoryTotal {
   category: string
   amount_minor: number
@@ -198,9 +215,11 @@ function buildPrompt(
     .join('\n')
 
   const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
 
-  return `You are Penda, an AI assistant for a personal finance app, writing a short weekly spending
-digest for the user. ${personalityFragment}
+  return `You are ${personaName}, an AI assistant persona in Penda, a personal finance app, writing a
+short weekly spending digest for the user. Penda is the app, not your name — write in your own
+voice as ${personaName}, never referring to yourself as "Penda". ${personalityFragment}
 
 This week's numbers:
 - Total spent: ${fmt(stats.totalSpentMinor)} ${stats.currency}

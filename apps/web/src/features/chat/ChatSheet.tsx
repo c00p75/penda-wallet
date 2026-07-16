@@ -34,8 +34,41 @@ const HOLD_THRESHOLD_MS = 250
 
 type RecordMode = 'idle' | 'holding' | 'locked'
 
-let messageIdCounter = 0
-const nextId = () => `msg-${++messageIdCounter}`
+const nextId = () => crypto.randomUUID()
+
+// Conversation history persists across app reloads, scoped per wallet and
+// capped so localStorage can't grow without bound over a long relationship
+// with Penda.
+const MAX_STORED_MESSAGES = 50
+
+interface StoredChat {
+  conversationId?: string
+  messages: ChatMessage[]
+  actionStatus: Record<string, 'confirmed' | 'cancelled'>
+}
+
+function storageKeyFor(walletId: string | undefined) {
+  return walletId ? `penda:chat:${walletId}` : null
+}
+
+function loadStoredChat(walletId: string | undefined): StoredChat {
+  const key = storageKeyFor(walletId)
+  if (!key) return { messages: [], actionStatus: {} }
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return { messages: [], actionStatus: {} }
+    const parsed = JSON.parse(raw) as Partial<StoredChat>
+    return {
+      conversationId: parsed.conversationId,
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+      actionStatus: parsed.actionStatus ?? {},
+    }
+  } catch {
+    return { messages: [], actionStatus: {} }
+  }
+}
+
+const SUGGESTED_PROMPTS = ['What did I spend this week?', 'How are my budgets doing?', 'Help me build a budget']
 
 export function ChatSheet({
   open,
@@ -47,13 +80,35 @@ export function ChatSheet({
   currency = 'USD',
 }: ChatSheetProps) {
   const sym = currencySymbol(currency)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [conversationId, setConversationId] = useState<string | undefined>()
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadStoredChat(walletId).messages)
+  const [conversationId, setConversationId] = useState<string | undefined>(
+    () => loadStoredChat(walletId).conversationId,
+  )
   const [input, setInput] = useState('')
   const [recordMode, setRecordMode] = useState<RecordMode>('idle')
   // How each staged action resolved, so its card locks after Yes/Cancel.
-  const [actionStatus, setActionStatus] = useState<Record<string, 'confirmed' | 'cancelled'>>({})
+  const [actionStatus, setActionStatus] = useState<Record<string, 'confirmed' | 'cancelled'>>(
+    () => loadStoredChat(walletId).actionStatus,
+  )
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+
+  // Persist across app reloads — restored above via loadStoredChat's lazy init.
+  useEffect(() => {
+    const key = storageKeyFor(walletId)
+    if (!key) return
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          conversationId,
+          messages: messages.slice(-MAX_STORED_MESSAGES),
+          actionStatus,
+        } satisfies StoredChat),
+      )
+    } catch {
+      // Storage full or unavailable (e.g. private browsing) — history just won't persist.
+    }
+  }, [walletId, messages, conversationId, actionStatus])
   const sendMessage = useSendChatMessage(walletId)
   const confirmAction = useConfirmAiAction(walletId)
   const session = useAuthStore((s) => s.session)
@@ -100,37 +155,59 @@ export function ChatSheet({
     },
   })
 
+  // Appends a message, keeping the list capped to what we're willing to persist.
+  function pushMessage(message: ChatMessage) {
+    setMessages((prev) => [...prev, message].slice(-MAX_STORED_MESSAGES))
+  }
+
+  // Swaps a message in place (used to turn a failed error bubble into the
+  // retried reply) instead of appending, so retrying doesn't leave the old
+  // failure sitting above the new result.
+  function replaceMessage(id: string, message: ChatMessage) {
+    setMessages((prev) => [...prev.filter((m) => m.id !== id), message].slice(-MAX_STORED_MESSAGES))
+  }
+
+  // The network round-trip shared by a fresh send and a retry. `replaceId`,
+  // when set, is the failed bubble being retried — its error is replaced by
+  // the outcome rather than appending a new one.
+  function sendToAssistant(text: string, replaceId?: string) {
+    sendMessage
+      .mutateAsync({ message: text, conversationId })
+      .then((result) => {
+        setConversationId(result.conversationId)
+        const reply: ChatMessage = {
+          id: nextId(),
+          role: 'assistant',
+          text: result.reply,
+          pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
+        }
+        if (replaceId) replaceMessage(replaceId, reply)
+        else pushMessage(reply)
+      })
+      .catch((error) => {
+        const errorMessage: ChatMessage = {
+          id: nextId(),
+          role: 'assistant',
+          text: error instanceof Error ? `Something went wrong: ${error.message}` : 'Something went wrong.',
+          retryText: text,
+        }
+        if (replaceId) replaceMessage(replaceId, errorMessage)
+        else pushMessage(errorMessage)
+      })
+  }
+
   function submitText(text: string) {
     const trimmed = text.trim()
     if (!trimmed || sendMessage.isPending) return
 
-    setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: trimmed }])
+    pushMessage({ id: nextId(), role: 'user', text: trimmed })
     setInput('')
+    sendToAssistant(trimmed)
+  }
 
-    sendMessage
-      .mutateAsync({ message: trimmed, conversationId })
-      .then((result) => {
-        setConversationId(result.conversationId)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: 'assistant',
-            text: result.reply,
-            pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
-          },
-        ])
-      })
-      .catch((error) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: 'assistant',
-            text: error instanceof Error ? `Something went wrong: ${error.message}` : 'Something went wrong.',
-          },
-        ])
-      })
+  function retry(message: ChatMessage) {
+    if (!message.retryText || sendMessage.isPending) return
+    sendToAssistant(message.retryText, message.id)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -146,26 +223,20 @@ export function ChatSheet({
     try {
       const res = await confirmAction.mutateAsync({ actionId: action.id, decision })
       setActionStatus((prev) => ({ ...prev, [action.id]: res.status }))
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: 'assistant',
-          text:
-            decision === 'confirm'
-              ? `Done — ${res.summary.replace(/\.$/, '')}.`
-              : 'No worries — I left it as it was.',
-        },
-      ])
+      pushMessage({
+        id: nextId(),
+        role: 'assistant',
+        text:
+          decision === 'confirm'
+            ? `Done — ${res.summary.replace(/\.$/, '')}.`
+            : 'No worries — I left it as it was.',
+      })
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: 'assistant',
-          text: `I couldn't apply that: ${error instanceof Error ? error.message : 'something went wrong'}.`,
-        },
-      ])
+      pushMessage({
+        id: nextId(),
+        role: 'assistant',
+        text: `I couldn't apply that: ${error instanceof Error ? error.message : 'something went wrong'}.`,
+      })
     } finally {
       setResolvingId(null)
     }
@@ -263,6 +334,13 @@ export function ChatSheet({
     setDragY(0)
   }
 
+  // Keep the latest message (or the "Thinking…" indicator) in view as the
+  // conversation grows, rather than leaving new replies below the fold.
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
+  }, [messages, sendMessage.isPending])
+
   const isRecording = recordMode !== 'idle'
   const statusText =
     voice.state === 'transcribing'
@@ -321,10 +399,24 @@ export function ChatSheet({
 
           <div className="flex-1 overflow-y-auto px-4">
             {messages.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or hold
-                the mic to say it and release to send.
-              </p>
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or
+                  hold the mic to say it and release to send.
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {SUGGESTED_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => submitText(prompt)}
+                      className="rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
             <div className="flex flex-col gap-3 pb-4">
               {messages.map((m) => (
@@ -336,7 +428,19 @@ export function ChatSheet({
                         : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
                     }
                   >
-                    {m.text}
+                    <MessageBody text={m.text} />
+                    {m.retryText && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        disabled={sendMessage.isPending}
+                        onClick={() => retry(m)}
+                      >
+                        Retry
+                      </Button>
+                    )}
                   </div>
                   {m.pendingActions?.map((action) => (
                     <PendingActionCard
@@ -355,6 +459,7 @@ export function ChatSheet({
                   Thinking…
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
           </div>
 
@@ -400,6 +505,49 @@ export function ChatSheet({
       </SheetContent>
     </Sheet>
   )
+}
+
+function renderInline(text: string, keyPrefix: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={`${keyPrefix}-${i}`}>{part.slice(2, -2)}</strong>
+    ) : (
+      <span key={`${keyPrefix}-${i}`}>{part}</span>
+    ),
+  )
+}
+
+// Minimal markdown for the AI's replies — **bold** spans and "- "/"* " bullet
+// lists — just enough to read naturally without pulling in a markdown library.
+function MessageBody({ text }: { text: string }) {
+  const blocks: React.ReactNode[] = []
+  let listBuffer: string[] = []
+
+  const flushList = () => {
+    if (!listBuffer.length) return
+    const items = listBuffer
+    blocks.push(
+      <ul key={`list-${blocks.length}`} className="list-disc space-y-0.5 pl-4">
+        {items.map((item, i) => (
+          <li key={i}>{renderInline(item, `li-${blocks.length}-${i}`)}</li>
+        ))}
+      </ul>,
+    )
+    listBuffer = []
+  }
+
+  text.split('\n').forEach((line, i) => {
+    const bullet = line.match(/^[-*]\s+(.*)/)
+    if (bullet) {
+      listBuffer.push(bullet[1])
+      return
+    }
+    flushList()
+    if (line.trim()) blocks.push(<p key={`p-${i}`}>{renderInline(line, `p-${i}`)}</p>)
+  })
+  flushList()
+
+  return <div className="space-y-1">{blocks}</div>
 }
 
 function PendingActionCard({

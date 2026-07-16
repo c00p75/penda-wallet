@@ -166,3 +166,68 @@ describe('ChatSheet staged edit/delete confirmation', () => {
     expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull()
   })
 })
+
+describe('ChatSheet failed sends', () => {
+  it('shows a Retry action on failure, and retrying resends the same text', async () => {
+    sendMock.mockRejectedValueOnce(new Error('network down'))
+    renderSheet('ZMW')
+
+    await send('spent K12 on coffee')
+    expect(await screen.findByText('Something went wrong: network down')).toBeInTheDocument()
+
+    sendMock.mockResolvedValueOnce(reply({ reply: 'Logged it.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Logged it.')).toBeInTheDocument()
+    expect(screen.queryByText(/Something went wrong/)).toBeNull()
+    expect(sendMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'spent K12 on coffee' }),
+    )
+  })
+})
+
+describe('ChatSheet suggested prompts', () => {
+  it('shows suggested prompts in the empty state, and tapping one sends it', async () => {
+    sendMock.mockResolvedValue(reply({ reply: 'Here you go.' }))
+    renderSheet('ZMW')
+
+    fireEvent.click(screen.getByRole('button', { name: 'What did I spend this week?' }))
+
+    await waitFor(() =>
+      expect(sendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'What did I spend this week?' }),
+      ),
+    )
+    expect(await screen.findByText('Here you go.')).toBeInTheDocument()
+  })
+})
+
+describe('ChatSheet markdown-lite rendering', () => {
+  it('renders **bold** spans and bullet lists without leaking the raw syntax', async () => {
+    sendMock.mockResolvedValue(reply({ reply: '**Great job!**\n- Coffee: K12\n- Lunch: K30' }))
+    renderSheet('ZMW')
+
+    await send('what did I spend today')
+
+    const bold = await screen.findByText('Great job!')
+    expect(bold.tagName).toBe('STRONG')
+    expect(screen.getByText('Coffee: K12')).toBeInTheDocument()
+    expect(screen.getByText('Lunch: K30')).toBeInTheDocument()
+    expect(screen.queryByText(/\*\*/)).toBeNull()
+  })
+})
+
+describe('ChatSheet conversation persistence', () => {
+  it('persists history across remounts (e.g. a page reload), scoped by wallet', async () => {
+    sendMock.mockResolvedValue(reply({ reply: 'Got it.' }))
+    const { unmount } = renderSheet('ZMW')
+
+    await send('spent K5 on tea')
+    await screen.findByText('Got it.')
+    unmount()
+
+    renderSheet('ZMW')
+    expect(await screen.findByText('spent K5 on tea')).toBeInTheDocument()
+    expect(screen.getByText('Got it.')).toBeInTheDocument()
+  })
+})

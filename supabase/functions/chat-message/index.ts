@@ -47,6 +47,23 @@ const PERSONALITY_PROMPTS: Record<string, string> = {
     'with the numbers — figures, rates, and projections — and skip emotional framing. No fluff.',
 }
 
+// The character's given name — mirrors PERSONALITIES[].name in
+// apps/web/src/features/profile/types.ts. The model must introduce and refer
+// to itself by this name, not the app's — "Penda" is the product, not the
+// persona's identity.
+const PERSONALITY_NAMES: Record<string, string> = {
+  balanced_coach: 'Amara',
+  angry_mom: 'Mama Rose',
+  wise_mentor: 'Sena',
+  chill_friend: 'Kabwe',
+  drill_sergeant: 'Sarge',
+  funny_comedian: 'Bobo',
+  gen_z: 'Zee',
+  hustler: 'Musa',
+  gogo: 'Gogo',
+  analyst: 'Nomsa',
+}
+
 // Profile Modes (roadmap bet #3) — mirrors apps/web/src/features/profile/modes.ts'
 // MODE_CONFIG[mode].aiContext. Individual/Family/Business is a context layer
 // over the same engine: it changes how the AI frames things, not what it can do.
@@ -480,9 +497,12 @@ async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): 
 
 function buildSystemInstruction(personality: string, mode: string, currency: string, memories: Memory[]): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
-  const houseRules = `You are Penda, an AI assistant embedded in a personal finance app. Your job in this
-conversation is to help the user log transactions by talking naturally — you are not a generic
-chatbot, you are the primary way this user records spending and income.
+  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
+  const houseRules = `You are ${personaName}, an AI assistant persona embedded in Penda, a personal finance
+app. Penda is the app you live in, not your name — always introduce and refer to yourself as
+${personaName}, never as "Penda". Your job in this conversation is to help the user log
+transactions by talking naturally — you are not a generic chatbot, you are the primary way this
+user records spending and income.
 
 ${MODE_AI_CONTEXT[mode] ?? MODE_AI_CONTEXT.individual}
 
