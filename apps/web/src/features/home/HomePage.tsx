@@ -658,7 +658,7 @@ export function HomePage() {
 
         {/* Primary number, demoted carousel */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none]">
-          <div className="flex w-max gap-3 px-4 snap-x snap-mandatory">
+          <div className="flex w-max gap-3 px-4 snap-x snap-mandatory pb-[3rem]">
             <HeroCard
               tone="iris"
               className="snap-start"
@@ -778,7 +778,7 @@ export function HomePage() {
         )}
 
         {insightCards.length > 1 && (
-          <section>
+          <section className="-mt-4">
             <SectionHeader title="More from Penda" />
             <InsightCarousel cards={insightCards.slice(1)} />
           </section>
@@ -827,9 +827,6 @@ export function HomePage() {
                 return (
                   <ActivityRow
                     key={tx.id}
-                    accent={
-                      tx.type === 'income' ? 'mint' : tx.type === 'expense' ? 'rose' : 'iris'
-                    }
                     onClick={() => {
                       setEditing(tx)
                       setFormOpen(true)

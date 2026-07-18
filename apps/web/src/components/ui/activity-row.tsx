@@ -12,7 +12,7 @@ type ActivityRowProps = {
   onClick?: () => void
   className?: string
   showChevron?: boolean
-  /** Soft colored edge; omit for neutral border. */
+  /** Soft colored edge; omit for no ring. */
   accent?: CardAccent
 }
 
@@ -39,7 +39,7 @@ export function ActivityRow({
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-[var(--shadow-soft)]',
-        cardAccentClass(accent),
+        accent ? cardAccentClass(accent) : null,
         onClick && 'transition-transform active:scale-[0.99]',
         className,
       )}

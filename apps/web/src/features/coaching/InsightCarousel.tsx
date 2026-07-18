@@ -3,7 +3,6 @@ import { ArrowRight } from 'lucide-react'
 import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
-import { accentFromInsightTone, cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 
 export interface InsightCard {
@@ -21,16 +20,7 @@ export interface InsightCard {
 
 function InsightCardView({ card }: { card: InsightCard }) {
   return (
-    <div
-      className={cn(
-        'flex h-full items-start gap-3 rounded-2xl bg-card p-3.5 shadow-[var(--shadow-soft)]',
-        cardAccentClass(
-          card.variant === 'tip' && card.tone === 'default'
-            ? 'apricot'
-            : accentFromInsightTone(card.tone),
-        ),
-      )}
-    >
+    <div className="flex h-full items-start gap-3 rounded-2xl bg-card p-3.5 shadow-[var(--shadow-soft)]">
       {card.variant === 'tip' ? (
         <span
           aria-hidden
