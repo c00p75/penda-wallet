@@ -41,8 +41,10 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
   const cap = progress.effective_amount_minor
   const pct = cap > 0 ? progress.spent_minor / cap : 0
   const pctLabel = Math.round(pct * 100)
+  const remaining = cap - progress.spent_minor
   const status = statusColorFor(pct)
   const iconTint = iconTintFor(category)
+  const showEnvelopeRemaining = progress.rollover
 
   return (
     <button
@@ -67,9 +69,35 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
 
       <div className="min-w-0">
         <p className="truncate font-medium">{category?.name ?? 'Overall'}</p>
-        <p className="mt-0.5 truncate text-sm tabular-nums text-muted-foreground">
-          {formatMoney(progress.spent_minor, currency)}
-        </p>
+        {showEnvelopeRemaining ? (
+          <>
+            <p
+              className="mt-1 text-lg font-bold tabular-nums"
+              style={{ color: remaining >= 0 ? 'var(--mint)' : 'var(--rose)' }}
+            >
+              {formatMoney(Math.abs(remaining), currency)}
+              <span className="ml-1 text-sm font-medium text-muted-foreground">
+                {remaining >= 0 ? 'left' : 'over'}
+              </span>
+            </p>
+            <p className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
+              {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
+              {progress.carried_over_minor !== 0 && (
+                <>
+                  {' · '}
+                  {progress.carried_over_minor > 0 ? '+' : ''}
+                  {formatMoney(progress.carried_over_minor, currency)} rolled over
+                </>
+              )}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-0.5 truncate text-sm tabular-nums text-muted-foreground">
+              {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
+            </p>
+          </>
+        )}
       </div>
     </button>
   )

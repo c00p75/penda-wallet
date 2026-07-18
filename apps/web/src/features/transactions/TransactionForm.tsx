@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Category } from '@/features/categories/types'
+import { upsertCategorizationRule } from '@/features/categories/rulesApi'
 import type { Transaction, TransactionDraft, TransactionInput, TransactionType } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
 import { getReceiptImageUrl } from '@/features/receipts/api'
@@ -29,6 +30,7 @@ interface TransactionFormProps {
   onOpenChange: (open: boolean) => void
   categories: Category[]
   currency: string
+  walletId?: string
   transaction?: Transaction | null
   /** Pre-fill for a new transaction (parsed MoMo/SMS). Ignored when editing. */
   draft?: TransactionDraft | null
@@ -44,6 +46,7 @@ export function TransactionForm({
   onOpenChange,
   categories,
   currency,
+  walletId,
   transaction,
   draft,
   onSubmit,
@@ -57,6 +60,7 @@ export function TransactionForm({
   const [description, setDescription] = useState('')
   const [date, setDate] = useState(today())
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null)
+  const [teachPenda, setTeachPenda] = useState(false)
 
   const isReceiptDraft = !!transaction && transaction.source === 'receipt' && !transaction.user_confirmed
 
@@ -70,6 +74,7 @@ export function TransactionForm({
 
   useEffect(() => {
     if (!open) return
+    setTeachPenda(false)
     if (transaction) {
       setType(transaction.type)
       setAmount(fromMinorUnits(transaction.amount_minor).toString())
@@ -94,6 +99,10 @@ export function TransactionForm({
     }
   }, [open, transaction, draft])
 
+  const canTeach =
+    !!walletId && !!categoryId && !!merchant.trim() &&
+    (!transaction || transaction.category_id !== categoryId || (transaction.merchant ?? '') !== merchant.trim())
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const amountNumber = Number(amount)
@@ -110,6 +119,17 @@ export function TransactionForm({
       // Preserve provenance (e.g. 'sms') for a new draft; edits keep their row's source.
       ...(!transaction && draft?.source ? { source: draft.source } : {}),
     })
+    if (teachPenda && canTeach && walletId && categoryId) {
+      try {
+        await upsertCategorizationRule(walletId, {
+          match_type: 'merchant_contains',
+          match_value: merchant.trim(),
+          category_id: categoryId,
+        })
+      } catch {
+        // Rule save is best-effort — the transaction already landed.
+      }
+    }
     onOpenChange(false)
   }
 
@@ -213,6 +233,21 @@ export function TransactionForm({
               rows={2}
             />
           </div>
+
+          {canTeach && (
+            <label className="flex items-start gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={teachPenda}
+                onChange={(e) => setTeachPenda(e.target.checked)}
+              />
+              <span>
+                Teach Penda — next time I see <span className="font-medium">{merchant.trim()}</span>, use this
+                category
+              </span>
+            </label>
+          )}
 
           <SheetFooter className="flex-row gap-2 px-0">
             {transaction && onDelete && (

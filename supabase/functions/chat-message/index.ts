@@ -88,10 +88,47 @@ const MODE_AI_CONTEXT: Record<string, string> = {
     'vs expenses, and setting money aside for tax.',
 }
 
+interface PageContext {
+  page: string
+  entityId?: string
+}
+
+const ALLOWED_CHAT_PAGES = new Set([
+  'home',
+  'ledger',
+  'budgets',
+  'goals',
+  'goal-detail',
+  'cashflow',
+  'challenges',
+  'analytics',
+  'journal',
+  'simulator',
+  'settings',
+  'profile',
+  'business',
+  'missions',
+  'activity',
+  'ai-actions',
+  'family',
+])
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function sanitizePageContext(raw: unknown): PageContext | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const page = (raw as { page?: unknown }).page
+  const entityId = (raw as { entityId?: unknown }).entityId
+  if (typeof page !== 'string' || !ALLOWED_CHAT_PAGES.has(page)) return undefined
+  if (entityId != null && (typeof entityId !== 'string' || !UUID_RE.test(entityId))) return undefined
+  return typeof entityId === 'string' ? { page, entityId } : { page }
+}
+
 interface ChatRequestBody {
   walletId: string
   conversationId?: string
   message: string
+  pageContext?: PageContext
 }
 
 interface Category {
@@ -136,6 +173,7 @@ interface PendingAction {
   kind: 'update' | 'delete'
   domain: string
   summary: string
+  targetId: string
 }
 
 // Everything a tool handler needs, so handlers take one ctx instead of a long
@@ -194,15 +232,19 @@ Deno.serve(async (req) => {
     }
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
-    const history = await fetchHistory(supabase, conversationId)
-    const categories = await fetchCategories(supabase, body.walletId)
-    const rules = await fetchCategorizationRules(supabase, body.walletId)
-    const profile = await fetchProfile(supabase, user.id)
-    const memories = await fetchMemories(supabase, user.id)
-    const currency = await fetchWalletCurrency(supabase, body.walletId)
+    // History needs the conversation id; the rest are independent reads — fan out.
+    const [history, categories, rules, profile, memories, currency] = await Promise.all([
+      fetchHistory(supabase, conversationId),
+      fetchCategories(supabase, body.walletId),
+      fetchCategorizationRules(supabase, body.walletId),
+      fetchProfile(supabase, user.id),
+      fetchMemories(supabase, user.id),
+      fetchWalletCurrency(supabase, body.walletId),
+    ])
 
     const tools = buildTools(categories)
-    const systemInstruction = buildSystemInstruction(profile, currency, memories)
+    const pageContext = sanitizePageContext(body.pageContext)
+    const systemInstruction = buildSystemInstruction(profile, currency, memories, pageContext)
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -221,48 +263,81 @@ Deno.serve(async (req) => {
       pendingActions: [],
     }
 
-    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-      const turn = await callModel(neutralHistory, systemInstruction, tools)
-
-      const assistantParts: NeutralPart[] = []
-      if (turn.text) assistantParts.push({ type: 'text', text: turn.text })
-      for (const call of turn.toolCalls) {
-        assistantParts.push({ type: 'tool_call', id: call.id, name: call.name, args: call.args })
-      }
-      const assistantMessage: NeutralMessage = { role: 'assistant', parts: assistantParts }
-      await insertMessage(supabase, conversationId, assistantMessage)
-      neutralHistory.push(assistantMessage)
-
-      if (turn.toolCalls.length === 0) {
-        return respond({
-          conversationId,
-          reply: turn.text,
-          transaction: ctx.createdTransaction,
-          pendingActions: ctx.pendingActions,
+    // Progress channel for the chat UI — subscribe once, broadcast per tool, then tear down.
+    const progressChannel = supabase.channel(`chat:${conversationId}`)
+    try {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(() => resolve(), 1500)
+        progressChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            clearTimeout(t)
+            resolve()
+          }
         })
-      }
+      })
+    } catch {
+      // Broadcast is best-effort; chat still works without cues.
+    }
 
-      const toolResultParts: NeutralPart[] = []
-      for (const call of turn.toolCalls) {
-        let summary: string
-        try {
-          summary = await dispatchTool(ctx, call.name, call.args)
-        } catch (err) {
-          // Agentic reliability: a tool that throws must never abort the whole
-          // turn or leave a chain half-applied. Feed the failure back so the
-          // model can recover or tell the user, and so every tool_call keeps a
-          // matching result (unbalanced pairs break the provider's next turn).
-          // Log only the message, never the raw error object — it can carry
-          // row data (e.g. a Postgres constraint error echoing values).
-          console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
-          summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
+    try {
+      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+        const turn = await callModel(neutralHistory, systemInstruction, tools)
+
+        const assistantParts: NeutralPart[] = []
+        if (turn.text) assistantParts.push({ type: 'text', text: turn.text })
+        for (const call of turn.toolCalls) {
+          assistantParts.push({ type: 'tool_call', id: call.id, name: call.name, args: call.args })
         }
-        toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
-      }
+        const assistantMessage: NeutralMessage = { role: 'assistant', parts: assistantParts }
+        await insertMessage(supabase, conversationId, assistantMessage)
+        neutralHistory.push(assistantMessage)
 
-      const toolResultMessage: NeutralMessage = { role: 'user', parts: toolResultParts }
-      await insertMessage(supabase, conversationId, toolResultMessage)
-      neutralHistory.push(toolResultMessage)
+        if (turn.toolCalls.length === 0) {
+          return respond({
+            conversationId,
+            reply: turn.text,
+            transaction: ctx.createdTransaction,
+            pendingActions: ctx.pendingActions,
+          })
+        }
+
+        const toolResultParts: NeutralPart[] = []
+        for (const call of turn.toolCalls) {
+          try {
+            await progressChannel.send({
+              type: 'broadcast',
+              event: 'tool',
+              payload: { tool: call.name },
+            })
+          } catch {
+            /* degrade silently */
+          }
+          let summary: string
+          try {
+            summary = await dispatchTool(ctx, call.name, call.args)
+          } catch (err) {
+            // Agentic reliability: a tool that throws must never abort the whole
+            // turn or leave a chain half-applied. Feed the failure back so the
+            // model can recover or tell the user, and so every tool_call keeps a
+            // matching result (unbalanced pairs break the provider's next turn).
+            // Log only the message, never the raw error object — it can carry
+            // row data (e.g. a Postgres constraint error echoing values).
+            console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
+            summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
+          }
+          toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
+        }
+
+        const toolResultMessage: NeutralMessage = { role: 'user', parts: toolResultParts }
+        await insertMessage(supabase, conversationId, toolResultMessage)
+        neutralHistory.push(toolResultMessage)
+      }
+    } finally {
+      try {
+        await supabase.removeChannel(progressChannel)
+      } catch {
+        /* ignore */
+      }
     }
 
     return respond({
@@ -438,6 +513,9 @@ function jsonResponse(body: unknown, cors: Record<string, string>, status = 200)
   })
 }
 
+/** Idle threshold before starting a fresh conversation (continuity via ai_memories). */
+const CONVERSATION_IDLE_MS = 6 * 60 * 60 * 1000
+
 async function getOrCreateConversation(
   supabase: SupabaseClient,
   userId: string,
@@ -450,7 +528,20 @@ async function getOrCreateConversation(
       .select('id')
       .eq('id', conversationId)
       .maybeSingle()
-    if (data) return data.id
+    if (data) {
+      const { data: latest } = await supabase
+        .from('chat_messages')
+        .select('created_at')
+        .eq('conversation_id', data.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const lastAt = latest?.created_at ? new Date(latest.created_at).getTime() : 0
+      if (!lastAt || Date.now() - lastAt < CONVERSATION_IDLE_MS) {
+        return data.id
+      }
+      // Stale session — fall through to insert a fresh conversation.
+    }
   }
 
   const { data, error } = await supabase
@@ -464,18 +555,34 @@ async function getOrCreateConversation(
 }
 
 async function fetchHistory(supabase: SupabaseClient, conversationId: string): Promise<NeutralMessage[]> {
+  // Newest 40 first, then reverse to chronological order for the model.
   const { data, error } = await supabase
     .from('chat_messages')
     .select('role, content')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(40)
 
   if (error) throw error
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).reverse().map((row) => ({
     role: row.role as 'user' | 'assistant',
     parts: row.content as NeutralPart[],
   }))
+  // A window that starts mid tool-exchange leaves unbalanced tool_result pairs
+  // and breaks the provider call — drop leading messages until a plain user text.
+  return trimHistoryToSafeStart(rows)
+}
+
+/** Drop leading messages until the first is a user message with a text part. */
+function trimHistoryToSafeStart(messages: NeutralMessage[]): NeutralMessage[] {
+  let start = 0
+  while (start < messages.length) {
+    const m = messages[start]
+    const first = m.parts[0]
+    if (m.role === 'user' && first?.type === 'text') break
+    start++
+  }
+  return messages.slice(start)
 }
 
 async function insertMessage(supabase: SupabaseClient, conversationId: string, message: NeutralMessage) {
@@ -611,9 +718,19 @@ async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): 
   return data?.base_currency ?? 'USD'
 }
 
-function buildSystemInstruction(profile: ChatProfile, currency: string, memories: Memory[]): string {
+function buildSystemInstruction(
+  profile: ChatProfile,
+  currency: string,
+  memories: Memory[],
+  pageContext?: PageContext,
+): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
   const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
+  const screenLine = pageContext
+    ? pageContext.entityId
+      ? `The user is currently on the ${pageContext.page} page viewing record ${pageContext.entityId}; "this"/"it" likely refers to that record.\n\n`
+      : `The user is currently on the ${pageContext.page} page.\n\n`
+    : ''
   const houseRules = `You are ${personaName}, an AI assistant persona embedded in Penda, a personal finance
 app. Penda is the app you live in, not your name — always introduce and refer to yourself as
 ${personaName}, never as "Penda". Your job in this conversation is to help the user log
@@ -621,8 +738,7 @@ transactions by talking naturally — you are not a generic chatbot, you are the
 user records spending and income.
 
 ${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
-
-This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
+${screenLine}This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
 everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
 (e.g. ${symbol}12, ${symbol}2000). Never use "$" or any other currency's symbol unless "${symbol}"
 literally is "$". The user only ever types plain numbers; the currency is always ${currency}.
@@ -1267,7 +1383,13 @@ async function insertPendingAction(
     .single()
 
   if (error) throw new Error(`Couldn't stage the change: ${error.message}`)
-  return { id: data.id, kind: input.kind, domain: input.domain, summary: input.summary }
+  return {
+    id: data.id,
+    kind: input.kind,
+    domain: input.domain,
+    summary: input.summary,
+    targetId: input.targetId,
+  }
 }
 
 async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {

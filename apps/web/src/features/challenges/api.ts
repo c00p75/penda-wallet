@@ -18,6 +18,7 @@ export async function createChallenge(input: ChallengeInput): Promise<Challenge>
     p_target_metric: input.target_metric,
     p_start_date: input.start_date,
     p_end_date: input.end_date,
+    p_wallet_id: input.wallet_id,
   })
 
   if (error) throw error

@@ -9,10 +9,12 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import { createMemory } from '@/features/memory/api'
+import { createSavingsGoal } from '@/features/goals/api'
 import { useUpdateProfile } from '@/features/profile/hooks'
 import { PROFILE_MODES, type ProfileMode } from '@/features/profile/modes'
 import { GENDER_OPTIONS, GOAL_OPTIONS, INCOME_RANGE_OPTIONS, type Gender, type IncomeRange, type PrimaryGoal } from '@/features/profile/onboardingOptions'
 import { buildOnboardingMemories, parseHouseholdSize } from '@/features/profile/onboarding'
+import { starterGoalFromPrimary } from '@/features/profile/starterFromGoal'
 import { useCreateWallet } from './hooks'
 
 const STEPS = ['wallet', 'about', 'goal', 'more'] as const
@@ -64,6 +66,13 @@ export function OnboardingScreen() {
         await Promise.all(memories.map((m) => createMemory(userId!, m)))
       } catch {
         // Best-effort enrichment — never block onboarding completion on this.
+      }
+
+      try {
+        const starter = starterGoalFromPrimary(primaryGoal)
+        if (starter) await createSavingsGoal(wallet.id, starter, 0)
+      } catch {
+        // Starter goal is optional — user can create one later.
       }
 
       setCurrentWalletId(wallet.id)

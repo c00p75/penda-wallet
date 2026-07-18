@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { HomePage } from '@/features/home/HomePage'
 import { AmbientChat } from '@/features/chat/AmbientChat'
 import { LockPrompt } from '@/features/lock/UnlockSheet'
+import { useOfflineQueueSync } from '@/pwa/useOfflineQueue'
 
 // Every other route is code-split — the home dashboard is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
@@ -30,10 +31,31 @@ const JournalPage = lazy(() =>
 const SimulatorPage = lazy(() =>
   import('@/features/simulator/SimulatorPage').then((m) => ({ default: m.SimulatorPage })),
 )
+const BusinessHubPage = lazy(() =>
+  import('@/features/business/BusinessHubPage').then((m) => ({ default: m.BusinessHubPage })),
+)
+const MissionsPage = lazy(() =>
+  import('@/features/missions/MissionsPage').then((m) => ({ default: m.MissionsPage })),
+)
+const ActivityLogPage = lazy(() =>
+  import('@/features/activity/ActivityLogPage').then((m) => ({ default: m.ActivityLogPage })),
+)
+const AiActionsPage = lazy(() =>
+  import('@/features/audit/AiActionsPage').then((m) => ({ default: m.AiActionsPage })),
+)
+const FamilyHubPage = lazy(() =>
+  import('@/features/family/FamilyHubPage').then((m) => ({ default: m.FamilyHubPage })),
+)
+
+function OfflineQueueHost() {
+  useOfflineQueueSync()
+  return null
+}
 
 function App() {
   return (
     <>
+      <OfflineQueueHost />
       <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -47,8 +69,13 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/cashflow" element={<CashflowPage />} />
-        <Route path="/journal" element={<JournalPage />} />
-        <Route path="/simulator" element={<SimulatorPage />} />
+          <Route path="/journal" element={<JournalPage />} />
+          <Route path="/simulator" element={<SimulatorPage />} />
+          <Route path="/business" element={<BusinessHubPage />} />
+          <Route path="/missions" element={<MissionsPage />} />
+          <Route path="/activity" element={<ActivityLogPage />} />
+          <Route path="/ai-actions" element={<AiActionsPage />} />
+          <Route path="/family" element={<FamilyHubPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

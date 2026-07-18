@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Check, Mic, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -8,13 +9,42 @@ import { cn } from '@/lib/utils'
 import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
 import { useCloseOnBack } from '@/lib/useCloseOnBack'
+import { supabase } from '@/lib/supabase/client'
+import { enqueueChatMessage } from '@/pwa/offlineQueue'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
 import { PERSONALITIES } from '@/features/profile/types'
 import { useConfirmAiAction, useSendChatMessage } from './hooks'
 import { useVoiceRecorder } from './useVoiceRecorder'
+import type { PageContext } from './pageContext'
 import type { ChatMessage, PendingAction } from './types'
+
+const TOOL_PROGRESS_COPY: Record<string, string> = {
+  create_transaction: 'Logging that…',
+  get_budget_progress: 'Checking your budgets…',
+  query_records: 'Looking that up…',
+  get_spending_summary: 'Tallying your spend…',
+  create_budget: 'Setting up a budget…',
+  create_goal: 'Setting up a goal…',
+  log_borrowed_or_lent_money: 'Recording the loan…',
+  save_memory: 'Remembering that…',
+}
+
+function viewHrefFor(domain: string, targetId?: string): string | undefined {
+  switch (domain) {
+    case 'transaction':
+      return '/transactions'
+    case 'budget':
+      return '/budgets'
+    case 'goal':
+      return targetId ? `/goals/${targetId}` : '/goals'
+    case 'debt':
+      return '/goals'
+    default:
+      return undefined
+  }
+}
 
 interface ChatSheetProps {
   open: boolean
@@ -26,6 +56,7 @@ interface ChatSheetProps {
   /** Called once the auto-send has fired, so the caller can clear the flag. */
   onAutoSendConsumed?: () => void
   currency?: string
+  pageContext?: PageContext
 }
 
 // A press shorter than this counts as a tap (hands-free record); longer counts
@@ -78,7 +109,9 @@ export function ChatSheet({
   autoSend = false,
   onAutoSendConsumed,
   currency = 'USD',
+  pageContext,
 }: ChatSheetProps) {
+  const navigate = useNavigate()
   const sym = currencySymbol(currency)
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadStoredChat(walletId).messages)
   const [conversationId, setConversationId] = useState<string | undefined>(
@@ -91,6 +124,8 @@ export function ChatSheet({
     () => loadStoredChat(walletId).actionStatus,
   )
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [toolProgress, setToolProgress] = useState<string | null>(null)
+  const sentConversationIdRef = useRef(conversationId)
 
   // Persist across app reloads — restored above via loadStoredChat's lazy init.
   useEffect(() => {
@@ -167,14 +202,43 @@ export function ChatSheet({
     setMessages((prev) => [...prev.filter((m) => m.id !== id), message].slice(-MAX_STORED_MESSAGES))
   }
 
+  // Subscribe for tool-progress broadcasts while a send is in flight.
+  useEffect(() => {
+    if (!sendMessage.isPending || !conversationId) {
+      setToolProgress(null)
+      return
+    }
+    const channel = supabase.channel(`chat:${conversationId}`)
+    channel
+      .on('broadcast', { event: 'tool' }, ({ payload }) => {
+        const tool = typeof payload?.tool === 'string' ? payload.tool : ''
+        setToolProgress(TOOL_PROGRESS_COPY[tool] ?? 'Working on it…')
+      })
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+      setToolProgress(null)
+    }
+  }, [sendMessage.isPending, conversationId])
+
   // The network round-trip shared by a fresh send and a retry. `replaceId`,
   // when set, is the failed bubble being retried — its error is replaced by
   // the outcome rather than appending a new one.
   function sendToAssistant(text: string, replaceId?: string) {
+    sentConversationIdRef.current = conversationId
     sendMessage
-      .mutateAsync({ message: text, conversationId })
+      .mutateAsync({ message: text, conversationId, pageContext })
       .then((result) => {
+        const rotated =
+          !!sentConversationIdRef.current && sentConversationIdRef.current !== result.conversationId
         setConversationId(result.conversationId)
+        if (rotated) {
+          pushMessage({
+            id: nextId(),
+            role: 'assistant',
+            text: '— new session —',
+          })
+        }
         const reply: ChatMessage = {
           id: nextId(),
           role: 'assistant',
@@ -184,7 +248,25 @@ export function ChatSheet({
         if (replaceId) replaceMessage(replaceId, reply)
         else pushMessage(reply)
       })
-      .catch((error) => {
+      .catch(async (error) => {
+        const networkFail =
+          !navigator.onLine ||
+          (error instanceof TypeError) ||
+          (error instanceof Error && /fetch|network/i.test(error.message))
+        if (networkFail && walletId && !replaceId) {
+          try {
+            await enqueueChatMessage(walletId, text)
+            pushMessage({
+              id: nextId(),
+              role: 'assistant',
+              text: 'Queued — sends when you’re back online.',
+              queued: true,
+            })
+            return
+          } catch {
+            /* fall through to error bubble */
+          }
+        }
         const errorMessage: ChatMessage = {
           id: nextId(),
           role: 'assistant',
@@ -202,6 +284,19 @@ export function ChatSheet({
 
     pushMessage({ id: nextId(), role: 'user', text: trimmed })
     setInput('')
+    if (!navigator.onLine && walletId) {
+      void enqueueChatMessage(walletId, trimmed)
+        .then(() => {
+          pushMessage({
+            id: nextId(),
+            role: 'assistant',
+            text: 'Queued — sends when you’re back online.',
+            queued: true,
+          })
+        })
+        .catch(() => sendToAssistant(trimmed))
+      return
+    }
     sendToAssistant(trimmed)
   }
 
@@ -223,6 +318,10 @@ export function ChatSheet({
     try {
       const res = await confirmAction.mutateAsync({ actionId: action.id, decision })
       setActionStatus((prev) => ({ ...prev, [action.id]: res.status }))
+      const href =
+        decision === 'confirm'
+          ? viewHrefFor(res.domain, res.targetId ?? action.targetId)
+          : undefined
       pushMessage({
         id: nextId(),
         role: 'assistant',
@@ -230,6 +329,7 @@ export function ChatSheet({
           decision === 'confirm'
             ? `Done — ${res.summary.replace(/\.$/, '')}.`
             : 'No worries — I left it as it was.',
+        viewHref: href,
       })
     } catch (error) {
       pushMessage({
@@ -441,6 +541,20 @@ export function ChatSheet({
                         Retry
                       </Button>
                     )}
+                    {m.viewHref && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() => {
+                          onOpenChange(false)
+                          navigate(m.viewHref!)
+                        }}
+                      >
+                        View
+                      </Button>
+                    )}
                   </div>
                   {m.pendingActions?.map((action) => (
                     <PendingActionCard
@@ -456,7 +570,7 @@ export function ChatSheet({
               ))}
               {sendMessage.isPending && (
                 <div className="mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-                  Thinking…
+                  {toolProgress ?? 'Thinking…'}
                 </div>
               )}
               <div ref={messagesEndRef} />

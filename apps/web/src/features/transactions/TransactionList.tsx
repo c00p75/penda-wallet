@@ -1,4 +1,4 @@
-import { Mic, MessageCircle, Camera, RefreshCw } from 'lucide-react'
+import { Mic, MessageCircle, Camera, RefreshCw, Smartphone } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Transaction } from './types'
@@ -35,7 +35,15 @@ function formatDateHeading(dateStr: string) {
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-/** Small colored source indicator: voice = mic, chat = message, receipt = camera, sms = 📱 */
+const SOURCE_LABEL: Record<Exclude<Transaction['source'], 'manual'>, string> = {
+  voice: 'Added by voice',
+  chat: 'Added by Penda',
+  receipt: 'From receipt scan',
+  recurring: 'Recurring',
+  sms: 'From MoMo SMS',
+}
+
+/** Small colored source indicator: voice = mic, chat = message, receipt = camera, sms = smartphone */
 function SourceDot({ source }: { source: Transaction['source'] }) {
   if (source === 'manual') return null
   const map: Record<string, { icon: React.ElementType; color: string }> = {
@@ -43,6 +51,7 @@ function SourceDot({ source }: { source: Transaction['source'] }) {
     chat: { icon: MessageCircle, color: 'var(--mint)' },
     receipt: { icon: Camera, color: 'var(--apricot)' },
     recurring: { icon: RefreshCw, color: 'var(--muted-foreground)' },
+    sms: { icon: Smartphone, color: 'var(--iris)' },
   }
   const entry = map[source]
   if (!entry) return null
@@ -50,7 +59,8 @@ function SourceDot({ source }: { source: Transaction['source'] }) {
   return (
     <span
       className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-background"
-      title={source}
+      title={SOURCE_LABEL[source]}
+      aria-label={SOURCE_LABEL[source]}
     >
       <Icon className="size-2.5" style={{ color: entry.color }} strokeWidth={2.5} />
     </span>
@@ -117,6 +127,7 @@ export function TransactionList({ transactions, onSelect }: TransactionListProps
                   <p className="truncate text-sm font-medium">{label}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {tx.category?.name ?? 'Uncategorized'}
+                    {tx.source !== 'manual' ? ` · ${SOURCE_LABEL[tx.source]}` : ''}
                   </p>
                 </div>
 

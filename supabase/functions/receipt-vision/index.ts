@@ -114,9 +114,13 @@ Deno.serve(async (req) => {
     const extraction = await extractReceipt(base64, mimeType, categories)
 
     const merchant = extraction.merchant ?? null
+    // Receipts have no free-text description field; description rules match
+    // against merchant + suggested category so Teach-Penda rules still fire.
+    const descriptionHaystack = [merchant, extraction.suggested_category].filter(Boolean).join(' ')
     let categoryId = categories.find((c) => c.name === extraction.suggested_category)?.id ?? null
     for (const rule of rules) {
-      const haystack = (rule.match_type === 'merchant_contains' ? merchant : null) ?? ''
+      const haystack =
+        (rule.match_type === 'merchant_contains' ? merchant : descriptionHaystack) ?? ''
       if (haystack.toLowerCase().includes(rule.match_value.toLowerCase())) {
         categoryId = rule.category_id
         break

@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { localMonthEnd, localMonthStart } from '@/lib/dates'
 import type { Transaction } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
@@ -24,12 +25,11 @@ const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> 
 }
 
 function monthStartOf(now: Date): string {
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+  return localMonthStart(now)
 }
 
 function monthEndOf(now: Date): string {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
-  return end.toISOString().slice(0, 10)
+  return localMonthEnd(now)
 }
 
 /**

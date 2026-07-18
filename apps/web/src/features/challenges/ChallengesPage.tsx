@@ -140,18 +140,23 @@ export function ChallengesContent() {
         </Button>
       </div>
 
-      {challenges.length > 0 && (
-        <AiInsight>
-          {active.length > 0
-            ? (() => {
-                const soonest = Math.min(...active.map((c) => daysLeft(c)))
-                return `${active.length} live challenge${active.length === 1 ? '' : 's'} — ${
-                  soonest === 0 ? 'one ends today' : `one ends in ${soonest}d`
-                }. Stay sharp.`
-              })()
-            : 'Your challenges have wrapped. Ready to start another?'}
-        </AiInsight>
-      )}
+      {challenges.length > 0 &&
+        (() => {
+          const text =
+            active.length > 0
+              ? (() => {
+                  const soonest = Math.min(...active.map((c) => daysLeft(c)))
+                  return `${active.length} live challenge${active.length === 1 ? '' : 's'} — ${
+                    soonest === 0 ? 'one ends today' : `one ends in ${soonest}d`
+                  }. Stay sharp.`
+                })()
+              : 'Your challenges have wrapped. Ready to start another?'
+          return (
+            <AiInsight askText={text}>
+              {text}
+            </AiInsight>
+          )
+        })()}
 
       {challenges.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
@@ -194,6 +199,7 @@ export function ChallengesContent() {
         open={formOpen}
         onOpenChange={setFormOpen}
         currency={wallet.base_currency}
+        walletId={wallet.id}
         onSubmit={handleCreate}
         isSubmitting={createChallenge.isPending}
       />

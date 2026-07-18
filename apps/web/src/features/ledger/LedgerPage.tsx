@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Plus, Sparkles, Split, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from '@/components/BottomNav'
@@ -24,6 +24,10 @@ import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { shouldPromptReconciliation } from '@/features/reconciliation/reconcile'
 import { cn } from '@/lib/utils'
+import { enqueueTransaction } from '@/pwa/offlineQueue'
+import { useOfflinePending } from '@/pwa/useOfflineQueue'
+import { supabase } from '@/lib/supabase/client'
+import { SplitExpenseSheet } from '@/features/splits/SplitExpenseSheet'
 
 function AiInsightActionCard({
   insight,
@@ -85,12 +89,34 @@ export function LedgerPage() {
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
   const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const offlineQueue = useOfflinePending()
 
   const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [dismissedInsightIds, setDismissedInsightIds] = useState<Set<string>>(new Set())
+  const [splitTx, setSplitTx] = useState<Transaction | null>(null)
+  const [members, setMembers] = useState<{ user_id: string; label: string }[]>([])
+
+  useEffect(() => {
+    if (!wallet?.id) return
+    void supabase
+      .from('wallet_members')
+      .select('user_id, profiles(display_name)')
+      .eq('wallet_id', wallet.id)
+      .then(({ data }) => {
+        setMembers(
+          (data ?? []).map((row) => {
+            const profile = row.profiles as unknown as { display_name: string | null } | null
+            return {
+              user_id: row.user_id as string,
+              label: profile?.display_name?.trim() || `Member ${String(row.user_id).slice(0, 4)}`,
+            }
+          }),
+        )
+      })
+  }, [wallet?.id])
 
   function openAddForm() {
     setEditing(null)
@@ -102,7 +128,18 @@ export function LedgerPage() {
     setFormOpen(true)
   }
 
+  async function saveOffline(input: TransactionInput) {
+    if (!wallet || !session) return
+    await enqueueTransaction(wallet.id, session.user.id, input)
+    await offlineQueue.refreshCount()
+    toast("Saved offline — it'll sync when you're back online.")
+  }
+
   async function handleSubmit(input: TransactionInput) {
+    if (!editing && !navigator.onLine) {
+      await saveOffline(input)
+      return
+    }
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
@@ -113,6 +150,10 @@ export function LedgerPage() {
         toast('Transaction added.')
       }
     } catch (error) {
+      if (!editing && error instanceof TypeError) {
+        await saveOffline(input)
+        return
+      }
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
   }
@@ -236,17 +277,46 @@ export function LedgerPage() {
         <Plus className="size-6" />
       </Button>
 
+      {editing?.type === 'expense' && members.length > 1 && formOpen && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="fixed bottom-[5.5rem] right-6 gap-1.5 rounded-full shadow-md"
+          onClick={() => {
+            setSplitTx(editing)
+            setFormOpen(false)
+          }}
+        >
+          <Split className="size-3.5" />
+          Split
+        </Button>
+      )}
+
       <TransactionForm
         open={formOpen}
         onOpenChange={setFormOpen}
         categories={categories}
         currency={currency}
+        walletId={wallet.id}
         transaction={editing}
         draft={null}
         onSubmit={handleSubmit}
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
       />
+
+      {session && (
+        <SplitExpenseSheet
+          open={!!splitTx}
+          onOpenChange={(open) => !open && setSplitTx(null)}
+          walletId={wallet.id}
+          transaction={splitTx}
+          currency={currency}
+          members={members}
+          currentUserId={session.user.id}
+        />
+      )}
 
       <BottomNav />
     </main>

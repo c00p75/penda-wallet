@@ -18,6 +18,7 @@ interface ChallengeFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   currency: string
+  walletId: string
   onSubmit: (input: ChallengeInput) => Promise<void>
   isSubmitting?: boolean
 }
@@ -30,7 +31,14 @@ function plusDays(days: number) {
   return d.toISOString().slice(0, 10)
 }
 
-export function ChallengeForm({ open, onOpenChange, currency, onSubmit, isSubmitting }: ChallengeFormProps) {
+export function ChallengeForm({
+  open,
+  onOpenChange,
+  currency,
+  walletId,
+  onSubmit,
+  isSubmitting,
+}: ChallengeFormProps) {
   const [name, setName] = useState('')
   const [type, setType] = useState<ChallengeType>('savings_target')
   const [amount, setAmount] = useState('')
@@ -65,6 +73,7 @@ export function ChallengeForm({ open, onOpenChange, currency, onSubmit, isSubmit
       target_metric,
       start_date: startDate,
       end_date: endDate,
+      wallet_id: walletId,
     })
     onOpenChange(false)
   }

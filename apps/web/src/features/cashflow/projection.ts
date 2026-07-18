@@ -1,4 +1,5 @@
 import type { RecurringFrequency, RecurringTransaction } from '@/features/recurring/types'
+import { addLocalDays, localDateStr, parseLocalDate } from '@/lib/dates'
 
 export type ProjectedEventKind = 'income' | 'bill' | 'spending'
 
@@ -35,27 +36,23 @@ export interface ProjectCashflowInput {
 }
 
 function toStr(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  return localDateStr(date)
 }
 
-function parseUTC(str: string): Date {
-  return new Date(`${str}T00:00:00Z`)
-}
-
-function step(date: Date, freq: RecurringFrequency): Date {
-  const d = new Date(date)
+function stepLocal(date: Date, freq: RecurringFrequency): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   switch (freq) {
     case 'daily':
-      d.setUTCDate(d.getUTCDate() + 1)
+      d.setDate(d.getDate() + 1)
       break
     case 'weekly':
-      d.setUTCDate(d.getUTCDate() + 7)
+      d.setDate(d.getDate() + 7)
       break
     case 'monthly':
-      d.setUTCMonth(d.getUTCMonth() + 1)
+      d.setMonth(d.getMonth() + 1)
       break
     case 'yearly':
-      d.setUTCFullYear(d.getUTCFullYear() + 1)
+      d.setFullYear(d.getFullYear() + 1)
       break
   }
   return d
@@ -69,9 +66,7 @@ function step(date: Date, freq: RecurringFrequency): Date {
 export function projectCashflow(input: ProjectCashflowInput): CashflowProjection {
   const { startingBalanceMinor, recurring, avgDailySpendMinor, from, days } = input
   const fromStr = toStr(from)
-  const end = new Date(from)
-  end.setUTCDate(end.getUTCDate() + days)
-  const endStr = toStr(end)
+  const endStr = addLocalDays(from, days)
 
   // Expand recurring rules into a date -> events map within the window.
   const byDate = new Map<string, ProjectedEvent[]>()
@@ -79,10 +74,10 @@ export function projectCashflow(input: ProjectCashflowInput): CashflowProjection
   for (const rule of recurring) {
     if (!rule.is_active) continue
     const { template, frequency } = rule
-    let d = parseUTC(rule.next_run_date)
+    let d = parseLocalDate(rule.next_run_date)
     let guard = 0
     while (toStr(d) < fromStr && guard < GUARD) {
-      d = step(d, frequency)
+      d = stepLocal(d, frequency)
       guard += 1
     }
     while (toStr(d) < endStr && guard < GUARD) {
@@ -96,7 +91,7 @@ export function projectCashflow(input: ProjectCashflowInput): CashflowProjection
       const list = byDate.get(dateStr) ?? []
       list.push(event)
       byDate.set(dateStr, list)
-      d = step(d, frequency)
+      d = stepLocal(d, frequency)
       guard += 1
     }
   }
@@ -104,9 +99,7 @@ export function projectCashflow(input: ProjectCashflowInput): CashflowProjection
   const projectedDays: ProjectedDay[] = []
   let balance = startingBalanceMinor
   for (let i = 0; i < days; i++) {
-    const dayDate = new Date(from)
-    dayDate.setUTCDate(dayDate.getUTCDate() + i)
-    const dateStr = toStr(dayDate)
+    const dateStr = addLocalDays(from, i)
 
     const events = [...(byDate.get(dateStr) ?? [])]
     if (avgDailySpendMinor > 0) {

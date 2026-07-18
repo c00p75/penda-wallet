@@ -15,6 +15,8 @@ export interface Challenge {
   start_date: string
   end_date: string
   invite_code: string
+  /** Wallet that scopes leaderboard scoring; null on legacy challenges. */
+  wallet_id: string | null
   created_at: string
   updated_at: string
 }
@@ -25,6 +27,7 @@ export interface ChallengeInput {
   target_metric: ChallengeTargetMetric
   start_date: string
   end_date: string
+  wallet_id: string
 }
 
 export interface LeaderboardEntry {

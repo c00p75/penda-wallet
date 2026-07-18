@@ -16,6 +16,7 @@ type Period = 'weekly' | 'monthly'
 interface BudgetRow {
   id: string
   category_id: string | null
+  /** Cap used for pacing — effective amount when rollover is on. */
   amount_minor: number
   period: Period
 }
@@ -190,12 +191,25 @@ Deno.serve(async (req) => {
 })
 
 async function nudgeForWallet(supabase: SupabaseClient, walletId: string, currency: string) {
-  const { data: budgetsData, error: budgetsError } = await supabase
-    .from('budgets')
-    .select('id, category_id, amount_minor, period')
-    .eq('wallet_id', walletId)
-  if (budgetsError) throw budgetsError
-  const budgets = budgetsData ?? []
+  // Prefer effective caps (incl. rollover carry) — same source as the Budgets UI.
+  const { data: progressRows, error: progressError } = await supabase.rpc('get_budget_progress', {
+    p_wallet_id: walletId,
+  })
+  if (progressError) throw progressError
+
+  const budgets: BudgetRow[] = (progressRows ?? []).map(
+    (row: {
+      budget_id: string
+      category_id: string | null
+      effective_amount_minor: number
+      period: Period
+    }) => ({
+      id: row.budget_id,
+      category_id: row.category_id,
+      amount_minor: Number(row.effective_amount_minor),
+      period: row.period,
+    }),
+  )
 
   const now = new Date()
   let worst: PaceResult | null = null
@@ -212,7 +226,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       .eq('type', 'expense')
       .gte('transaction_date', monthStart)
     if (txError) throw txError
-    worst = pickWorstBudget(budgets as BudgetRow[], (transactions ?? []) as TxRow[], now)
+    worst = pickWorstBudget(budgets, (transactions ?? []) as TxRow[], now)
   }
 
   let title = 'A heads-up on your budget'
@@ -256,7 +270,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       (wideTx ?? []) as WideTxRow[],
       (goals ?? []) as GoalRow[],
       (categories ?? []) as CategoryRow[],
-      budgets as BudgetRow[],
+      budgets,
       now,
       currency,
     )

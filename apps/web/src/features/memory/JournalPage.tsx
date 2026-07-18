@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,8 +11,20 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCreateMemory, useDeleteMemory, useMemories } from './hooks'
 import { relativeTimeLabel } from './relativeTime'
+import type { AiMemory } from './types'
 
 const MOODS = ['😌', '😄', '😰', '😞', '😤', '🤑']
+const YEAR_MS = 365 * 24 * 60 * 60 * 1000
+
+function monthKey(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthLabel(key: string): string {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
 
 export function JournalPage() {
   const session = useAuthStore((s) => s.session)
@@ -27,12 +39,33 @@ export function JournalPage() {
   const [content, setContent] = useState('')
   const [mood, setMood] = useState<string | null>(null)
 
-  if (!session) return <Navigate to="/login" replace />
-
-  const journal = memories.filter(
-    (m) => m.kind === 'note' || m.kind === 'mood' || m.kind === 'fact' || m.kind === 'preference',
+  const journal = useMemo(
+    () =>
+      memories.filter(
+        (m) => m.kind === 'note' || m.kind === 'mood' || m.kind === 'fact' || m.kind === 'preference',
+      ),
+    [memories],
   )
-  const oldest = journal[journal.length - 1]
+
+  const oneYearAgo = useMemo(() => {
+    const cutoff = Date.now() - YEAR_MS
+    return journal
+      .filter((m) => new Date(m.created_at).getTime() <= cutoff)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+  }, [journal])
+
+  const byMonth = useMemo(() => {
+    const map = new Map<string, AiMemory[]>()
+    for (const m of journal) {
+      const key = monthKey(m.created_at)
+      const list = map.get(key) ?? []
+      list.push(m)
+      map.set(key, list)
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [journal])
+
+  if (!session) return <Navigate to="/login" replace />
 
   async function handleSave() {
     if (!content.trim()) return
@@ -50,6 +83,8 @@ export function JournalPage() {
     }
   }
 
+  const oldest = journal[journal.length - 1]
+
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <header className="flex items-center gap-2">
@@ -62,10 +97,16 @@ export function JournalPage() {
         </div>
       </header>
 
-      {oldest && (
-        <AiInsight>
-          {relativeTimeLabel(oldest.created_at)} you wrote: “{oldest.content}”. Look how far you’ve come.
+      {oneYearAgo ? (
+        <AiInsight tone="warm">
+          One year ago you wrote: “{oneYearAgo.content}”. Look how far you’ve come.
         </AiInsight>
+      ) : (
+        oldest && (
+          <AiInsight>
+            {relativeTimeLabel(oldest.created_at)} you wrote: “{oldest.content}”. Look how far you’ve come.
+          </AiInsight>
+        )
       )}
 
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
@@ -101,27 +142,34 @@ export function JournalPage() {
           Nothing here yet. Noting how a purchase felt helps Penda spot your patterns.
         </p>
       ) : (
-        <ol className="flex flex-col gap-3">
-          {journal.map((m) => (
-            <li key={m.id} className="flex items-start gap-3 rounded-2xl border bg-card p-3">
-              <span className="text-xl" aria-hidden>
-                {m.mood ?? '📝'}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground">{relativeTimeLabel(m.created_at)}</p>
-                <p className="text-sm">{m.content}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => deleteMemory.mutate(m.id)}
-                aria-label="Delete entry"
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </li>
+        <div className="flex flex-col gap-6">
+          {byMonth.map(([key, entries]) => (
+            <section key={key}>
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{monthLabel(key)}</h2>
+              <ol className="flex flex-col gap-3">
+                {entries.map((m) => (
+                  <li key={m.id} className="flex items-start gap-3 rounded-2xl border bg-card p-3">
+                    <span className="text-xl" aria-hidden>
+                      {m.mood ?? '📝'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground">{relativeTimeLabel(m.created_at)}</p>
+                      <p className="text-sm">{m.content}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => deleteMemory.mutate(m.id)}
+                      aria-label="Delete entry"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </section>
           ))}
-        </ol>
+        </div>
       )}
 
       <BottomNav />

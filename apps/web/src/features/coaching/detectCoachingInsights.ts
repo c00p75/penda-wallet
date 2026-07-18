@@ -4,6 +4,7 @@ import type { Budget } from '@/features/budgets/types'
 import type { SavingsGoal } from '@/features/goals/types'
 import { formatMoney } from '@/lib/money'
 import { suggestBudgets } from '@/features/budgets/suggestBudgets'
+import { detectGhostLeaks } from './detectGhostLeaks'
 
 export type CoachingKind = 'attention' | 'opportunity' | 'celebration' | 'observability'
 
@@ -120,6 +121,9 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
       action: { label: 'View goals', kind: 'view-goals', goalId: g.id },
     })
   }
+
+  // Ghost leaks — fees and tiny repeated P2P sends.
+  insights.push(...detectGhostLeaks({ transactions, currency, now }))
 
   return insights.sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind])
 }

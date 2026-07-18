@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import type { PageContext } from './pageContext'
 import type { ChatResponse, ConfirmActionResponse } from './types'
 
 export async function transcribeVoice(audio: Blob, filename: string): Promise<string> {
@@ -18,9 +19,10 @@ export async function sendChatMessage(
   walletId: string,
   message: string,
   conversationId?: string,
+  pageContext?: PageContext,
 ): Promise<ChatResponse> {
   const { data, error } = await supabase.functions.invoke<ChatResponse>('chat-message', {
-    body: { walletId, message, conversationId },
+    body: { walletId, message, conversationId, pageContext },
   })
 
   if (error) throw error

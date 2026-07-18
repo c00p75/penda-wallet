@@ -1,12 +1,20 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { confirmAiAction, sendChatMessage } from './api'
+import type { PageContext } from './pageContext'
 
 export function useSendChatMessage(walletId: string | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ message, conversationId }: { message: string; conversationId?: string }) =>
-      sendChatMessage(walletId!, message, conversationId),
+    mutationFn: ({
+      message,
+      conversationId,
+      pageContext,
+    }: {
+      message: string
+      conversationId?: string
+      pageContext?: PageContext
+    }) => sendChatMessage(walletId!, message, conversationId, pageContext),
     onSuccess: (data) => {
       if (data.transaction) {
         queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })

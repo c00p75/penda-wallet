@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, CloudOff, Trophy, Users } from 'lucide-react'
+import { CloudOff, MessageCircle, Trophy, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
-import { useOfflineQueue } from '@/pwa/useOfflineQueue'
+import { useOfflinePending } from '@/pwa/useOfflineQueue'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletPresence } from '@/features/wallets/useWalletPresence'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
@@ -20,7 +20,7 @@ export function AppHeader() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
   const openChat = useChatStore((s) => s.openChat)
-  const offlineQueue = useOfflineQueue()
+  const offlineQueue = useOfflinePending()
   const present = useWalletPresence(wallet?.id, session?.user.id, session?.user.email ?? '')
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
 
@@ -76,9 +76,9 @@ export function AppHeader() {
             size="icon"
             className="size-9 rounded-full"
             onClick={() => openChat()}
-            aria-label="Notifications"
+            aria-label="Ask Penda"
           >
-            <Bell className="size-4" />
+            <MessageCircle className="size-4" />
           </Button>
         </div>
       </header>

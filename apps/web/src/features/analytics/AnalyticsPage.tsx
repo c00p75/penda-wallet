@@ -7,6 +7,8 @@ import { AppHeader } from '@/components/AppHeader'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
+import { useBudgetProgress } from '@/features/budgets/hooks'
+import { useSavingsGoals } from '@/features/goals/hooks'
 import { usePushSubscriptionStatus, useSubscribeToPush } from '@/features/notifications/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { FEATURE_COPY } from '@/features/entitlements/types'
@@ -16,6 +18,7 @@ import { useDismissInsight, useInsights } from './hooks'
 import { CategoryBarChart } from './CategoryBarChart'
 import { SpendingCalendar } from './SpendingCalendar'
 import { InsightsList } from './InsightsList'
+import { CONFIDENCE_LABEL_COPY, computeConfidenceScore } from './confidenceScore'
 
 export function AnalyticsPage() {
   return (
@@ -32,6 +35,8 @@ export function AnalyticsContent() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
+  const { data: budgetProgress = [] } = useBudgetProgress(wallet?.id)
+  const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const { data: insights = [] } = useInsights(wallet?.id)
   const dismissInsight = useDismissInsight(wallet?.id)
   const { data: isSubscribed } = usePushSubscriptionStatus()
@@ -42,6 +47,39 @@ export function AnalyticsContent() {
   const monthTransactions = transactions.filter((tx) => {
     const d = new Date(`${tx.transaction_date}T00:00:00`)
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+  })
+  const monthIncomeMinor = monthTransactions
+    .filter((tx) => tx.type === 'income')
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const monthExpenseMinor = monthTransactions
+    .filter((tx) => tx.type === 'expense')
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const balanceMinor = transactions.reduce(
+    (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
+    0,
+  )
+  const goalProgressAvg =
+    goals.length === 0
+      ? 0.5
+      : goals.reduce(
+          (sum, g) =>
+            sum + (g.target_amount_minor > 0 ? Math.min(1, g.current_amount_minor / g.target_amount_minor) : 0),
+          0,
+        ) / goals.length
+  const budgetAdherence =
+    budgetProgress.length === 0
+      ? 0.5
+      : budgetProgress.reduce((sum, b) => {
+          const cap = b.effective_amount_minor
+          if (cap <= 0) return sum + 1
+          return sum + Math.max(0, 1 - b.spent_minor / cap)
+        }, 0) / budgetProgress.length
+  const confidence = computeConfidenceScore({
+    balanceMinor,
+    monthIncomeMinor,
+    monthExpenseMinor,
+    goalProgressAvg,
+    budgetAdherence,
   })
 
   async function handleEnableNotifications() {
@@ -59,13 +97,19 @@ export function AnalyticsContent() {
   // AI speaks first: lead with the newest insight (Premium) or, failing that, a
   // grounded fact computed from this month's own data — never a fabricated line.
   const latestInsight = isPremium ? insights[0] : undefined
-  const monthSpentMinor = monthTransactions
-    .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const monthSpentMinor = monthExpenseMinor
+  const askText = latestInsight
+    ? latestInsight.content.text
+    : monthSpentMinor > 0
+      ? `I've spent ${formatMoney(monthSpentMinor, wallet.base_currency)} so far this month`
+      : 'I have no spending logged this month yet'
 
   return (
     <>
-      <AiInsight tone={latestInsight?.type === 'anomaly' ? 'attention' : 'default'}>
+      <AiInsight
+        tone={latestInsight?.type === 'anomaly' ? 'attention' : 'default'}
+        askText={askText}
+      >
         {latestInsight ? (
           latestInsight.content.text
         ) : monthSpentMinor > 0 ? (
@@ -78,6 +122,29 @@ export function AnalyticsContent() {
           <>No spending logged this month yet — add a few and I’ll start spotting patterns for you.</>
         )}
       </AiInsight>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Financial confidence</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-4">
+          <div
+            className="grid size-16 place-items-center rounded-full text-xl font-bold tabular-nums"
+            style={{
+              background: 'var(--iris-soft)',
+              color: 'var(--iris)',
+            }}
+          >
+            {confidence.score}
+          </div>
+          <div>
+            <p className="font-medium">{CONFIDENCE_LABEL_COPY[confidence.label]}</p>
+            <p className="text-sm text-muted-foreground">
+              From cash position, this month’s flow, goals, and budget pace — not a credit score.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

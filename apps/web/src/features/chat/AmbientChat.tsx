@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { ChatSheet } from './ChatSheet'
 import { useChatStore } from './chatStore'
+import { pageContextFromPathname } from './pageContext'
 
 /**
  * The conversation as an ambient layer: one ChatSheet mounted for the whole
@@ -23,8 +24,12 @@ export function AmbientChat() {
 
   if (!session || !wallet || location.pathname === '/login') return null
 
+  const pageContext = pageContextFromPathname(location.pathname)
+
   return (
     <ChatSheet
+      // Remount on wallet switch so messages/conversationId never leak across wallets.
+      key={wallet.id}
       open={open}
       onOpenChange={setOpen}
       walletId={wallet.id}
@@ -32,6 +37,7 @@ export function AmbientChat() {
       autoSend={autoSend}
       onAutoSendConsumed={consumeAutoSend}
       currency={wallet.base_currency}
+      pageContext={pageContext}
     />
   )
 }

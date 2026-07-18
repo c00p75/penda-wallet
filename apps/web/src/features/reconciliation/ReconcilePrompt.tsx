@@ -11,6 +11,8 @@ interface ReconcilePromptProps {
   userId: string
   currency: string
   computedBalanceMinor: number
+  /** When set (e.g. from a MoMo SMS balance), open in Fix mode with this value pre-filled. */
+  suggestedActualMinor?: number | null
   /** Called after the user resolves the prompt (confirmed or adjusted) — dismiss the card. */
   onResolved: () => void
   /** Create a balancing transaction for the difference when the user reports a different actual balance. */
@@ -28,11 +30,16 @@ export function ReconcilePrompt({
   userId,
   currency,
   computedBalanceMinor,
+  suggestedActualMinor = null,
   onResolved,
   onAdjust,
 }: ReconcilePromptProps) {
-  const [fixing, setFixing] = useState(false)
-  const [actual, setActual] = useState('')
+  const [fixing, setFixing] = useState(
+    () => suggestedActualMinor != null && suggestedActualMinor !== computedBalanceMinor,
+  )
+  const [actual, setActual] = useState(() =>
+    suggestedActualMinor != null ? fromMinorUnits(suggestedActualMinor).toString() : '',
+  )
   const createReconciliation = useCreateReconciliation(walletId, userId)
 
   async function confirmMatch() {

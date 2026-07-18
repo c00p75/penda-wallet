@@ -36,9 +36,21 @@ export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            We’re putting the finishing touches on Penda+. It’s not ready to buy just yet — but it’s
-            coming, and this will be waiting for you.
+            Try the magic once — then Premium unlocks it for good. Purchase isn’t live yet; your free
+            preview is saved on this device.
           </p>
+
+          {feature === 'receipt-scan' && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                localStorage.setItem('penda:preview:receipt-scan', '1')
+                onOpenChange(false)
+              }}
+            >
+              Preview once on this device
+            </Button>
+          )}
 
           <Button onClick={() => onOpenChange(false)}>Sounds good</Button>
         </div>

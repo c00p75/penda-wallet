@@ -6,26 +6,29 @@ import { BottomNav } from '@/components/BottomNav'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
+import { localDateStr } from '@/lib/dates'
 import { projectCashflow, type ProjectedDay } from './projection'
 
 const HORIZON_DAYS = 30
 
 function formatDay(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString(undefined, {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-    timeZone: 'UTC',
   })
 }
 
 export function CashflowPage() {
   const session = useAuthStore((s) => s.session)
   const navigate = useNavigate()
+  const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
@@ -44,7 +47,7 @@ export function CashflowPage() {
     // which the projection adds separately) over the last 30 days.
     const cutoff = new Date(from)
     cutoff.setDate(cutoff.getDate() - 30)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    const cutoffStr = localDateStr(cutoff)
     const discretionary = transactions
       .filter((tx) => tx.type === 'expense' && tx.source !== 'recurring' && tx.transaction_date >= cutoffStr)
       .reduce((sum, tx) => sum + tx.amount_minor, 0)
@@ -102,7 +105,22 @@ export function CashflowPage() {
         </div>
       </header>
 
-      <AiInsight tone={insight.tone}>{insight.text}</AiInsight>
+      <AiInsight tone={insight.tone} askText={insight.text}>
+        {insight.text}
+      </AiInsight>
+
+      <div className="flex flex-wrap gap-2">
+        {['When will I run short?', 'What if I cut spending by 20%?', 'How much free before payday?'].map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => openChat(q)}
+            className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
 
       <ol className="relative flex flex-col gap-0 border-l border-border pl-4">
         {projection.days.map((day) => (

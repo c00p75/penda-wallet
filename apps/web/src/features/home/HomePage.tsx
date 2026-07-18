@@ -10,6 +10,7 @@ import {
   PiggyBank,
   Plus,
   Sparkles,
+  Target,
   TrendingDown,
   TrendingUp,
   Wallet as WalletIcon,
@@ -22,7 +23,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { AiOrb } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
-import { useOfflineQueue } from '@/pwa/useOfflineQueue'
+import { useOfflinePending } from '@/pwa/useOfflineQueue'
 import { InstallBanner } from '@/pwa/InstallBanner'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
@@ -43,26 +44,40 @@ import type { Transaction, TransactionDraft, TransactionInput } from '@/features
 import { useChatStore } from '@/features/chat/chatStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { formatMoney, fromMinorUnits } from '@/lib/money'
+import { localDateStr, localMonthEnd, localMonthPrefix, localMonthStart } from '@/lib/dates'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useCategories } from '@/features/categories/hooks'
+import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
+import { suggestBufferFromIncome } from '@/features/planning/bufferSuggest'
+import { useSpendingPlan } from '@/features/planning/hooks'
+import { computeSafeToSpend } from '@/features/planning/spendingPlan'
+import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
+import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
+import { useRecurringTransactions } from '@/features/recurring/hooks'
+import { useProfile } from '@/features/profile/hooks'
+import { ImpulsePauseSheet } from '@/features/impulse/ImpulsePauseSheet'
+import { IMPULSE_THRESHOLD_MINOR, useImpulseStore } from '@/features/impulse/impulseStore'
 
 /** Split a formatted currency string into whole and decimal parts for big-number display. */
 function splitBalance(amountMinor: number, currency: string): { whole: string; decimal: string; symbol: string } {
-  const formatted = new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(
+  const parts = new Intl.NumberFormat(undefined, { style: 'currency', currency }).formatToParts(
     fromMinorUnits(Math.abs(amountMinor)),
   )
-  const symbolMatch = formatted.match(/^([^0-9]*)/)
-  const symbol = symbolMatch ? symbolMatch[1].trim() : ''
-  const numericPart = formatted.replace(symbol, '').trim()
-  const dotIndex = numericPart.lastIndexOf('.')
-  if (dotIndex !== -1) {
-    return { symbol, whole: numericPart.slice(0, dotIndex), decimal: numericPart.slice(dotIndex) }
-  }
-  return { symbol, whole: numericPart, decimal: '' }
-}
-
-function monthPrefix(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  const symbol = parts
+    .filter((p) => p.type === 'currency' || p.type === 'literal')
+    .map((p) => p.value)
+    .join('')
+    .trim()
+  const whole = parts
+    .filter((p) => p.type === 'integer' || p.type === 'group')
+    .map((p) => p.value)
+    .join('')
+  const fraction = parts.find((p) => p.type === 'fraction')?.value
+  const decimal = fraction != null ? `${parts.find((p) => p.type === 'decimal')?.value ?? '.'}${fraction}` : ''
+  // Prefer a leading currency symbol when the locale puts it first; otherwise leave empty
+  // (symbol may trail — hero layout still reads the numeric whole/decimal).
+  const leadingSymbol = parts[0]?.type === 'currency' || parts[0]?.type === 'literal' ? symbol : ''
+  return { symbol: leadingSymbol || symbol, whole: whole || '0', decimal }
 }
 
 export function HomePage() {
@@ -76,6 +91,8 @@ export function HomePage() {
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: budgetProgress = [] } = useBudgetProgress(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
+  const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
+  const { data: plan } = useSpendingPlan(wallet?.id, localMonthStart())
 
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
@@ -83,17 +100,24 @@ export function HomePage() {
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
   const { isPremium } = useEntitlement(session?.user.id)
+  const { data: profile } = useProfile(session?.user.id)
+  const blindBudgeting = !!profile?.blind_budgeting
+  const pauseImpulse = useImpulseStore((s) => s.pause)
+  const isImpulseDismissed = useImpulseStore((s) => s.isDismissed)
+  const dismissImpulse = useImpulseStore((s) => s.dismiss)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
+  const [momoReportedBalance, setMomoReportedBalance] = useState<number | null>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteInitialText, setPasteInitialText] = useState('')
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
+  const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useWalletRealtime(wallet?.id)
-  const offlineQueue = useOfflineQueue()
+  const offlineQueue = useOfflinePending()
 
   function openAddForm() {
     setEditing(null)
@@ -126,11 +150,12 @@ export function HomePage() {
     toast("Saved offline — it'll sync when you're back online.")
   }
 
-  async function handleSubmit(input: TransactionInput) {
+  async function commitTransaction(input: TransactionInput) {
     if (!editing && !navigator.onLine) {
       await saveOffline(input)
       return
     }
+    const reportedBalance = !editing ? (momoDraft?.reported_balance_minor ?? null) : null
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
@@ -139,6 +164,8 @@ export function HomePage() {
       } else {
         await createTransaction.mutateAsync(input)
         toast('Transaction added.')
+        if (reportedBalance != null) setMomoReportedBalance(reportedBalance)
+        setMomoDraft(null)
       }
     } catch (error) {
       if (!editing && error instanceof TypeError) {
@@ -147,6 +174,34 @@ export function HomePage() {
       }
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
+  }
+
+  async function handleSubmit(input: TransactionInput) {
+    if (
+      !editing &&
+      input.type === 'expense' &&
+      input.amount_minor >= IMPULSE_THRESHOLD_MINOR
+    ) {
+      const promptId = `impulse:${input.amount_minor}:${input.merchant ?? ''}:${input.transaction_date}`
+      if (!isImpulseDismissed(promptId) && !useImpulseStore.getState().paused.some((p) => p.id === promptId)) {
+        setPendingImpulse(input)
+        return
+      }
+    }
+    await commitTransaction(input)
+  }
+
+  async function handleReconcileAdjust(deltaMinor: number) {
+    if (!wallet) return
+    await createTransaction.mutateAsync({
+      category_id: null,
+      amount_minor: Math.abs(deltaMinor),
+      currency: wallet.base_currency,
+      type: deltaMinor > 0 ? 'income' : 'expense',
+      merchant: null,
+      description: 'Balance reconciliation adjustment',
+      transaction_date: localDateStr(),
+    })
   }
 
   async function handleDelete() {
@@ -191,7 +246,7 @@ export function HomePage() {
     0,
   )
   const now = new Date()
-  const thisMonthPrefix = monthPrefix(now)
+  const thisMonthPrefix = localMonthPrefix(now)
   const monthName = now.toLocaleDateString(undefined, { month: 'long' })
   const thisMonthTx = transactions.filter((tx) => tx.transaction_date.startsWith(thisMonthPrefix))
   const monthSpending = thisMonthTx
@@ -217,18 +272,40 @@ export function HomePage() {
       : null
   const balanceGrowthPositive = balanceMinor >= balanceLastMonthSameDayMinor
 
-  // ── Safe to spend today ─────────────────────────────────────
+  // ── Safe to spend today (prefer spending-plan math when a plan exists) ─
   const monthlyBudgets = budgetProgress.filter((b) => b.period === 'monthly')
   const totalBudgetMinor = monthlyBudgets.reduce((sum, b) => sum + b.effective_amount_minor, 0)
   const totalSpentMinor = monthlyBudgets.reduce((sum, b) => sum + b.spent_minor, 0)
-  const remainingBudgetMinor = totalBudgetMinor - totalSpentMinor
-  const hasBudgets = totalBudgetMinor > 0
-  const safeToSpendPerDayMinor = Math.max(0, Math.round(remainingBudgetMinor / daysLeft))
-  const safeToSpendRingPct = Math.max(0, Math.min(100, Math.round((remainingBudgetMinor / totalBudgetMinor) * 100)))
+  const monthSpentForPlan = thisMonthTx
+    .filter((tx) => tx.type === 'expense')
+    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const planSafe = plan
+    ? computeSafeToSpend({
+        intendedMinor: plan.intended_amount_minor,
+        spentMinor: monthSpentForPlan,
+        upcomingFixedMinor:
+          upcomingFixedCosts(recurring, localDateStr(now), localMonthEnd(now)).totalMinor +
+          totalMonthlyGoalReserve(goals, now),
+        monthStart: localMonthStart(now),
+        now,
+      })
+    : null
+  const remainingBudgetMinor = planSafe
+    ? planSafe.discretionaryRemainingMinor
+    : totalBudgetMinor - totalSpentMinor
+  const hasBudgets = plan ? plan.intended_amount_minor > 0 : totalBudgetMinor > 0
+  const safeToSpendPerDayMinor = planSafe
+    ? Math.max(0, planSafe.perDayMinor)
+    : Math.max(0, Math.round(remainingBudgetMinor / daysLeft))
+  const safeCap = plan ? plan.intended_amount_minor : totalBudgetMinor
+  const safeToSpendRingPct = Math.max(
+    0,
+    Math.min(100, safeCap > 0 ? Math.round((remainingBudgetMinor / safeCap) * 100) : 0),
+  )
 
   // ── Top category this month ─────────────────────────────────
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const prevMonthPrefix = monthPrefix(prevMonthDate)
+  const prevMonthPrefix = localMonthPrefix(prevMonthDate)
   const categoryTotals = new Map<string, { name: string; icon: string | null; amount: number }>()
   for (const tx of thisMonthTx) {
     if (tx.type !== 'expense') continue
@@ -258,12 +335,15 @@ export function HomePage() {
   // ── AI insights ──────────────────────────────────────────────
   const weekCutoff = new Date()
   weekCutoff.setDate(weekCutoff.getDate() - 7)
-  const weekCutoffStr = weekCutoff.toISOString().slice(0, 10)
+  const weekCutoffStr = localDateStr(weekCutoff)
   const last7Spent = transactions
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= weekCutoffStr)
     .reduce((sum, tx) => sum + tx.amount_minor, 0)
+  const buffer = suggestBufferFromIncome(transactions)
   const weekInsight =
-    last7Spent > 0
+    buffer != null
+      ? `That ${formatMoney(buffer.incomeTx.amount_minor, currency)} cash-in is large — move ${formatMoney(buffer.suggestMinor, currency)} to a buffer for next month?`
+      : last7Spent > 0
       ? `You've spent ${formatMoney(last7Spent, currency)} in the last 7 days.`
       : "Nothing logged this week yet — tell me about a purchase and I'll take it from there."
 
@@ -290,17 +370,47 @@ export function HomePage() {
     { icon: ClipboardPaste, label: 'Paste MoMo', onTap: openPaste },
     { icon: CalendarRange, label: 'Cashflow', onTap: () => navigate('/cashflow') },
     { icon: NotebookPen, label: 'Journal', onTap: () => navigate('/journal') },
+    { icon: Target, label: 'Missions', onTap: () => navigate('/missions') },
     { icon: Sparkles, label: 'What if…', onTap: () => navigate('/simulator') },
     {
       icon: Camera,
       label: 'Scan receipt',
-      onTap: () => (isPremium ? receiptInputRef.current?.click() : setPaywallFeature('receipt-scan')),
+      onTap: () => {
+        if (isPremium || localStorage.getItem('penda:preview:receipt-scan') === '1') {
+          receiptInputRef.current?.click()
+          return
+        }
+        setPaywallFeature('receipt-scan')
+      },
     },
   ]
+
+  const auraColor =
+    balanceMinor > monthSpending
+      ? 'var(--mint)'
+      : balanceMinor > 0
+        ? 'var(--apricot)'
+        : 'var(--rose)'
+  const auraLabel =
+    balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <AppHeader />
+
+      {momoReportedBalance != null && session && (
+        <div className="px-4 pt-2">
+          <ReconcilePrompt
+            walletId={wallet.id}
+            userId={session.user.id}
+            currency={currency}
+            computedBalanceMinor={balanceMinor}
+            suggestedActualMinor={momoReportedBalance}
+            onResolved={() => setMomoReportedBalance(null)}
+            onAdjust={handleReconcileAdjust}
+          />
+        </div>
+      )}
 
       <input
         ref={receiptInputRef}
@@ -330,22 +440,42 @@ export function HomePage() {
         </div>
 
         {/* Balance card */}
-        <div className="rounded-3xl border bg-card p-5 shadow-sm">
+        <div
+          className="rounded-3xl border bg-card p-5 shadow-sm"
+          style={
+            blindBudgeting
+              ? {
+                  background: `radial-gradient(circle at 20% 30%, color-mix(in srgb, ${auraColor} 22%, var(--card)) 0%, var(--card) 55%)`,
+                }
+              : undefined
+          }
+        >
           <div className="flex items-stretch gap-4">
             <div className="min-w-0 flex-1">
               <p className="text-sm text-muted-foreground">Current balance</p>
-              <div className="mt-1 flex items-baseline gap-1">
-                {isNegative && <span className="text-xl font-semibold text-[var(--rose)]">−</span>}
-                <span className="text-xl font-semibold text-muted-foreground">{balanceParts.symbol}</span>
-                <HiddenAmount>
-                  <span className="text-4xl font-bold leading-none tracking-tight">{balanceParts.whole}</span>
-                  {balanceParts.decimal && <span className="text-xl font-bold leading-none">{balanceParts.decimal}</span>}
-                </HiddenAmount>
-              </div>
+              {blindBudgeting ? (
+                <div className="mt-2">
+                  <p className="text-2xl font-bold" style={{ color: auraColor }}>
+                    {auraLabel}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">Blind mode — exact amounts stay out of sight</p>
+                </div>
+              ) : (
+                <div className="mt-1 flex items-baseline gap-1">
+                  {isNegative && <span className="text-xl font-semibold text-[var(--rose)]">−</span>}
+                  <span className="text-xl font-semibold text-muted-foreground">{balanceParts.symbol}</span>
+                  <HiddenAmount>
+                    <span className="text-4xl font-bold leading-none tracking-tight">{balanceParts.whole}</span>
+                    {balanceParts.decimal && (
+                      <span className="text-xl font-bold leading-none">{balanceParts.decimal}</span>
+                    )}
+                  </HiddenAmount>
+                </div>
+              )}
 
               <div className="mt-4 flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">{monthName} spending</p>
-                {balanceGrowthPct !== null && (
+                {!blindBudgeting && balanceGrowthPct !== null && (
                   <div
                     className="flex items-center gap-1 text-xs font-semibold"
                     style={{ color: balanceGrowthPositive ? 'var(--mint)' : 'var(--rose)' }}
@@ -356,9 +486,11 @@ export function HomePage() {
                   </div>
                 )}
               </div>
-              <p className="font-semibold">
-                <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
-              </p>
+              {!blindBudgeting && (
+                <p className="font-semibold">
+                  <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
+                </p>
+              )}
             </div>
 
             <Separator orientation="vertical" />
@@ -366,9 +498,9 @@ export function HomePage() {
             <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 text-center">
               <span
                 className="grid size-11 shrink-0 place-items-center rounded-full"
-                style={{ background: 'var(--iris-soft)' }}
+                style={{ background: blindBudgeting ? `color-mix(in srgb, ${auraColor} 16%, transparent)` : 'var(--iris-soft)' }}
               >
-                <WalletIcon className="size-5" style={{ color: 'var(--iris)' }} />
+                <WalletIcon className="size-5" style={{ color: blindBudgeting ? auraColor : 'var(--iris)' }} />
               </span>
               <p className="text-2xl font-bold leading-none tabular-nums">{daysLeft}</p>
               <p className="text-xs text-muted-foreground">days left in {monthName}</p>
@@ -561,6 +693,7 @@ export function HomePage() {
         onOpenChange={setFormOpen}
         categories={categories}
         currency={currency}
+        walletId={wallet.id}
         transaction={editing}
         draft={momoDraft}
         onSubmit={handleSubmit}
@@ -585,6 +718,39 @@ export function HomePage() {
       />
 
       <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
+
+      <ImpulsePauseSheet
+        open={!!pendingImpulse}
+        onOpenChange={(open) => {
+          if (!open) setPendingImpulse(null)
+        }}
+        amountMinor={pendingImpulse?.amount_minor ?? 0}
+        currency={pendingImpulse?.currency ?? currency}
+        merchant={pendingImpulse?.merchant ?? null}
+        onPause={() => {
+          if (!pendingImpulse) return
+          const id = `impulse:${pendingImpulse.amount_minor}:${pendingImpulse.merchant ?? ''}:${pendingImpulse.transaction_date}`
+          pauseImpulse({
+            id,
+            amountMinor: pendingImpulse.amount_minor,
+            currency: pendingImpulse.currency,
+            merchant: pendingImpulse.merchant,
+            description: pendingImpulse.description,
+          })
+          toast('Paused for 24h — come back tomorrow if you still want it.')
+          setPendingImpulse(null)
+          setFormOpen(false)
+        }}
+        onProceed={() => {
+          if (!pendingImpulse) return
+          const id = `impulse:${pendingImpulse.amount_minor}:${pendingImpulse.merchant ?? ''}:${pendingImpulse.transaction_date}`
+          dismissImpulse(id)
+          const input = pendingImpulse
+          setPendingImpulse(null)
+          void commitTransaction(input)
+        }}
+      />
+
       <BottomNav />
     </div>
   )

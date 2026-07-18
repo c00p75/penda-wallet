@@ -15,6 +15,7 @@ export function parsedToDraft(parsed: ParsedMoMo): TransactionDraft {
     description: parsed.reference ? `${label} · Ref ${parsed.reference}` : null,
     transaction_date: parsed.transactionDate,
     source: 'sms',
+    reported_balance_minor: parsed.balanceMinor,
   }
 }
 

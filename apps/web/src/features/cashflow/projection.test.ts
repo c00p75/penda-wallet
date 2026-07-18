@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { projectCashflow } from './projection'
 import type { RecurringTransaction, RecurringTemplate } from '@/features/recurring/types'
 
-const FROM = new Date('2026-07-14T00:00:00Z')
+// Local midnight Jul 14 — projection uses local calendar days, not UTC.
+const FROM = new Date(2026, 6, 14)
 
 function tpl(over: Partial<RecurringTemplate>): RecurringTemplate {
   return {

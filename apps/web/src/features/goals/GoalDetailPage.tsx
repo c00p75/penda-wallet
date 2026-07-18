@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Plus, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from '@/components/BottomNav'
+import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -13,6 +14,7 @@ import { usePacts, useCreatePact, useDeletePact } from '@/features/pacts/hooks'
 import { PactCard } from '@/features/pacts/PactCard'
 import { PactForm } from '@/features/pacts/PactForm'
 import type { CommitmentPactInput } from '@/features/pacts/types'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useAddContribution, useContributions, useSavingsGoals, useUpdateSavingsGoal, useDeleteSavingsGoal } from './hooks'
 import { getGoalImageUrl } from './api'
 import { GoalForm } from './GoalForm'
@@ -28,6 +30,7 @@ function formatDate(dateStr: string) {
 export function GoalDetailPage() {
   const session = useAuthStore((s) => s.session)
   const navigate = useNavigate()
+  const openChat = useChatStore((s) => s.openChat)
   const { id } = useParams<{ id: string }>()
   const { data: wallet } = useCurrentWallet()
 
@@ -109,6 +112,9 @@ export function GoalDetailPage() {
 
   const perMonth = monthlyContributionMinor(goal.target_amount_minor, goal.current_amount_minor, goal.target_date)
   const forecast = estimateGoalCompletion(goal, contributions)
+  const recentContributions = [...contributions]
+    .sort((a, b) => b.contributed_date.localeCompare(a.contributed_date) || b.created_at.localeCompare(a.created_at))
+    .slice(0, 12)
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-6 bg-background p-4 pb-24">
@@ -116,19 +122,35 @@ export function GoalDetailPage() {
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
           <ArrowLeft className="size-5" />
         </Button>
-        <h2 className="flex items-center gap-1.5 truncate text-base font-medium">
+        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-base font-medium">
           {goal.icon && <span aria-hidden>{goal.icon}</span>}
           <span className="truncate">{goal.name}</span>
         </h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          aria-label="Ask about this goal"
+          onClick={() => openChat(`About my "${goal.name}" goal: `)}
+        >
+          <MessageCircle className="size-5" />
+        </Button>
       </header>
 
-      {goal.image_path && (
-        <img src={getGoalImageUrl(goal.image_path)} alt="" className="h-40 w-full rounded-2xl object-cover" />
-      )}
+      <div className="relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl p-6">
+        {goal.image_path && (
+          <>
+            <img
+              src={getGoalImageUrl(goal.image_path)}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/45" />
+          </>
+        )}
 
-      <div className="flex flex-col items-center gap-3">
         <div
-          className="grid size-40 shrink-0 place-items-center rounded-full"
+          className="relative grid size-40 shrink-0 place-items-center rounded-full"
           style={{ background: `conic-gradient(${accent} ${ringPct}%, color-mix(in srgb, ${accent} 16%, transparent) 0)` }}
         >
           <div className="grid size-32 place-items-center rounded-full bg-card">
@@ -140,7 +162,7 @@ export function GoalDetailPage() {
             </div>
           </div>
         </div>
-        <p className="text-sm tabular-nums text-muted-foreground">
+        <p className={cn('relative text-sm tabular-nums', goal.image_path ? 'text-white' : 'text-muted-foreground')}>
           {formatMoney(goal.current_amount_minor, currency)} of {formatMoney(goal.target_amount_minor, currency)}
         </p>
       </div>
@@ -156,7 +178,7 @@ export function GoalDetailPage() {
           <span className="font-semibold text-foreground">{formatMoney(goal.target_amount_minor, currency)}</span>{' '}
           is {ringPct}% funded.{' '}
           {reached ? (
-            'You\'ve already hit it — nice work. 🎉'
+            'You\'ve already hit it — nice work.'
           ) : perMonth !== null && perMonth > 0 ? (
             <>
               To reach it by {formatDate(goal.target_date!)}, Penda suggests saving{' '}
@@ -170,6 +192,17 @@ export function GoalDetailPage() {
             'Add a few contributions and I\'ll start projecting your pace.'
           )}
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1 gap-1.5"
+          onClick={() =>
+            openChat(`About my "${goal.name}" goal at ${ringPct}%: what should I do next?`, { autoSend: true })
+          }
+        >
+          <MessageCircle className="size-3.5" />
+          Ask about this goal
+        </Button>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -181,20 +214,30 @@ export function GoalDetailPage() {
         </Button>
       </div>
 
+      {recentContributions.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-semibold">Contribution history</h2>
+          <ul className="flex flex-col gap-1">
+            {recentContributions.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between rounded-xl px-3 py-2 text-sm tabular-nums"
+              >
+                <span className="text-muted-foreground">{formatDate(c.contributed_date)}</span>
+                <span className={c.amount_minor >= 0 ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'font-medium'}>
+                  {c.amount_minor >= 0 ? '+' : '−'}
+                  {formatMoney(Math.abs(c.amount_minor), currency)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold">Commitment Pacts</h2>
-            <p className="text-xs text-muted-foreground">Automated discipline for your financial future.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate('/budgets')}
-            className="flex shrink-0 items-center text-sm text-primary"
-          >
-            View all
-            <ChevronRight className="size-4" />
-          </button>
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">Commitment Pacts</h2>
+          <p className="text-xs text-muted-foreground">Automated discipline for this goal.</p>
         </div>
 
         {goalPacts.length > 0 && (
@@ -221,7 +264,7 @@ export function GoalDetailPage() {
             <Plus className="size-4" />
           </span>
           <span className="text-sm font-medium text-foreground">New Pact</span>
-          <span className="text-xs">Let Penda suggest a new challenge.</span>
+          <span className="text-xs">Pick a category to avoid for a while.</span>
         </button>
       </section>
 

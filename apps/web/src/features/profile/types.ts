@@ -13,6 +13,20 @@ export type AiPersonality =
   | 'gogo'
   | 'analyst'
 
+export interface AiConsent {
+  auto_log_sms: boolean
+  act_without_confirm: boolean
+  parse_clipboard: boolean
+  unprompted_coaching: boolean
+}
+
+export const DEFAULT_AI_CONSENT: AiConsent = {
+  auto_log_sms: true,
+  act_without_confirm: false,
+  parse_clipboard: true,
+  unprompted_coaching: true,
+}
+
 export interface Profile {
   id: string
   display_name: string | null
@@ -25,6 +39,11 @@ export interface Profile {
   income_range: IncomeRange | null
   gender: Gender
   notification_opt_in: boolean
+  ai_consent: AiConsent
+  blind_budgeting: boolean
+  tax_reserve_pct: number
+  round_up_enabled: boolean
+  pay_yourself_first_pct: number
   created_at: string
 }
 
@@ -37,6 +56,11 @@ export interface ProfileInput {
   income_range?: IncomeRange | null
   gender?: Gender
   notification_opt_in?: boolean
+  ai_consent?: AiConsent
+  blind_budgeting?: boolean
+  tax_reserve_pct?: number
+  round_up_enabled?: boolean
+  pay_yourself_first_pct?: number
 }
 
 export interface PersonalityMeta {

@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useAddContribution, useContributions, useCreateSavingsGoal, useSavingsGoals } from './hooks'
@@ -47,6 +48,7 @@ function GoalCardWithContributions({
 export function GoalsPage() {
   const session = useAuthStore((s) => s.session)
   const navigate = useNavigate()
+  const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
 
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
@@ -167,7 +169,26 @@ export function GoalsPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <AppHeader />
 
-      {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
+      {insight && (
+        <AiInsight tone={insight.tone} askText={insight.text}>
+          {insight.text}
+        </AiInsight>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {['Am I on track for my goals?', 'Help me save more this month', 'What debt should I attack first?'].map(
+          (q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => openChat(q)}
+              className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            >
+              {q}
+            </button>
+          ),
+        )}
+      </div>
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
         <ToggleGroupItem value="goals" className="flex-1">

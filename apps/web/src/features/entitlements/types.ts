@@ -7,13 +7,9 @@ export interface Entitlement {
   current_period_end: string | null
 }
 
-export type PremiumFeature = 'voice' | 'receipt-scan' | 'insights' | 'shared-wallets'
+export type PremiumFeature = 'receipt-scan' | 'insights' | 'shared-wallets'
 
 export const FEATURE_COPY: Record<PremiumFeature, { title: string; description: string }> = {
-  voice: {
-    title: 'Voice entry',
-    description: 'Log transactions by talking to Penda instead of typing.',
-  },
   'receipt-scan': {
     title: 'Receipt scanning',
     description: 'Snap a photo and Penda extracts the merchant, total, and category.',

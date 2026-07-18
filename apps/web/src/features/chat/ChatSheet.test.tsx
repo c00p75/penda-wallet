@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { ChatSheet } from './ChatSheet'
 import type { ChatResponse, ConfirmActionResponse } from './types'
 
@@ -23,9 +24,25 @@ vi.mock('@/features/profile/hooks', () => ({
 vi.mock('@/lib/useKeyboardInset', () => ({
   useKeyboardInset: () => 0,
 }))
+vi.mock('@/lib/supabase/client', () => ({
+  supabase: {
+    channel: () => ({
+      on: () => ({ subscribe: () => ({}) }),
+      subscribe: () => ({}),
+    }),
+    removeChannel: vi.fn(),
+  },
+}))
+vi.mock('@/pwa/offlineQueue', () => ({
+  enqueueChatMessage: vi.fn(),
+}))
 
 function renderSheet(currency: string) {
-  return render(<ChatSheet open onOpenChange={() => {}} walletId="w1" currency={currency} />)
+  return render(
+    <MemoryRouter>
+      <ChatSheet open onOpenChange={() => {}} walletId="w1" currency={currency} />
+    </MemoryRouter>,
+  )
 }
 
 function reply(overrides: Partial<ChatResponse>): ChatResponse {
@@ -65,15 +82,17 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
     sendMock.mockResolvedValue(reply({ reply: 'Here are a few ideas…' }))
     const onConsumed = vi.fn()
     render(
-      <ChatSheet
-        open
-        onOpenChange={() => {}}
-        walletId="w1"
-        currency="ZMW"
-        initialInput="Help me plan my budget"
-        autoSend
-        onAutoSendConsumed={onConsumed}
-      />,
+      <MemoryRouter>
+        <ChatSheet
+          open
+          onOpenChange={() => {}}
+          walletId="w1"
+          currency="ZMW"
+          initialInput="Help me plan my budget"
+          autoSend
+          onAutoSendConsumed={onConsumed}
+        />
+      </MemoryRouter>,
     )
 
     await waitFor(() =>
@@ -91,13 +110,15 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
 
   it('only prefills the input (no send) when autoSend is not set', () => {
     render(
-      <ChatSheet
-        open
-        onOpenChange={() => {}}
-        walletId="w1"
-        currency="ZMW"
-        initialInput="I spent K12 on coffee"
-      />,
+      <MemoryRouter>
+        <ChatSheet
+          open
+          onOpenChange={() => {}}
+          walletId="w1"
+          currency="ZMW"
+          initialInput="I spent K12 on coffee"
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.getByRole('textbox')).toHaveValue('I spent K12 on coffee')
@@ -169,11 +190,12 @@ describe('ChatSheet staged edit/delete confirmation', () => {
 
 describe('ChatSheet failed sends', () => {
   it('shows a Retry action on failure, and retrying resends the same text', async () => {
-    sendMock.mockRejectedValueOnce(new Error('network down'))
+    // Non-network error so we hit the retry bubble (network errors queue offline).
+    sendMock.mockRejectedValueOnce(new Error('server busy'))
     renderSheet('ZMW')
 
     await send('spent K12 on coffee')
-    expect(await screen.findByText('Something went wrong: network down')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong: server busy')).toBeInTheDocument()
 
     sendMock.mockResolvedValueOnce(reply({ reply: 'Logged it.' }))
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))

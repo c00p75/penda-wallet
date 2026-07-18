@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Lightbulb, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,6 +8,8 @@ import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { localDateStr, localMonthEnd, localMonthStart } from '@/lib/dates'
+import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
@@ -43,6 +45,7 @@ import type { RecurringInput, RecurringTransaction } from '@/features/recurring/
 
 export function BudgetsPage() {
   const session = useAuthStore((s) => s.session)
+  const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: profile } = useProfile(session?.user.id)
@@ -56,7 +59,7 @@ export function BudgetsPage() {
   const deleteBudget = useDeleteBudget(wallet?.id)
 
   const now = new Date()
-  const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+  const monthStart = localMonthStart(now)
   const { data: plan } = useSpendingPlan(wallet?.id, monthStart)
 
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
@@ -76,6 +79,13 @@ export function BudgetsPage() {
   const [suggestOpen, setSuggestOpen] = useState(false)
   const [recurringFormOpen, setRecurringFormOpen] = useState(false)
   const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null)
+
+  useEffect(() => {
+    if (window.location.hash === '#pacts') {
+      setTab('budgets')
+      requestAnimationFrame(() => document.getElementById('pacts')?.scrollIntoView({ behavior: 'smooth' }))
+    }
+  }, [])
 
   const existingBudgetCategoryIds = useMemo(
     () => budgets.map((b) => b.category_id).filter((id): id is string => !!id),
@@ -197,11 +207,11 @@ export function BudgetsPage() {
   // reserving the fixed bills still due this month. Leads the budgets-tab insight.
   const safeToSpendInsight: { tone: 'default' | 'warm' | 'attention'; text: string } | null = (() => {
     if (!plan) return null
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10)
+    const monthEnd = localMonthEnd(now)
     const spentMinor = transactions
       .filter((tx) => tx.type === 'expense' && tx.transaction_date >= monthStart)
       .reduce((sum, tx) => sum + tx.amount_minor, 0)
-    const upcoming = upcomingFixedCosts(recurring, now.toISOString().slice(0, 10), monthEnd)
+    const upcoming = upcomingFixedCosts(recurring, localDateStr(now), monthEnd)
     const goalReserve = totalMonthlyGoalReserve(goals, now)
     const safe = computeSafeToSpend({
       intendedMinor: plan.intended_amount_minor,
@@ -259,7 +269,28 @@ export function BudgetsPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <AppHeader />
 
-      {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
+      {insight && (
+        <AiInsight tone={insight.tone} askText={insight.text}>
+          {insight.text}
+        </AiInsight>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          'How are my budgets doing?',
+          'Help me rebalance this month',
+          'What should I cut first?',
+        ].map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => openChat(q)}
+            className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
         <ToggleGroupItem value="budgets" className="flex-1">
@@ -344,7 +375,7 @@ export function BudgetsPage() {
       )}
 
       {tab === 'budgets' && (
-        <div className="flex flex-col gap-2">
+        <div id="pacts" className="flex scroll-mt-4 flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-muted-foreground">Commitment pacts</p>
             <button type="button" onClick={() => setPactFormOpen(true)} className="text-sm text-primary">

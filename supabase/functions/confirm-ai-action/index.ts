@@ -117,7 +117,13 @@ Deno.serve(async (req) => {
     }
 
     if (body.decision === 'cancel') {
-      return respond({ ok: false, status: 'cancelled', domain: pending.domain, summary: pending.summary })
+      return respond({
+        ok: false,
+        status: 'cancelled',
+        domain: pending.domain,
+        summary: pending.summary,
+        targetId: pending.target_id,
+      })
     }
 
     try {
@@ -129,7 +135,13 @@ Deno.serve(async (req) => {
       await supabase.from('ai_pending_actions').update({ status: 'pending', resolved_at: null }).eq('id', pending.id)
       throw error
     }
-    return respond({ ok: true, status: 'confirmed', domain: pending.domain, summary: pending.summary })
+    return respond({
+      ok: true,
+      status: 'confirmed',
+      domain: pending.domain,
+      summary: pending.summary,
+      targetId: pending.target_id,
+    })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
