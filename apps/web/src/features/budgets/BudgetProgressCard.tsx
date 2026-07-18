@@ -50,11 +50,11 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
     <button
       type="button"
       onClick={onSelect}
-      className="flex flex-col gap-3 rounded-2xl border bg-card p-4 text-left shadow-sm transition-shadow hover:shadow-md"
+      className="flex flex-col gap-3 rounded-[1.35rem] border border-border/60 bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.98]"
     >
       <div className="flex items-center justify-between">
         <span
-          className="grid size-10 shrink-0 place-items-center rounded-full text-lg"
+          className="grid size-10 shrink-0 place-items-center rounded-2xl text-lg"
           style={{ background: iconTint.bg, color: iconTint.fg }}
         >
           {category?.icon ?? '💰'}
@@ -98,6 +98,16 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
             </p>
           </>
         )}
+      </div>
+
+      <div className="mt-auto h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-[width]"
+          style={{
+            width: `${Math.max(0, Math.min(100, pctLabel))}%`,
+            background: status.fg,
+          }}
+        />
       </div>
     </button>
   )

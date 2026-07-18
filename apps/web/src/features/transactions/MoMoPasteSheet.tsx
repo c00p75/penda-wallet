@@ -63,10 +63,12 @@ export function MoMoPasteSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ClipboardPaste className="size-5 text-primary" />
+            <span className="grid size-9 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
+              <ClipboardPaste className="size-4" />
+            </span>
             Paste a MoMo message
           </SheetTitle>
           <SheetDescription>
@@ -75,7 +77,7 @@ export function MoMoPasteSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col gap-3 px-4 pb-4">
+        <div className="flex flex-col gap-3 px-5 pb-6">
           <Textarea
             value={text}
             onChange={(e) => {

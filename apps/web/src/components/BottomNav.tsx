@@ -21,8 +21,26 @@ export function BottomNav() {
   const renderTab = ({ to, label, icon: Icon }: (typeof LEFT)[number]) => {
     const active = location.pathname === to
     return (
-      <Link key={to} to={to} aria-label={label} aria-current={active ? 'page' : undefined} className="flex flex-1 justify-center py-2">
-        <Icon className={cn('size-6 transition-colors', active ? 'text-primary' : 'text-muted-foreground/60')} />
+      <Link
+        key={to}
+        to={to}
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        className="relative flex flex-1 justify-center py-2.5"
+      >
+        {active && (
+          <span
+            className="absolute top-0.5 size-1.5 rounded-full"
+            style={{ background: 'var(--apricot)' }}
+            aria-hidden
+          />
+        )}
+        <Icon
+          className={cn(
+            'size-6 transition-colors',
+            active ? 'text-primary' : 'text-muted-foreground/55',
+          )}
+        />
         <span className="sr-only">{label}</span>
       </Link>
     )
@@ -34,17 +52,16 @@ export function BottomNav() {
         {/*
           A real notch: the bar is masked with a circle cut into its top-center
           edge, sized a bit larger than the button so it nests inside the cut
-          with an even gap all the way around — not a floating halo glued on
-          top of a flat edge, which reads as a mismatched arch.
+          with an even gap all the way around.
         */}
         <div
           className="flex items-center justify-around gap-1 rounded-t-[1.75rem] px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
           style={{
             background: 'var(--card)',
-            boxShadow: '0 -4px 16px rgba(0,0,0,0.08)',
-            borderTop: '1px solid var(--border)',
-            WebkitMaskImage: 'radial-gradient(circle at 50% 8px, transparent 40px, #000 40px)',
-            maskImage: 'radial-gradient(circle at 50% 8px, transparent 40px, #000 40px)',
+            boxShadow: 'var(--shadow-card)',
+            borderTop: '1px solid color-mix(in srgb, var(--border) 70%, transparent)',
+            WebkitMaskImage: 'radial-gradient(circle at 50% 8px, transparent 42px, #000 42px)',
+            maskImage: 'radial-gradient(circle at 50% 8px, transparent 42px, #000 42px)',
           }}
         >
           {LEFT.map(renderTab)}
@@ -52,14 +69,9 @@ export function BottomNav() {
           {RIGHT.map(renderTab)}
         </div>
 
-        {/*
-          Traces the notch's cutout circle so the arc reads as bordered,
-          matching the bar's own border. Clipped to its bottom half only —
-          the top half floats above the bar and should stay borderless.
-        */}
         <div
-          className="pointer-events-none absolute inset-x-0 -top-8 z-[5] mx-auto size-20 rounded-full"
-          style={{ border: '1px solid var(--border)', clipPath: 'inset(40% 0 0 0)' }}
+          className="pointer-events-none absolute inset-x-0 -top-8 z-[5] mx-auto size-[5.25rem] rounded-full"
+          style={{ border: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', clipPath: 'inset(40% 0 0 0)' }}
           aria-hidden
         />
 
@@ -67,10 +79,11 @@ export function BottomNav() {
           type="button"
           onClick={() => openChat()}
           aria-label="Ask Penda"
-          className="absolute inset-x-0 -top-6 z-10 mx-auto flex size-16 items-center justify-center rounded-full text-primary-foreground transition-transform active:scale-95"
+          className="absolute inset-x-0 -top-7 z-10 mx-auto flex size-[4.25rem] items-center justify-center rounded-full text-primary-foreground transition-transform active:scale-95"
           style={{
             background:
-              'linear-gradient(155deg, color-mix(in oklch, var(--primary) 65%, white 35%) 0%, var(--primary) 55%, color-mix(in oklch, var(--primary) 75%, black 25%) 100%)',
+              'linear-gradient(155deg, color-mix(in oklch, var(--primary) 55%, white 45%) 0%, var(--primary) 50%, color-mix(in oklch, var(--primary) 70%, black 30%) 100%)',
+            boxShadow: '0 10px 28px color-mix(in srgb, var(--iris-hero-to) 45%, transparent)',
           }}
         >
           <Sparkles className="size-6" />

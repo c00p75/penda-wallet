@@ -4,10 +4,13 @@ import { Lightbulb, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { HeroCard } from '@/components/ui/hero-card'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { localDateStr, localMonthEnd, localMonthStart } from '@/lib/dates'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
@@ -265,9 +268,49 @@ export function BudgetsPage() {
             text: `${recurring.length} recurring ${recurring.length === 1 ? 'transaction posts' : 'transactions post'} automatically — that’s ${recurring.length === 1 ? 'one bill' : 'that many bills'} you’ll never forget.`,
           }
 
+  const monthlyProgress = progress.filter((p) => p.period === 'monthly')
+  const totalCap = monthlyProgress.reduce((s, p) => s + p.effective_amount_minor, 0)
+  const totalSpent = monthlyProgress.reduce((s, p) => s + p.spent_minor, 0)
+  const spentPct = totalCap > 0 ? Math.min(100, Math.round((totalSpent / totalCap) * 100)) : 0
+  const remaining = totalCap - totalSpent
+
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Budgets</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{monthLabel} · stay on track</p>
+      </section>
+
+      {tab === 'budgets' && totalCap > 0 && (
+        <HeroCard tone={spentPct >= 100 ? 'rose' : spentPct >= 80 ? 'apricot' : 'iris'} className="w-full min-h-[8.5rem]">
+          <div className="flex w-full items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-white/85">Spent this month</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums">
+                <HiddenAmount>{formatMoney(totalSpent, wallet.base_currency)}</HiddenAmount>
+              </p>
+              <p className="mt-1 text-sm text-white/80">
+                <HiddenAmount>{formatMoney(Math.abs(remaining), wallet.base_currency)}</HiddenAmount>
+                {remaining >= 0 ? ' left' : ' over'} of{' '}
+                <HiddenAmount>{formatMoney(totalCap, wallet.base_currency)}</HiddenAmount>
+              </p>
+            </div>
+            <div className="relative grid size-20 shrink-0 place-items-center">
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: `conic-gradient(white ${spentPct}%, color-mix(in srgb, white 25%, transparent) 0)`,
+                  WebkitMaskImage: 'radial-gradient(circle closest-side, transparent 72%, black 73%)',
+                  maskImage: 'radial-gradient(circle closest-side, transparent 72%, black 73%)',
+                }}
+              />
+              <span className="relative text-lg font-bold tabular-nums">{spentPct}%</span>
+            </div>
+          </div>
+        </HeroCard>
+      )}
 
       {insight && (
         <AiInsight tone={insight.tone} askText={insight.text}>
@@ -285,7 +328,7 @@ export function BudgetsPage() {
             key={q}
             type="button"
             onClick={() => openChat(q)}
-            className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
           >
             {q}
           </button>
@@ -293,10 +336,10 @@ export function BudgetsPage() {
       </div>
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
-        <ToggleGroupItem value="budgets" className="flex-1">
+        <ToggleGroupItem value="budgets" className="flex-1 rounded-full">
           Budgets
         </ToggleGroupItem>
-        <ToggleGroupItem value="recurring" className="flex-1">
+        <ToggleGroupItem value="recurring" className="flex-1 rounded-full">
           Recurring
         </ToggleGroupItem>
       </ToggleGroup>
@@ -309,9 +352,9 @@ export function BudgetsPage() {
         <button
           type="button"
           onClick={() => setSuggestOpen(true)}
-          className="flex items-center gap-3 rounded-2xl border bg-card p-4 text-left transition-colors hover:bg-accent/60"
+          className="flex items-center gap-3 rounded-[1.35rem] border border-border/60 bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-colors hover:bg-accent/60"
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
             <Lightbulb className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
@@ -327,7 +370,7 @@ export function BudgetsPage() {
 
       {tab === 'budgets' ? (
         <div className="flex flex-col gap-2">
-          <h2 className="px-1 text-base font-semibold">Categories</h2>
+          <SectionHeader title="Categories" />
           {budgets.length === 0 && (
             <p className="px-1 text-sm text-muted-foreground">
               No budgets yet — tap Add New to set a weekly or monthly spending limit.
@@ -355,7 +398,7 @@ export function BudgetsPage() {
                 setEditingBudget(null)
                 setBudgetFormOpen(true)
               }}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+              className="flex flex-col items-center justify-center gap-2 rounded-[1.35rem] border-2 border-dashed border-border p-4 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
             >
               <Plus className="size-5" />
               <span className="text-sm font-medium">Add New</span>

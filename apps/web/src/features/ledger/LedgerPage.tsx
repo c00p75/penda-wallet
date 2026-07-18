@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, Sparkles, Split, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { DateChip } from '@/components/ui/date-chip'
+import { SectionHeader } from '@/components/ui/section-header'
+import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -16,18 +19,21 @@ import {
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
-import { TransactionList } from '@/features/transactions/TransactionList'
 import type { Transaction, TransactionInput } from '@/features/transactions/types'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction, CoachingInsight } from '@/features/coaching/detectCoachingInsights'
 import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { shouldPromptReconciliation } from '@/features/reconciliation/reconcile'
-import { cn } from '@/lib/utils'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
 import { useOfflinePending } from '@/pwa/useOfflineQueue'
 import { supabase } from '@/lib/supabase/client'
 import { SplitExpenseSheet } from '@/features/splits/SplitExpenseSheet'
+import { formatMoney } from '@/lib/money'
+import { addLocalDays, localDateStr, localMonthStart } from '@/lib/dates'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
+
+type Period = 'today' | '7d' | '30d' | 'month' | 'year' | 'all'
 
 function AiInsightActionCard({
   insight,
@@ -40,8 +46,12 @@ function AiInsightActionCard({
 }) {
   return (
     <div
-      className="relative rounded-2xl border-2 p-4"
-      style={{ borderColor: 'var(--iris)', background: 'color-mix(in srgb, var(--iris) 8%, var(--card))' }}
+      className="relative rounded-[1.5rem] border-2 p-4"
+      style={{
+        borderColor: 'var(--iris)',
+        background: 'color-mix(in srgb, var(--iris) 8%, var(--card))',
+        boxShadow: 'var(--shadow-soft)',
+      }}
     >
       <button
         type="button"
@@ -51,7 +61,10 @@ function AiInsightActionCard({
       >
         <X className="size-4" />
       </button>
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--iris)' }}>
+      <div
+        className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: 'var(--iris)' }}
+      >
         <Sparkles className="size-3.5" />
         AI Insight
       </div>
@@ -77,6 +90,46 @@ function AiInsightActionCard({
   )
 }
 
+function groupByDate(transactions: Transaction[]) {
+  const groups = new Map<string, Transaction[]>()
+  for (const tx of transactions) {
+    const existing = groups.get(tx.transaction_date)
+    if (existing) existing.push(tx)
+    else groups.set(tx.transaction_date, [tx])
+  }
+  return Array.from(groups.entries())
+}
+
+function formatDateHeading(dateStr: string) {
+  const date = new Date(`${dateStr}T00:00:00`)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  if (isSameDay(date, today)) return 'Today'
+  if (isSameDay(date, yesterday)) return 'Yesterday'
+  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function periodCutoff(period: Period): string | null {
+  const now = new Date()
+  switch (period) {
+    case 'today':
+      return localDateStr(now)
+    case '7d':
+      return addLocalDays(now, -6)
+    case '30d':
+      return addLocalDays(now, -29)
+    case 'month':
+      return localMonthStart(now)
+    case 'year':
+      return `${now.getFullYear()}-01-01`
+    case 'all':
+      return null
+  }
+}
+
 export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const navigate = useNavigate()
@@ -98,6 +151,8 @@ export function LedgerPage() {
   const [dismissedInsightIds, setDismissedInsightIds] = useState<Set<string>>(new Set())
   const [splitTx, setSplitTx] = useState<Transaction | null>(null)
   const [members, setMembers] = useState<{ user_id: string; label: string }[]>([])
+  const [period, setPeriod] = useState<Period>('month')
+  const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all')
 
   useEffect(() => {
     if (!wallet?.id) return
@@ -170,6 +225,32 @@ export function LedgerPage() {
     }
   }
 
+  const filtered = useMemo(() => {
+    const cutoff = periodCutoff(period)
+    return transactions.filter((tx) => {
+      if (cutoff && tx.transaction_date < cutoff) return false
+      if (categoryFilter !== 'all' && (tx.category_id ?? 'uncategorized') !== categoryFilter) return false
+      return true
+    })
+  }, [transactions, period, categoryFilter])
+
+  const groups = useMemo(() => groupByDate(filtered), [filtered])
+
+  const usedCategories = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; icon: string | null }>()
+    for (const tx of transactions) {
+      const id = tx.category_id ?? 'uncategorized'
+      if (!map.has(id)) {
+        map.set(id, {
+          id,
+          name: tx.category?.name ?? 'Uncategorized',
+          icon: tx.category?.icon ?? null,
+        })
+      }
+    }
+    return Array.from(map.values()).slice(0, 8)
+  }, [transactions])
+
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
 
@@ -193,7 +274,7 @@ export function LedgerPage() {
       type: deltaMinor > 0 ? 'income' : 'expense',
       merchant: null,
       description: 'Balance reconciliation adjustment',
-      transaction_date: new Date().toISOString().slice(0, 10),
+      transaction_date: localDateStr(),
     })
   }
 
@@ -219,13 +300,63 @@ export function LedgerPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-28">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))]">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
-        <h1 className="text-xl font-semibold">Transactions</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
       </header>
+
+      <DateChip
+        value={period}
+        onChange={(v) => setPeriod(v as Period)}
+        options={[
+          { value: 'today', label: 'Today' },
+          { value: '7d', label: '7d' },
+          { value: '30d', label: '30d' },
+          { value: 'month', label: 'Month' },
+          { value: 'year', label: 'Year' },
+          { value: 'all', label: 'All' },
+        ]}
+      />
+
+      {usedCategories.length > 1 && (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('all')}
+            className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
+              categoryFilter === 'all'
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border/70 bg-card text-muted-foreground'
+            }`}
+          >
+            All
+          </button>
+          {usedCategories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCategoryFilter(c.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
+                categoryFilter === c.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border/70 bg-card text-muted-foreground'
+              }`}
+            >
+              <span>{c.icon ?? '💳'}</span>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {coachingInsights.length > 0 && (
         <div className="flex flex-col gap-3">
@@ -252,26 +383,64 @@ export function LedgerPage() {
       )}
 
       {isTransactionsLoading ? (
-        <div className={cn('flex flex-col gap-3 pt-2')}>
+        <div className="flex flex-col gap-3 pt-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center gap-3 px-1 py-2">
-              <div className="size-10 animate-pulse rounded-full bg-muted" />
-              <div className="flex flex-1 flex-col gap-1.5">
-                <div className="h-3 w-32 animate-pulse rounded-full bg-muted" />
-                <div className="h-2.5 w-20 animate-pulse rounded-full bg-muted" />
-              </div>
-              <div className="h-3 w-16 animate-pulse rounded-full bg-muted" />
-            </div>
+            <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted" />
           ))}
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+          <p className="font-medium text-foreground">No transactions</p>
+          <p className="text-sm">Nothing in this period yet.</p>
+        </div>
       ) : (
-        <TransactionList transactions={transactions} onSelect={openEditForm} />
+        <div className="flex flex-col gap-5">
+          {groups.map(([date, txs]) => (
+            <section key={date}>
+              <SectionHeader
+                title={
+                  <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                    {formatDateHeading(date)}
+                  </span>
+                }
+                className="mb-2"
+              />
+              <div className="flex flex-col gap-2.5">
+                {txs.map((tx) => {
+                  const sign = tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''
+                  return (
+                    <ActivityRow
+                      key={tx.id}
+                      onClick={() => openEditForm(tx)}
+                      avatar={<span>{tx.category?.icon ?? (tx.type === 'income' ? '💰' : '💳')}</span>}
+                      title={tx.merchant || tx.description || tx.category?.name || 'Transaction'}
+                      subtitle={tx.category?.name ?? 'Uncategorized'}
+                      trailing={
+                        <span
+                          style={{
+                            color: tx.type === 'income' ? 'var(--mint)' : 'var(--foreground)',
+                          }}
+                        >
+                          <HiddenAmount>
+                            {sign}
+                            {formatMoney(tx.amount_minor, tx.currency || currency)}
+                          </HiddenAmount>
+                        </span>
+                      }
+                      showChevron
+                    />
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
 
       <Button
         onClick={openAddForm}
         size="icon"
-        className="fixed bottom-6 right-6 size-14 rounded-full shadow-lg"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-lg"
         aria-label="Add transaction"
       >
         <Plus className="size-6" />
@@ -282,7 +451,7 @@ export function LedgerPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="fixed bottom-[5.5rem] right-6 gap-1.5 rounded-full shadow-md"
+          className="fixed bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-6 gap-1.5 rounded-full shadow-md"
           onClick={() => {
             setSplitTx(editing)
             setFormOpen(false)

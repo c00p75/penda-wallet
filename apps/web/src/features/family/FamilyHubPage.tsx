@@ -1,11 +1,16 @@
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Baby, Users } from 'lucide-react'
+import { ArrowLeft, Baby, Users, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { HeroCard } from '@/components/ui/hero-card'
+import { IconTile } from '@/components/ui/icon-tile'
+import { SectionHeader } from '@/components/ui/section-header'
+import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useSpendingPlan } from '@/features/planning/hooks'
@@ -51,14 +56,20 @@ export function FamilyHubPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">Family hub</h1>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Family hub</h1>
           <p className="text-sm text-muted-foreground">Household plan &amp; allowances</p>
         </div>
       </header>
@@ -68,57 +79,52 @@ export function FamilyHubPage() {
         switcher so everyone sees the same numbers.
       </AiInsight>
 
-      <section className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Users className="size-4" />
-          Household plan
-        </div>
-        {plan ? (
-          <p className="text-2xl font-semibold tabular-nums">
-            {formatMoney(plan.intended_amount_minor, wallet.base_currency)}
-            <span className="ml-2 text-sm font-normal text-muted-foreground">this month</span>
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">No plan yet — set one on Budgets.</p>
-        )}
-        <Button variant="outline" size="sm" className="self-start" onClick={() => navigate('/budgets')}>
-          Open budgets
-        </Button>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Baby className="size-4" />
-            Allowances
+      <HeroCard tone="iris" className="w-full min-h-[8rem]">
+        <div className="flex items-center gap-3">
+          <span className="grid size-12 place-items-center rounded-2xl bg-white/20">
+            <Users className="size-6" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-white/85">Household plan</p>
+            {plan ? (
+              <p className="mt-1 text-3xl font-bold tabular-nums">
+                <HiddenAmount>{formatMoney(plan.intended_amount_minor, wallet.base_currency)}</HiddenAmount>
+                <span className="ml-2 text-base font-medium text-white/80">this month</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-white/85">No plan yet — set one on Budgets.</p>
+            )}
           </div>
-          <button type="button" className="text-sm text-primary" onClick={addAllowance}>
-            + New
-          </button>
         </div>
+      </HeroCard>
+
+      <div className="grid grid-cols-2 gap-3">
+        <IconTile icon={Wallet} label="Open budgets" tone="mint" onClick={() => navigate('/budgets')} />
+        <IconTile icon={Baby} label="New allowance" tone="apricot" onClick={addAllowance} />
+      </div>
+
+      <section>
+        <SectionHeader title="Allowances" actionLabel="+ New" onAction={addAllowance} />
         {allowances.length === 0 ? (
-          <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             Track pocket money as named savings goals — one per kid.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {allowances.map((g) => (
-              <li key={g.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-2xl border bg-card px-4 py-3 text-left"
-                  onClick={() => navigate(`/goals/${g.id}`)}
-                >
-                  <span className="font-medium">
-                    {g.icon} {g.name}
-                  </span>
-                  <span className="text-sm tabular-nums text-muted-foreground">
-                    {formatMoney(g.current_amount_minor, wallet.base_currency)}
-                  </span>
-                </button>
-              </li>
+              <ActivityRow
+                key={g.id}
+                onClick={() => navigate(`/goals/${g.id}`)}
+                avatar={<span>{g.icon ?? '🧒'}</span>}
+                title={g.name}
+                subtitle="Pocket money goal"
+                trailing={
+                  <HiddenAmount>{formatMoney(g.current_amount_minor, wallet.base_currency)}</HiddenAmount>
+                }
+                showChevron
+              />
             ))}
-          </ul>
+          </div>
         )}
       </section>
 

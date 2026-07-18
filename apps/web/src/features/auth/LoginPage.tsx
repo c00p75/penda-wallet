@@ -5,9 +5,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AiOrb } from '@/components/AiInsight'
 
-// SVG logos
 function GoogleLogo() {
   return (
     <svg className="size-4" viewBox="0 0 24 24" aria-hidden>
@@ -35,6 +33,44 @@ function AppleLogo() {
   return (
     <svg className="size-4" viewBox="0 0 24 24" aria-hidden fill="currentColor">
       <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.43c1.29.06 2.16.67 2.92.69.9-.15 1.76-.76 3.04-.82 1.55-.08 2.97.62 3.78 1.74-3.44 2.07-2.87 6.65.92 7.93-.42 1.08-.97 2.14-2.66 3.31zM12.03 7.25c-.17-2.63 2.07-4.82 4.72-4.75.19 2.98-2.73 5.08-4.72 4.75z" />
+    </svg>
+  )
+}
+
+// Four-point sparkle used as graphic decoration on the hero panel.
+function Sparkle({
+  className,
+  color,
+  rotate = 0,
+  twinkle = true,
+  durationMs = 4000,
+  delayMs = 0,
+}: {
+  className?: string
+  color: string
+  rotate?: number
+  twinkle?: boolean
+  durationMs?: number
+  delayMs?: number
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      className={`${twinkle ? 'penda-sparkle' : ''} ${className ?? ''}`}
+      style={
+        {
+          color,
+          transform: rotate ? `rotate(${rotate}deg)` : undefined,
+          '--twinkle-dur': `${durationMs}ms`,
+          '--twinkle-delay': `${delayMs}ms`,
+        } as React.CSSProperties
+      }
+    >
+      <path
+        d="M12 0c.9 6.6 4.5 10.2 12 12-7.5 1.8-11.1 5.4-12 12-.9-6.6-4.5-10.2-12-12 7.5-1.8 11.1-5.4 12-12Z"
+        fill="currentColor"
+      />
     </svg>
   )
 }
@@ -72,117 +108,98 @@ export function LoginPage() {
   }
 
   return (
-    <main
-      className="relative flex min-h-svh flex-col items-center justify-between overflow-hidden p-6"
-      style={{
-        background:
-          'radial-gradient(ellipse 80% 55% at 60% 0%, color-mix(in oklch, var(--hero-glow) 50%, transparent) 0%, transparent 70%), linear-gradient(160deg, var(--hero-from) 0%, var(--hero-via) 55%, var(--hero-to) 100%)',
-      }}
-    >
-      {/* Top hero */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 pt-12 text-center">
-        {/* Orb + wordmark */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative flex size-20 items-center justify-center">
-            <div
-              className="absolute inset-0 rounded-full opacity-40 blur-xl"
-              style={{ background: 'conic-gradient(from 210deg, var(--iris), var(--hero-glow), var(--apricot), var(--iris))' }}
-            />
-            <AiOrb tone="default" className="size-14 relative" />
-          </div>
+    <main className="flex min-h-svh flex-col gap-5 bg-background px-5 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
+      {/* Hero panel */}
+      <section
+        className="relative flex flex-1 flex-col overflow-hidden rounded-[2rem] p-7 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95"
+        style={{
+          background:
+            'radial-gradient(120% 90% at 80% 15%, color-mix(in oklch, var(--hero-glow) 55%, transparent), transparent 60%), linear-gradient(155deg, var(--hero-via) 0%, var(--hero-to) 100%)',
+          animationDuration: '600ms',
+        }}
+      >
+        {/* Graphic sparkles */}
+        <Sparkle twinkle={false} color="var(--foreground)" rotate={-8} className="absolute bottom-16 left-6 size-20 opacity-90" />
+        <Sparkle twinkle={false} color="rgba(255,255,255,0.9)" rotate={10} className="absolute right-7 top-10 size-12" />
+        <Sparkle twinkle={false} color="rgba(255,255,255,0.85)" className="absolute bottom-10 right-10 size-7" />
+        <Sparkle color="var(--iris)" durationMs={3600} className="absolute right-24 top-28 size-4 opacity-80" />
 
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">Penda</h1>
-            <p className="mt-1 text-sm font-medium text-foreground/50">Your money, finally understood.</p>
-          </div>
+        {/* Content */}
+        <div className="relative z-10 flex items-center gap-1.5 text-sm font-semibold tracking-wide text-foreground/70">
+          Penda
+          <Sparkle color="var(--iris)" durationMs={3200} className="size-3.5" />
         </div>
 
-        {/* Persona quotes — static preview */}
-        <div className="flex flex-col gap-2 w-full max-w-xs">
-          {[
-            { text: "You're K600 ahead of last month \u2014 steady wins like this add up.", name: 'Amara' },
-            { text: "No stress \u2014 you've still got K600 for the weekend. Enjoy it.", name: 'Kabwe' },
-          ].map((q) => (
-            <div
-              key={q.name}
-              className="rounded-2xl border border-foreground/8 bg-foreground/6 px-4 py-3 text-left backdrop-blur-sm"
-            >
-              <p className="text-xs leading-relaxed text-foreground/60">"{q.text}"</p>
-              <p className="mt-1 text-[10px] font-medium text-foreground/30">— {q.name}, Penda AI</p>
+        <h1 className="relative z-10 mt-8 text-[2.6rem] font-bold leading-[1.08] tracking-tight text-foreground">
+          Your money,
+          <br />
+          finally
+          <br />
+          understood.
+        </h1>
+        <p className="relative z-10 mt-4 max-w-[16rem] text-[15px] font-medium leading-relaxed text-foreground/55">
+          Meet Penda — your private AI money companion.
+        </p>
+      </section>
+
+      {/* Auth actions */}
+      <div className="flex flex-col gap-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4" style={{ animationDuration: '600ms' }}>
+        <button
+          type="button"
+          onClick={() => handleOAuth('google')}
+          className="flex h-13 items-center justify-center gap-2.5 rounded-2xl border border-border/60 bg-white text-sm font-semibold text-gray-800 shadow-[var(--shadow-soft)] outline-none transition-all hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98] dark:border-transparent dark:bg-card dark:text-foreground"
+        >
+          <GoogleLogo />
+          Continue with Google
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleOAuth('apple')}
+          className="flex h-13 items-center justify-center gap-2.5 rounded-2xl bg-foreground text-sm font-semibold text-background shadow-[var(--shadow-soft)] outline-none transition-all hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
+        >
+          <AppleLogo />
+          Continue with Apple
+        </button>
+
+        <div className="flex items-center gap-3 py-0.5 text-xs text-muted-foreground/70">
+          <div className="h-px flex-1 bg-border/80" />
+          or continue with email
+          <div className="h-px flex-1 bg-border/80" />
+        </div>
+
+        {status === 'sent' ? (
+          <div className="rounded-2xl border border-[var(--mint)]/35 bg-[var(--mint-soft)]/70 p-4 text-center">
+            <p className="text-sm text-foreground/80">
+              Check <span className="font-semibold text-foreground">{email}</span> for a sign-in link.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleMagicLink} className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">
+                Email address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="h-12 rounded-2xl border-border/80 bg-background text-foreground shadow-sm placeholder:text-muted-foreground/50 focus:border-primary"
+              />
             </div>
-          ))}
-        </div>
-      </div>
+            {status === 'error' && <p className="text-xs font-medium text-[var(--rose)]">{errorMessage}</p>}
+            <Button type="submit" disabled={status === 'sending'} className="h-12 w-full rounded-2xl font-semibold shadow-md shadow-primary/25">
+              {status === 'sending' ? 'Sending link…' : 'Send magic link'}
+            </Button>
+          </form>
+        )}
 
-      {/* Auth card */}
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col gap-3 rounded-3xl border border-foreground/10 bg-foreground/6 p-5 backdrop-blur-xl">
-          {/* OAuth buttons */}
-          <button
-            type="button"
-            onClick={() => handleOAuth('google')}
-            className="flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-white text-sm font-semibold text-gray-800 shadow-sm transition-opacity hover:opacity-90 active:opacity-80"
-          >
-            <GoogleLogo />
-            Continue with Google
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleOAuth('apple')}
-            className="flex h-12 items-center justify-center gap-2.5 rounded-2xl bg-black text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:opacity-80"
-          >
-            <AppleLogo />
-            Continue with Apple
-          </button>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 text-xs text-foreground/30">
-            <div className="h-px flex-1 bg-foreground/10" />
-            or continue with email
-            <div className="h-px flex-1 bg-foreground/10" />
-          </div>
-
-          {/* Magic link */}
-          {status === 'sent' ? (
-            <div className="rounded-2xl border border-foreground/10 bg-foreground/6 p-4 text-center">
-              <p className="text-sm text-foreground/70">
-                Check <span className="font-semibold text-foreground">{email}</span> for a sign-in link.
-              </p>
-            </div>
-          ) : (
-            <form onSubmit={handleMagicLink} className="flex flex-col gap-2.5">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email" className="text-xs font-medium text-foreground/50">
-                  Email address
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="h-11 rounded-xl border-foreground/15 bg-foreground/8 text-foreground placeholder:text-foreground/25 focus:border-primary focus:bg-foreground/10"
-                />
-              </div>
-              {status === 'error' && (
-                <p className="text-xs text-[var(--rose)]">{errorMessage}</p>
-              )}
-              <Button
-                type="submit"
-                disabled={status === 'sending'}
-                className="h-11 w-full rounded-xl font-semibold"
-              >
-                {status === 'sending' ? 'Sending link…' : 'Send magic link'}
-              </Button>
-            </form>
-          )}
-        </div>
-
-        <p className="mt-4 text-center text-[11px] text-foreground/25">
-          By continuing, you agree to Penda's Terms of Service and Privacy Policy.
+        <p className="mt-1 text-center text-[11px] text-muted-foreground/80">
+          By continuing, you agree to Penda&apos;s Terms of Service and Privacy Policy.
         </p>
       </div>
     </main>

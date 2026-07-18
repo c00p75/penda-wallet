@@ -4,6 +4,8 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { ActivityRow } from '@/components/ui/activity-row'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
@@ -86,30 +88,36 @@ export function JournalPage() {
   const oldest = journal[journal.length - 1]
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">Journal</h1>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Journal</h1>
           <p className="text-sm text-muted-foreground">What money feels like, over time</p>
         </div>
       </header>
 
       {oneYearAgo ? (
         <AiInsight tone="warm">
-          One year ago you wrote: “{oneYearAgo.content}”. Look how far you’ve come.
+          One year ago you wrote: "{oneYearAgo.content}". Look how far you've come.
         </AiInsight>
       ) : (
         oldest && (
           <AiInsight>
-            {relativeTimeLabel(oldest.created_at)} you wrote: “{oldest.content}”. Look how far you’ve come.
+            {relativeTimeLabel(oldest.created_at)} you wrote: "{oldest.content}". Look how far you've come.
           </AiInsight>
         )
       )}
 
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
+      <div className="flex flex-col gap-3 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-card)] ring-1 ring-border/50">
         <div className="flex flex-wrap gap-2">
           {MOODS.map((m) => (
             <button
@@ -118,8 +126,8 @@ export function JournalPage() {
               onClick={() => setMood(mood === m ? null : m)}
               aria-pressed={mood === m}
               className={cn(
-                'flex size-10 items-center justify-center rounded-full border text-xl',
-                mood === m ? 'border-primary bg-accent' : 'border-transparent bg-muted',
+                'flex size-10 items-center justify-center rounded-full border text-xl transition-colors',
+                mood === m ? 'border-primary bg-[var(--iris-soft)]' : 'border-transparent bg-muted',
               )}
             >
               {m}
@@ -131,42 +139,42 @@ export function JournalPage() {
           onChange={(e) => setContent(e.target.value)}
           rows={2}
           placeholder="I stress-buy after work. Payday felt like relief."
+          className="rounded-2xl border-border/60 bg-background"
         />
-        <Button onClick={handleSave} disabled={!content.trim() || createMemory.isPending} className="self-end">
+        <Button onClick={handleSave} disabled={!content.trim() || createMemory.isPending} className="self-end rounded-full">
           Add to journal
         </Button>
       </div>
 
       {journal.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           Nothing here yet. Noting how a purchase felt helps Penda spot your patterns.
         </p>
       ) : (
         <div className="flex flex-col gap-6">
           {byMonth.map(([key, entries]) => (
             <section key={key}>
-              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{monthLabel(key)}</h2>
-              <ol className="flex flex-col gap-3">
+              <SectionHeader title={monthLabel(key)} className="mb-2" />
+              <div className="flex flex-col gap-2.5">
                 {entries.map((m) => (
-                  <li key={m.id} className="flex items-start gap-3 rounded-2xl border bg-card p-3">
-                    <span className="text-xl" aria-hidden>
-                      {m.mood ?? '📝'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground">{relativeTimeLabel(m.created_at)}</p>
-                      <p className="text-sm">{m.content}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => deleteMemory.mutate(m.id)}
-                      aria-label="Delete entry"
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </li>
+                  <ActivityRow
+                    key={m.id}
+                    avatar={<span>{m.mood ?? '📝'}</span>}
+                    title={m.content}
+                    subtitle={relativeTimeLabel(m.created_at)}
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => deleteMemory.mutate(m.id)}
+                        aria-label="Delete entry"
+                        className="grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--rose-soft)] hover:text-[var(--rose)]"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    }
+                  />
                 ))}
-              </ol>
+              </div>
             </section>
           ))}
         </div>

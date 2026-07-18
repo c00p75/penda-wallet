@@ -22,7 +22,6 @@
         --bs-from: #f8f8ff;
         --bs-via: #f8f8ff;
         --bs-to: #f8f8ff;
-        --bs-glow: #b8b6f6;
         --bs-iris: #5b4be6;
         --bs-mint: #22c39a;
         --bs-word: #241d54;
@@ -33,7 +32,6 @@
           --bs-from: #0c1120;
           --bs-via: #142137;
           --bs-to: #1a2c49;
-          --bs-glow: #3a3f8f;
           --bs-iris: #8a7cff;
           --bs-mint: #34d6aa;
           --bs-word: #eef1ff;
@@ -76,16 +74,6 @@
         display: grid;
         place-items: center;
       }
-      .bs-glow {
-        position: absolute;
-        width: 240px;
-        height: 240px;
-        border-radius: 50%;
-        background: radial-gradient(circle, var(--bs-glow) 0%, transparent 68%);
-        opacity: 0.55;
-        filter: blur(6px);
-        animation: bs-breathe 3.4s ease-in-out infinite;
-      }
       .bs-logo {
         position: relative;
         width: 132px;
@@ -114,28 +102,6 @@
         color: var(--bs-tag);
         opacity: 0;
         animation: bs-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.34s both;
-      }
-      .bs-dots {
-        display: flex;
-        gap: 8px;
-        margin-top: 34px;
-        opacity: 0;
-        animation: bs-fade 0.6s ease 0.6s both;
-      }
-      .bs-dots i {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--bs-iris);
-        animation: bs-bounce 1.15s ease-in-out infinite;
-      }
-      .bs-dots i:nth-child(2) {
-        background: color-mix(in srgb, var(--bs-iris), var(--bs-mint));
-        animation-delay: 0.15s;
-      }
-      .bs-dots i:nth-child(3) {
-        background: var(--bs-mint);
-        animation-delay: 0.3s;
       }
       /* Twinkling sparkles echoing the logo's stars */
       .bs-spark {
@@ -195,14 +161,6 @@
           transform: translateY(0) scale(1);
         }
       }
-      @keyframes bs-fade {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
       @keyframes bs-float {
         0%,
         100% {
@@ -210,28 +168,6 @@
         }
         50% {
           transform: translateY(-8px);
-        }
-      }
-      @keyframes bs-breathe {
-        0%,
-        100% {
-          opacity: 0.4;
-          transform: scale(0.92);
-        }
-        50% {
-          opacity: 0.65;
-          transform: scale(1.06);
-        }
-      }
-      @keyframes bs-bounce {
-        0%,
-        100% {
-          transform: translateY(0);
-          opacity: 0.55;
-        }
-        50% {
-          transform: translateY(-7px);
-          opacity: 1;
         }
       }
       @keyframes bs-twinkle {
@@ -246,18 +182,14 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .bs-glow,
         .bs-logo,
         .bs-word,
         .bs-tag,
-        .bs-dots,
-        .bs-dots i,
         .bs-spark {
           animation: none !important;
         }
         .bs-word,
-        .bs-tag,
-        .bs-dots {
+        .bs-tag {
           opacity: 1;
         }
         .bs-spark {
@@ -274,12 +206,10 @@
           <span class="bs-spark bs-spark--2"></span>
           <span class="bs-spark bs-spark--3"></span>
           <span class="bs-spark bs-spark--4"></span>
-          <div class="bs-glow"></div>
           <img class="bs-logo" src="/icons/icon-192.png" alt="Penda" width="132" height="132" />
         </div>
         <div class="bs-word">Penda</div>
         <div class="bs-tag">AI-first money tracking</div>
-        <div class="bs-dots"><i></i><i></i><i></i></div>
       </div>
     </div>
     <div id="root"></div>

@@ -1,7 +1,9 @@
 import { Navigate } from 'react-router-dom'
-import { Check, Sparkles, X } from 'lucide-react'
+import { Check, Sparkles, Target, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { HeroCard } from '@/components/ui/hero-card'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
@@ -61,74 +63,97 @@ export function MissionsPage() {
   const active = missions.filter((m) => m.status === 'active')
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Missions</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Small commitments that compound</p>
+      </section>
+
+      <HeroCard tone="apricot" className="w-full min-h-[7.5rem]">
+        <div className="flex items-center gap-3">
+          <span className="grid size-12 place-items-center rounded-2xl bg-white/20">
+            <Target className="size-6" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-white/85">Active missions</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums">{active.length}</p>
+          </div>
+        </div>
+      </HeroCard>
 
       <AiInsight>
         {active.length > 0
-          ? `You’re on ${active.length} active mission${active.length === 1 ? '' : 's'}. Small commitments compound.`
+          ? `You're on ${active.length} active mission${active.length === 1 ? '' : 's'}. Small commitments compound.`
           : 'Missions are short, concrete challenges — five no-spend days, cook at home this week. Want one?'}
       </AiInsight>
 
-      <Button onClick={handleSuggest} disabled={createMission.isPending} className="gap-1.5">
+      <Button onClick={handleSuggest} disabled={createMission.isPending} className="gap-1.5 rounded-full">
         <Sparkles className="size-4" />
         Suggest a mission
       </Button>
 
       {missions.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          No missions yet. Tap suggest and I’ll pick one from your spending.
+        <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+          No missions yet. Tap suggest and I'll pick one from your spending.
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {missions.map((m) => {
-            const style = STATUS_STYLE[m.status]
-            return (
-              <li key={m.id} className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium">{m.title}</p>
-                    {m.description && <p className="mt-0.5 text-sm text-muted-foreground">{m.description}</p>}
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {m.start_date} → {m.end_date}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => cycleStatus(m.id, m.status)}
-                    className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold')}
-                    style={{
-                      background: `color-mix(in srgb, ${style.color} 16%, transparent)`,
-                      color: style.color,
-                    }}
-                  >
-                    {style.label}
-                  </button>
-                </div>
-                {m.status === 'active' && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 gap-1"
-                      onClick={() => updateStatus.mutate({ id: m.id, status: 'kept' })}
+        <section>
+          <SectionHeader title="Your missions" />
+          <ul className="flex flex-col gap-2.5">
+            {missions.map((m) => {
+              const style = STATUS_STYLE[m.status]
+              return (
+                <li
+                  key={m.id}
+                  className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{m.title}</p>
+                      {m.description && <p className="mt-0.5 text-sm text-muted-foreground">{m.description}</p>}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {m.start_date} → {m.end_date}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => cycleStatus(m.id, m.status)}
+                      className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold')}
+                      style={{
+                        background: `color-mix(in srgb, ${style.color} 16%, transparent)`,
+                        color: style.color,
+                      }}
                     >
-                      <Check className="size-3.5" /> Kept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 gap-1"
-                      onClick={() => updateStatus.mutate({ id: m.id, status: 'broken' })}
-                    >
-                      <X className="size-3.5" /> Broken
-                    </Button>
+                      {style.label}
+                    </button>
                   </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
+                  {m.status === 'active' && (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 gap-1 rounded-full"
+                        onClick={() => updateStatus.mutate({ id: m.id, status: 'kept' })}
+                      >
+                        <Check className="size-3.5" /> Kept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 gap-1 rounded-full"
+                        onClick={() => updateStatus.mutate({ id: m.id, status: 'broken' })}
+                      >
+                        <X className="size-3.5" /> Broken
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       )}
 
       <BottomNav />

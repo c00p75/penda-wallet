@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Briefcase, CalendarClock, Landmark, Receipt } from 'lucide-react'
+import { CalendarClock, Landmark, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { HeroCard } from '@/components/ui/hero-card'
+import { IconTile } from '@/components/ui/icon-tile'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { localDateStr, localMonthPrefix } from '@/lib/dates'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -79,9 +83,9 @@ export function BusinessHubPage() {
 
   let insight: string
   if (profit >= 0) {
-    insight = `This month you’re up ${formatMoney(profit, currency)} after expenses.`
+    insight = `This month you're up ${formatMoney(profit, currency)} after expenses.`
   } else {
-    insight = `This month you’re ${formatMoney(-profit, currency)} in the red — worth a look at burn and receivables.`
+    insight = `This month you're ${formatMoney(-profit, currency)} in the red — worth a look at burn and receivables.`
   }
   if (runwayDays != null) {
     insight +=
@@ -92,78 +96,92 @@ export function BusinessHubPage() {
           : ' Cash runway is effectively zero at recent burn.'
   }
 
+  const monthLabel = now.toLocaleDateString(undefined, { month: 'long' })
+
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
 
-      <div className="flex items-center gap-2">
-        <Briefcase className="size-5 text-primary" />
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Business hub</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {isBusiness ? `${monthLabel} · profit, runway, AR, tax` : 'Most useful in Business mode — always available'}
+        </p>
+      </section>
+
+      <HeroCard tone={profit >= 0 ? 'mint' : 'rose'} className="w-full min-h-[8.5rem]">
         <div>
-          <h1 className="text-xl font-semibold">Business hub</h1>
-          <p className="text-sm text-muted-foreground">
-            {isBusiness ? 'Side-hustle lite — profit, runway, AR, tax' : 'Most useful in Business mode — always available'}
+          <p className="text-sm font-medium text-white/85">Period profit</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums">
+            <HiddenAmount>{formatMoney(profit, currency)}</HiddenAmount>
+          </p>
+          <p className="mt-1 text-sm text-white/80">
+            <HiddenAmount>{formatMoney(monthIncome, currency)}</HiddenAmount> in −{' '}
+            <HiddenAmount>{formatMoney(monthExpense, currency)}</HiddenAmount> out
           </p>
         </div>
-      </div>
+      </HeroCard>
 
       <AiInsight>{insight}</AiInsight>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Period profit</p>
-          <p
-            className="mt-1 text-xl font-bold tabular-nums"
-            style={{ color: profit >= 0 ? 'var(--mint)' : 'var(--rose)' }}
-          >
-            {formatMoney(profit, currency)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatMoney(monthIncome, currency)} in − {formatMoney(monthExpense, currency)} out
-          </p>
-        </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <CalendarClock className="size-3.5" /> Cash runway
-          </p>
-          <p className="mt-1 text-xl font-bold tabular-nums">
-            {runwayDays == null ? '—' : `${runwayDays}d`}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <IconTile
+          icon={CalendarClock}
+          label="Cash runway"
+          tone="iris"
+          className="col-span-1"
+        >
+          <p className="text-lg font-bold tabular-nums">{runwayDays == null ? '—' : `${runwayDays}d`}</p>
+          <p className="text-[11px] text-muted-foreground">
             Burn {formatMoney(Math.round(avgDailyBurn), currency)}/day
           </p>
-        </div>
+        </IconTile>
+        <IconTile icon={Receipt} label="Receivables" tone="apricot" className="col-span-1">
+          <p className="text-lg font-bold tabular-nums">
+            <HiddenAmount>{formatMoney(arTotal, currency)}</HiddenAmount>
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {receivables.length} open
+          </p>
+        </IconTile>
       </div>
 
-      <section className="rounded-2xl border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-1.5 font-medium">
-            <Receipt className="size-4 text-muted-foreground" />
-            Accounts receivable
-          </h2>
-          <span className="text-sm font-semibold tabular-nums">{formatMoney(arTotal, currency)}</span>
-        </div>
+      <section className="rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
+        <SectionHeader title="Accounts receivable" className="mb-3" />
         {receivables.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing owed to you right now.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {receivables.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-2 text-sm">
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-2 rounded-2xl bg-muted/40 px-3 py-2 text-sm"
+              >
                 <span className="truncate">{d.counterparty || d.name}</span>
-                <span className="shrink-0 font-medium tabular-nums">{formatMoney(d.balance_minor, currency)}</span>
+                <span className="shrink-0 font-medium tabular-nums">
+                  <HiddenAmount>{formatMoney(d.balance_minor, currency)}</HiddenAmount>
+                </span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="rounded-2xl border bg-card p-4">
-        <h2 className="mb-3 flex items-center gap-1.5 font-medium">
-          <Landmark className="size-4 text-muted-foreground" />
-          Tax set-aside
-        </h2>
+      <section className="rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
+        <SectionHeader
+          title={
+            <span className="flex items-center gap-1.5">
+              <Landmark className="size-4 text-muted-foreground" />
+              Tax set-aside
+            </span>
+          }
+          className="mb-3"
+        />
         <p className="text-sm text-muted-foreground">
           Suggested reserve this month:{' '}
-          <span className="font-semibold text-foreground">{formatMoney(taxSetAside, currency)}</span>
+          <span className="font-semibold text-foreground">
+            <HiddenAmount>{formatMoney(taxSetAside, currency)}</HiddenAmount>
+          </span>
           {reservePct > 0 ? ` (${reservePct}% of income)` : ' — set a % below'}
         </p>
         <div className="mt-3 flex items-end gap-2">
@@ -177,11 +195,13 @@ export function BusinessHubPage() {
               step={0.5}
               value={taxDraft}
               onChange={(e) => setTaxPct(e.target.value)}
+              className="rounded-2xl"
             />
           </div>
           <Button
             onClick={saveTaxPct}
             disabled={updateProfile.isPending || taxDraft === String(reservePct)}
+            className="rounded-full"
           >
             Save
           </Button>

@@ -22,16 +22,20 @@ import { PaymentForm } from '@/features/debts/PaymentForm'
 import { DebtProgressCard } from '@/features/debts/DebtProgressCard'
 import type { Debt, DebtInput } from '@/features/debts/types'
 
+const GOAL_TONES = ['apricot', 'iris', 'sun', 'mint', 'rose'] as const
+
 function GoalCardWithContributions({
   goal,
   currency,
   onSelect,
   onAddFunds,
+  toneIndex,
 }: {
   goal: SavingsGoal
   currency: string
   onSelect: () => void
   onAddFunds: () => void
+  toneIndex: number
 }) {
   const { data: contributions = [] } = useContributions(goal.id)
   return (
@@ -41,6 +45,7 @@ function GoalCardWithContributions({
       currency={currency}
       onSelect={onSelect}
       onAddFunds={onAddFunds}
+      tone={GOAL_TONES[toneIndex % GOAL_TONES.length]}
     />
   )
 }
@@ -166,8 +171,17 @@ export function GoalsPage() {
           })()
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">
+          {tab === 'goals' ? 'Goals' : 'Debts'}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {tab === 'goals' ? 'Save toward what matters' : 'Pay down what you owe'}
+        </p>
+      </section>
 
       {insight && (
         <AiInsight tone={insight.tone} askText={insight.text}>
@@ -182,7 +196,7 @@ export function GoalsPage() {
               key={q}
               type="button"
               onClick={() => openChat(q)}
-              className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+              className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
             >
               {q}
             </button>
@@ -191,10 +205,10 @@ export function GoalsPage() {
       </div>
 
       <ToggleGroup type="single" value={tab} onValueChange={(v) => v && setTab(v as typeof tab)} className="w-full">
-        <ToggleGroupItem value="goals" className="flex-1">
+        <ToggleGroupItem value="goals" className="flex-1 rounded-full">
           Savings
         </ToggleGroupItem>
-        <ToggleGroupItem value="debts" className="flex-1">
+        <ToggleGroupItem value="debts" className="flex-1 rounded-full">
           Debts
         </ToggleGroupItem>
       </ToggleGroup>
@@ -202,18 +216,19 @@ export function GoalsPage() {
       {tab === 'goals' ? (
         goals.length === 0 ? (
           <div className="flex flex-col items-center gap-1 py-16 text-center text-muted-foreground">
-            <p className="font-medium">No savings goals yet</p>
+            <p className="font-medium text-foreground">No savings goals yet</p>
             <p className="text-sm">Tap + to start saving toward something.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {goals.map((goal) => (
+          <div className="flex flex-col gap-3">
+            {goals.map((goal, i) => (
               <GoalCardWithContributions
                 key={goal.id}
                 goal={goal}
                 currency={wallet.base_currency}
                 onSelect={() => navigate(`/goals/${goal.id}`)}
                 onAddFunds={() => setContributingGoal(goal)}
+                toneIndex={i}
               />
             ))}
           </div>

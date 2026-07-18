@@ -66,7 +66,7 @@ export function SetupLockSheet({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="flex flex-col gap-4">
+      <SheetContent side="bottom" className="flex flex-col gap-4 border-0 px-5 pb-6 ring-0">
         <SheetHeader>
           <SheetTitle>Set up balance lock</SheetTitle>
           <SheetDescription>
@@ -106,7 +106,7 @@ export function SetupLockSheet({ open, onOpenChange }: { open: boolean; onOpenCh
           </div>
 
           {bioAvailable && (
-            <div className="flex items-center justify-between rounded-xl border p-3">
+            <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-[var(--iris-soft)]/50 p-4 shadow-[var(--shadow-soft)]">
               <div className="pr-3">
                 <p className="text-sm font-medium">Also use biometrics</p>
                 <p className="text-xs text-muted-foreground">Face ID / fingerprint, with the PIN as backup.</p>
@@ -115,7 +115,7 @@ export function SetupLockSheet({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
           )}
 
-          {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+          {error && <p className="text-sm text-[var(--rose)]">{error}</p>}
 
           <Button type="submit" disabled={busy}>
             {busy ? 'Setting up…' : 'Turn on balance lock'}

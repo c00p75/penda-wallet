@@ -24,7 +24,7 @@ export function AiOrb({
       className={cn('block shrink-0 rounded-full', thinking && 'penda-orb-spin', className)}
       style={{
         backgroundImage: ORB_GRADIENT[tone],
-        boxShadow: '0 0 14px color-mix(in srgb, var(--iris) 45%, transparent)',
+        boxShadow: '0 0 16px color-mix(in srgb, var(--iris) 35%, transparent)',
       }}
     />
   )
@@ -67,8 +67,11 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
   )
 
   const sharedClass = cn(
-    'flex items-start gap-3 rounded-2xl border bg-background/60 p-3.5 shadow-sm backdrop-blur-md text-left',
-    tappable && 'cursor-pointer transition-colors hover:bg-background/80 active:scale-[0.99]',
+    'flex items-start gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50',
+    tone === 'warm' && 'bg-[var(--apricot-soft)]/40 ring-[var(--apricot)]/20',
+    tone === 'attention' && 'bg-[var(--rose-soft)]/40 ring-[var(--rose)]/20',
+    tone === 'default' && 'bg-[var(--iris-soft)]/30',
+    tappable && 'cursor-pointer transition-all hover:shadow-[var(--shadow-card)] hover:ring-border/70 active:scale-[0.99]',
     className,
   )
 

@@ -22,8 +22,12 @@ import { CONFIDENCE_LABEL_COPY, computeConfidenceScore } from './confidenceScore
 
 export function AnalyticsPage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Analytics</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Patterns, confidence, and insights</p>
+      </section>
       <AnalyticsContent />
       <BottomNav />
     </main>
@@ -125,7 +129,7 @@ export function AnalyticsContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Financial confidence</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">Financial confidence</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <div
@@ -148,7 +152,7 @@ export function AnalyticsContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">This month by category</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">This month by category</CardTitle>
         </CardHeader>
         <CardContent>
           <CategoryBarChart transactions={monthTransactions} currency={wallet.base_currency} />
@@ -157,7 +161,7 @@ export function AnalyticsContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Daily spending</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">Daily spending</CardTitle>
         </CardHeader>
         <CardContent>
           <SpendingCalendar
@@ -171,11 +175,12 @@ export function AnalyticsContent() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Insights</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">Insights</CardTitle>
           {isPremium && (
             <Button
               variant="outline"
               size="sm"
+              className="rounded-full"
               onClick={handleEnableNotifications}
               disabled={isSubscribed || subscribeToPush.isPending}
             >

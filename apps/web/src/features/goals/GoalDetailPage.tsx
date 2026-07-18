@@ -117,19 +117,25 @@ export function GoalDetailPage() {
     .slice(0, 12)
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-6 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-6 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
-        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-base font-medium">
+        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-lg font-semibold">
           {goal.icon && <span aria-hidden>{goal.icon}</span>}
           <span className="truncate">{goal.name}</span>
         </h2>
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full"
+          className="size-11 rounded-2xl"
           aria-label="Ask about this goal"
           onClick={() => openChat(`About my "${goal.name}" goal: `)}
         >
@@ -137,7 +143,16 @@ export function GoalDetailPage() {
         </Button>
       </header>
 
-      <div className="relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl p-6">
+      <div
+        className="relative flex flex-col items-center gap-3 overflow-hidden rounded-[1.75rem] p-6 shadow-[var(--shadow-card)]"
+        style={
+          goal.image_path
+            ? undefined
+            : {
+                background: `linear-gradient(145deg, color-mix(in srgb, ${accent} 18%, var(--card)), var(--card))`,
+              }
+        }
+      >
         {goal.image_path && (
           <>
             <img
@@ -153,7 +168,7 @@ export function GoalDetailPage() {
           className="relative grid size-40 shrink-0 place-items-center rounded-full"
           style={{ background: `conic-gradient(${accent} ${ringPct}%, color-mix(in srgb, ${accent} 16%, transparent) 0)` }}
         >
-          <div className="grid size-32 place-items-center rounded-full bg-card">
+          <div className="grid size-32 place-items-center rounded-full bg-card shadow-[var(--shadow-soft)]">
             <div className="flex flex-col items-center">
               <span className="text-4xl font-bold tabular-nums" style={{ color: accent }}>
                 {ringPct}%
@@ -162,7 +177,7 @@ export function GoalDetailPage() {
             </div>
           </div>
         </div>
-        <p className={cn('relative text-sm tabular-nums', goal.image_path ? 'text-white' : 'text-muted-foreground')}>
+        <p className={cn('relative text-sm font-medium tabular-nums', goal.image_path ? 'text-white' : 'text-muted-foreground')}>
           {formatMoney(goal.current_amount_minor, currency)} of {formatMoney(goal.target_amount_minor, currency)}
         </p>
       </div>

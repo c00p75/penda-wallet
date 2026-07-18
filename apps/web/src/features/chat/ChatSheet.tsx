@@ -462,7 +462,7 @@ export function ChatSheet({
         // that attribute selector and the sheet grows unbounded with content.
         // `rounded-t-[2rem]` + `overflow-hidden` match the ledger's
         // transactions card so the two sheet surfaces read as one system.
-        className="flex h-[85svh] flex-col gap-0 overflow-hidden rounded-t-[2rem] p-0 data-[side=bottom]:h-[85svh]"
+        className="flex h-[85svh] flex-col gap-0 overflow-hidden border-0 p-0 ring-0 data-[side=bottom]:h-[85svh]"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
         // and buttons stay visible while typing.
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
@@ -481,10 +481,10 @@ export function ChatSheet({
             onPointerUp={onHandlePointerEnd}
             onPointerCancel={onHandlePointerEnd}
           >
-            <div className="h-1 w-10 rounded-full bg-border" />
+            <div className="h-1 w-10 rounded-full bg-border/70" />
           </div>
 
-          <SheetHeader className="flex-row items-center justify-between">
+          <SheetHeader className="flex-row items-center justify-between px-5 pt-2 pb-1">
             <SheetTitle className="flex items-center gap-2">
               <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
               Chat with {persona.name}
@@ -497,7 +497,7 @@ export function ChatSheet({
             </SheetClose>
           </SheetHeader>
 
-          <div className="flex-1 overflow-y-auto px-4">
+          <div className="flex-1 overflow-y-auto px-5">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
                 <p className="text-sm text-muted-foreground">
@@ -510,7 +510,7 @@ export function ChatSheet({
                       key={prompt}
                       type="button"
                       onClick={() => submitText(prompt)}
-                      className="rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted"
+                      className="rounded-full border border-border/60 bg-card px-3.5 py-2 text-xs font-medium text-foreground/80 shadow-[var(--shadow-soft)] transition-colors hover:bg-[var(--iris-soft)]/60"
                     >
                       {prompt}
                     </button>
@@ -524,8 +524,8 @@ export function ChatSheet({
                   <div
                     className={
                       m.role === 'user'
-                        ? 'ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground'
-                        : 'mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm'
+                        ? 'ml-auto max-w-[80%] rounded-[1.25rem] rounded-br-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)]'
+                        : 'mr-auto max-w-[80%] rounded-[1.25rem] rounded-bl-md bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40'
                     }
                   >
                     <MessageBody text={m.text} />
@@ -569,7 +569,7 @@ export function ChatSheet({
                 </div>
               ))}
               {sendMessage.isPending && (
-                <div className="mr-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                <div className="mr-auto max-w-[80%] rounded-[1.25rem] rounded-bl-md bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40">
                   {toolProgress ?? 'Thinking…'}
                 </div>
               )}
@@ -577,7 +577,7 @@ export function ChatSheet({
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="border-t p-4">
+          <form onSubmit={handleSubmit} className="border-t border-border/50 bg-card/80 p-5 backdrop-blur-sm">
             {statusText && (
               <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <span className="relative flex size-2.5">
@@ -680,7 +680,7 @@ function PendingActionCard({
   const destructive = action.kind === 'delete'
 
   return (
-    <div className="mr-auto max-w-[85%] rounded-lg border bg-card px-3 py-2.5 text-sm shadow-sm">
+    <div className="mr-auto max-w-[85%] rounded-2xl border border-border/60 bg-card px-3.5 py-3 text-sm shadow-[var(--shadow-soft)]">
       <p className="text-card-foreground">{action.summary}</p>
       {status ? (
         <p

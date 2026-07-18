@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { HeroBlob } from '@/components/ui/hero-blob'
 import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -19,6 +20,16 @@ import { useCreateWallet } from './hooks'
 
 const STEPS = ['wallet', 'about', 'goal', 'more'] as const
 type Step = (typeof STEPS)[number]
+
+function StepHeading({ bold, light }: { bold: string; light: string }) {
+  return (
+    <h1 className="text-center text-[2rem] leading-[1.1] tracking-tight text-foreground">
+      <span className="font-bold">{bold}</span>
+      <br />
+      <span className="font-light">{light}</span>
+    </h1>
+  )
+}
 
 export function OnboardingScreen() {
   const userId = useAuthStore((s) => s.session?.user.id)
@@ -85,25 +96,37 @@ export function OnboardingScreen() {
   const householdLabel = mode === 'business' ? 'Team size' : 'Household size'
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 bg-background p-6">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+    <main className="relative mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 overflow-hidden bg-background px-4 pb-10 pt-[max(2rem,env(safe-area-inset-top))]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div
+          className="absolute -top-20 -right-10 size-64 rounded-full opacity-70 blur-3xl"
+          style={{ background: 'radial-gradient(circle, var(--iris-soft), transparent 70%)' }}
+        />
+        <div
+          className="absolute -bottom-16 -left-12 size-56 rounded-full opacity-60 blur-3xl"
+          style={{ background: 'radial-gradient(circle, var(--apricot-soft), transparent 70%)' }}
+        />
+        <HeroBlob tone="mint" className="absolute top-8 right-4 size-24 opacity-40" />
+      </div>
+
+      <div className="relative flex flex-col items-center gap-2 text-center">
+        <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50">
           Welcome to Penda
         </span>
         <div className="flex gap-1.5">
           {STEPS.map((s) => (
             <span
               key={s}
-              className={cn('h-1.5 w-6 rounded-full', s === step ? 'bg-primary' : 'bg-muted')}
+              className={cn('h-1.5 w-6 rounded-full transition-colors', s === step ? 'bg-primary' : 'bg-muted')}
             />
           ))}
         </div>
       </div>
 
       {step === 'wallet' && (
-        <div className="flex flex-col gap-4">
+        <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-semibold">Let's set up your wallet</h1>
+            <StepHeading bold="Set up" light="your wallet" />
             <p className="text-sm text-muted-foreground">
               This is where your transactions, budgets, and goals will live. You can add more
               wallets or invite others later.
@@ -117,22 +140,23 @@ export function OnboardingScreen() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Wallet"
+              className="rounded-2xl"
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="onboarding-currency">Currency</Label>
             <CurrencyCombobox id="onboarding-currency" value={currency} onChange={setCurrency} />
           </div>
-          <Button onClick={goNext} disabled={!name.trim()}>
+          <Button onClick={goNext} disabled={!name.trim()} className="rounded-full">
             Next
           </Button>
         </div>
       )}
 
       {step === 'about' && (
-        <div className="flex flex-col gap-4">
+        <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-semibold">Who's this for?</h1>
+            <StepHeading bold="Who's this" light="for?" />
             <p className="text-sm text-muted-foreground">
               Changes the wording and how Penda frames advice. You can change this later in
               Settings.
@@ -148,11 +172,11 @@ export function OnboardingScreen() {
                   onClick={() => setMode(m.value)}
                   aria-pressed={active}
                   className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center',
-                    active ? 'border-primary bg-accent' : 'border-border',
+                    'flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition-colors',
+                    active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
                   )}
                 >
-                  <m.icon className={cn('size-5', active ? 'text-primary' : 'text-muted-foreground')} />
+                  <m.icon className={cn('size-5', active ? 'text-[var(--iris)]' : 'text-muted-foreground')} />
                   <span className="text-xs font-medium">{m.label}</span>
                 </button>
               )
@@ -169,14 +193,15 @@ export function OnboardingScreen() {
                 value={householdSizeRaw}
                 onChange={(e) => setHouseholdSizeRaw(e.target.value)}
                 placeholder="e.g. 4"
+                className="rounded-2xl"
               />
             </div>
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={goBack} className="flex-1">
+            <Button variant="outline" onClick={goBack} className="flex-1 rounded-full">
               Back
             </Button>
-            <Button onClick={goNext} className="flex-1">
+            <Button onClick={goNext} className="flex-1 rounded-full">
               Next
             </Button>
           </div>
@@ -184,9 +209,9 @@ export function OnboardingScreen() {
       )}
 
       {step === 'goal' && (
-        <div className="flex flex-col gap-4">
+        <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-semibold">What matters most right now?</h1>
+            <StepHeading bold="What matters" light="most right now?" />
             <p className="text-sm text-muted-foreground">Optional — helps Penda's advice stay relevant.</p>
           </div>
           <div className="flex flex-col gap-2">
@@ -199,8 +224,8 @@ export function OnboardingScreen() {
                   onClick={() => setPrimaryGoal(active ? null : g.value)}
                   aria-pressed={active}
                   className={cn(
-                    'flex flex-col gap-0.5 rounded-xl border p-3 text-left',
-                    active ? 'border-primary bg-accent' : 'border-border',
+                    'flex flex-col gap-0.5 rounded-2xl border p-3 text-left transition-colors',
+                    active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
                   )}
                 >
                   <span className="text-sm font-medium">{g.label}</span>
@@ -210,10 +235,10 @@ export function OnboardingScreen() {
             })}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={goBack} className="flex-1">
+            <Button variant="outline" onClick={goBack} className="flex-1 rounded-full">
               Back
             </Button>
-            <Button onClick={goNext} className="flex-1">
+            <Button onClick={goNext} className="flex-1 rounded-full">
               Next
             </Button>
           </div>
@@ -221,9 +246,9 @@ export function OnboardingScreen() {
       )}
 
       {step === 'more' && (
-        <div className="flex flex-col gap-4">
+        <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-semibold">A bit more about you</h1>
+            <StepHeading bold="A bit more" light="about you" />
             <p className="text-sm text-muted-foreground">All optional — skip anything you'd rather not share.</p>
           </div>
 
@@ -239,8 +264,8 @@ export function OnboardingScreen() {
                     onClick={() => setIncomeRange(active ? null : r.value)}
                     aria-pressed={active}
                     className={cn(
-                      'rounded-xl border p-2.5 text-center text-xs font-medium',
-                      active ? 'border-primary bg-accent' : 'border-border',
+                      'rounded-2xl border p-2.5 text-center text-xs font-medium transition-colors',
+                      active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
                     )}
                   >
                     {r.label}
@@ -262,8 +287,8 @@ export function OnboardingScreen() {
                     onClick={() => setGender(g.value)}
                     aria-pressed={active}
                     className={cn(
-                      'rounded-xl border p-2.5 text-center text-xs font-medium',
-                      active ? 'border-primary bg-accent' : 'border-border',
+                      'rounded-2xl border p-2.5 text-center text-xs font-medium transition-colors',
+                      active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
                     )}
                   >
                     {g.label}
@@ -273,16 +298,16 @@ export function OnboardingScreen() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background p-3">
             <p className="text-sm">Budget alerts &amp; bill reminders</p>
             <Switch checked={notificationOptIn} onCheckedChange={setNotificationOptIn} aria-label="Notifications" />
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={goBack} className="flex-1" disabled={submitting}>
+            <Button variant="outline" onClick={goBack} className="flex-1 rounded-full" disabled={submitting}>
               Back
             </Button>
-            <Button onClick={handleFinish} className="flex-1" disabled={submitting}>
+            <Button onClick={handleFinish} className="flex-1 rounded-full" disabled={submitting}>
               Get started
             </Button>
           </div>

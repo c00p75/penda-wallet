@@ -12,6 +12,7 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
@@ -31,8 +32,12 @@ import type { Challenge, ChallengeInput } from './types'
 
 export function ChallengesPage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Challenges</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Compete with friends on savings goals</p>
+      </section>
       <ChallengesContent />
       <BottomNav />
     </main>
@@ -111,19 +116,25 @@ export function ChallengesContent() {
       <button
         type="button"
         onClick={() => setSelected(challenge)}
-        className="flex w-full items-center gap-3 rounded-lg border p-3 text-left hover:bg-accent"
+        className="flex w-full items-center gap-3 rounded-[1.35rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50 transition-transform active:scale-[0.99]"
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
-          <TypeIcon className="size-4" />
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
+          <TypeIcon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium">{challenge.name}</p>
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <p className="truncate text-sm font-semibold">{challenge.name}</p>
+            <span
+              className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
+              style={{
+                background: over ? 'var(--muted)' : 'var(--mint-soft)',
+                color: over ? 'var(--muted-foreground)' : 'var(--mint)',
+              }}
+            >
               {over ? 'Ended' : `${daysLeft(challenge)}d left`}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {TYPE_LABELS[challenge.type]} · {formatTarget(challenge)}
           </p>
         </div>
@@ -134,7 +145,7 @@ export function ChallengesContent() {
   return (
     <>
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setJoinOpen(true)}>
+        <Button variant="outline" size="sm" className="rounded-full" onClick={() => setJoinOpen(true)}>
           <Ticket className="size-4" />
           Join with code
         </Button>
@@ -159,29 +170,36 @@ export function ChallengesContent() {
         })()}
 
       {challenges.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
-          <Trophy className="size-8" />
-          <p className="font-medium">No challenges yet</p>
+        <div className="flex flex-col items-center gap-2 rounded-[1.5rem] border border-dashed border-border py-16 text-center text-muted-foreground">
+          <span className="grid size-14 place-items-center rounded-2xl bg-[var(--sun-soft)] text-[var(--sun)]">
+            <Trophy className="size-7" />
+          </span>
+          <p className="font-semibold text-foreground">No challenges yet</p>
           <p className="text-sm">
             Create a savings or no-spend challenge and invite friends with a code.
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           {active.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {active.map((c) => (
-                <ChallengeCard key={c.id} challenge={c} />
-              ))}
-            </div>
+            <section>
+              <SectionHeader title="Live" />
+              <div className="flex flex-col gap-2.5">
+                {active.map((c) => (
+                  <ChallengeCard key={c.id} challenge={c} />
+                ))}
+              </div>
+            </section>
           )}
           {ended.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">Ended</h3>
-              {ended.map((c) => (
-                <ChallengeCard key={c.id} challenge={c} />
-              ))}
-            </div>
+            <section>
+              <SectionHeader title="Ended" />
+              <div className="flex flex-col gap-2.5">
+                {ended.map((c) => (
+                  <ChallengeCard key={c.id} challenge={c} />
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}

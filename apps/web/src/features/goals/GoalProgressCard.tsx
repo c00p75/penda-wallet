@@ -1,4 +1,6 @@
 import { formatMoney } from '@/lib/money'
+import { HeroBlob } from '@/components/ui/hero-blob'
+import type { HeroTone } from '@/components/ui/hero-card'
 import type { SavingsContribution, SavingsGoal } from './types'
 import { estimateGoalCompletion } from './forecast'
 
@@ -8,61 +10,81 @@ interface GoalProgressCardProps {
   currency: string
   onSelect: () => void
   onAddFunds: () => void
+  tone?: HeroTone
 }
 
 function formatDate(dateStr: string) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function GoalProgressCard({ goal, contributions, currency, onSelect, onAddFunds }: GoalProgressCardProps) {
+const HERO_BG: Record<HeroTone, string> = {
+  iris: 'linear-gradient(145deg, var(--iris-hero-from) 0%, var(--iris-hero-to) 100%)',
+  apricot: 'linear-gradient(145deg, var(--apricot-hero-from) 0%, var(--apricot-hero-to) 100%)',
+  sun: 'linear-gradient(145deg, var(--sun-hero-from) 0%, var(--sun-hero-to) 100%)',
+  mint: 'linear-gradient(145deg, var(--mint-hero-from) 0%, var(--mint-hero-to) 100%)',
+  rose: 'linear-gradient(145deg, var(--rose-hero-from) 0%, var(--rose-hero-to) 100%)',
+}
+
+const HERO_SHADOW: Record<HeroTone, string> = {
+  iris: '0 14px 36px color-mix(in srgb, var(--iris-hero-to) 40%, transparent)',
+  apricot: '0 14px 36px color-mix(in srgb, var(--apricot-hero-to) 40%, transparent)',
+  sun: '0 14px 36px color-mix(in srgb, var(--sun-hero-to) 40%, transparent)',
+  mint: '0 14px 36px color-mix(in srgb, var(--mint-hero-to) 40%, transparent)',
+  rose: '0 14px 36px color-mix(in srgb, var(--rose-hero-to) 40%, transparent)',
+}
+
+export function GoalProgressCard({
+  goal,
+  contributions,
+  currency,
+  onSelect,
+  onAddFunds,
+  tone = 'apricot',
+}: GoalProgressCardProps) {
   const pct = goal.target_amount_minor > 0 ? goal.current_amount_minor / goal.target_amount_minor : 0
   const forecast = estimateGoalCompletion(goal, contributions)
   const reached = pct >= 1
-
-  // Goals live in a warm world (apricot); a reached goal turns celebratory mint.
-  const accent = reached ? 'var(--mint)' : 'var(--apricot)'
+  const activeTone: HeroTone = reached ? 'mint' : tone
   const ringPct = Math.round(Math.min(pct, 1) * 100)
 
   const forecastLine =
     forecast.kind === 'reached'
-      ? { text: 'Reached 🎉', muted: false }
+      ? 'Reached 🎉'
       : forecast.kind === 'projected'
-        ? { text: `On pace · done by ${formatDate(forecast.projectedDate!)}`, muted: false }
+        ? `On pace · done by ${formatDate(forecast.projectedDate!)}`
         : forecast.kind === 'not-saving'
-          ? { text: 'Paused — add funds to get moving', muted: true }
-          : { text: 'Add funds to start tracking your pace', muted: true }
+          ? 'Paused — add funds to get moving'
+          : 'Add funds to start tracking your pace'
 
   return (
     <div
-      className="flex flex-col gap-3 rounded-2xl border p-4 shadow-sm"
-      style={{ background: `linear-gradient(155deg, color-mix(in srgb, ${accent} 12%, var(--card)), var(--card))` }}
+      className="relative isolate overflow-hidden rounded-[1.75rem] p-5 text-white"
+      style={{ background: HERO_BG[activeTone], boxShadow: HERO_SHADOW[activeTone] }}
     >
-      <button type="button" onClick={onSelect} className="flex items-center gap-4 text-left">
+      <HeroBlob tone={activeTone} className="-right-6 -bottom-8 size-36 rotate-12" />
+      <button type="button" onClick={onSelect} className="relative z-10 flex w-full items-center gap-4 text-left">
         <div
-          className="grid size-20 shrink-0 place-items-center rounded-full"
-          style={{ background: `conic-gradient(${accent} ${ringPct}%, color-mix(in srgb, ${accent} 16%, transparent) 0)` }}
+          className="grid size-[4.5rem] shrink-0 place-items-center rounded-full"
+          style={{
+            background: `conic-gradient(white ${ringPct}%, color-mix(in srgb, white 28%, transparent) 0)`,
+          }}
         >
-          <div className="grid size-[60px] place-items-center rounded-full bg-card text-sm font-bold tabular-nums">
+          <div className="grid size-[3.35rem] place-items-center rounded-full bg-white/20 text-sm font-bold tabular-nums backdrop-blur-sm">
             {ringPct}%
           </div>
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 truncate font-medium">
+          <p className="flex items-center gap-1.5 truncate text-base font-semibold">
             {goal.icon && <span aria-hidden>{goal.icon}</span>}
             <span className="truncate">{goal.name}</span>
           </p>
-          <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
+          <p className="mt-1 text-sm tabular-nums text-white/85">
             {formatMoney(goal.current_amount_minor, currency)} of {formatMoney(goal.target_amount_minor, currency)}
           </p>
-          <p
-            className="mt-1 text-sm font-medium"
-            style={forecastLine.muted ? undefined : { color: accent }}
-          >
-            <span className={forecastLine.muted ? 'text-muted-foreground' : undefined}>{forecastLine.text}</span>
-            {goal.target_date && (
-              <span className="text-muted-foreground"> · target {formatDate(goal.target_date)}</span>
-            )}
+          <p className="mt-1 text-xs font-medium text-white/75">
+            {forecastLine}
+            {goal.target_date && <> · target {formatDate(goal.target_date)}</>}
           </p>
         </div>
       </button>
@@ -70,7 +92,7 @@ export function GoalProgressCard({ goal, contributions, currency, onSelect, onAd
       <button
         type="button"
         onClick={onAddFunds}
-        className="self-start rounded-full bg-background/70 px-3 py-1.5 text-xs font-medium text-primary hover:bg-background"
+        className="relative z-10 mt-4 rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30"
       >
         Add / withdraw funds
       </button>

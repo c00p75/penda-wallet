@@ -1,23 +1,22 @@
 import { useRef, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import {
-  BarChart3,
   CalendarRange,
   Camera,
   ClipboardPaste,
   MessageCircle,
   NotebookPen,
-  PiggyBank,
   Plus,
   Sparkles,
   Target,
-  TrendingDown,
-  TrendingUp,
-  Wallet as WalletIcon,
+  Trophy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
+import { HeroCard } from '@/components/ui/hero-card'
+import { IconTile } from '@/components/ui/icon-tile'
+import { SectionHeader } from '@/components/ui/section-header'
+import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiOrb } from '@/components/AiInsight'
@@ -30,7 +29,6 @@ import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { useBudgetProgress, useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
-import { getGoalImageUrl } from '@/features/goals/api'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
@@ -74,10 +72,23 @@ function splitBalance(amountMinor: number, currency: string): { whole: string; d
     .join('')
   const fraction = parts.find((p) => p.type === 'fraction')?.value
   const decimal = fraction != null ? `${parts.find((p) => p.type === 'decimal')?.value ?? '.'}${fraction}` : ''
-  // Prefer a leading currency symbol when the locale puts it first; otherwise leave empty
-  // (symbol may trail — hero layout still reads the numeric whole/decimal).
   const leadingSymbol = parts[0]?.type === 'currency' || parts[0]?.type === 'literal' ? symbol : ''
   return { symbol: leadingSymbol || symbol, whole: whole || '0', decimal }
+}
+
+function greetingLabel(now = new Date()): string {
+  const h = now.getHours()
+  if (h < 12) return 'Morning'
+  if (h < 17) return 'Afternoon'
+  return 'Evening'
+}
+
+function firstNameFromSession(session: { user: { email?: string | null; user_metadata?: Record<string, unknown> } } | null): string {
+  const full = (session?.user.user_metadata?.full_name as string | undefined)?.trim()
+  if (full) return full.split(/\s+/)[0] ?? full
+  const email = session?.user.email
+  if (email) return email.split('@')[0] ?? 'there'
+  return 'there'
 }
 
 export function HomePage() {
@@ -239,15 +250,15 @@ export function HomePage() {
   if (!wallet) return null
 
   const currency = wallet.base_currency
+  const now = new Date()
+  const name = firstNameFromSession(session)
+  const greet = greetingLabel(now)
 
-  // ── Balance & this-month growth ─────────────────────────────
   const balanceMinor = transactions.reduce(
     (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
     0,
   )
-  const now = new Date()
   const thisMonthPrefix = localMonthPrefix(now)
-  const monthName = now.toLocaleDateString(undefined, { month: 'long' })
   const thisMonthTx = transactions.filter((tx) => tx.transaction_date.startsWith(thisMonthPrefix))
   const monthSpending = thisMonthTx
     .filter((tx) => tx.type === 'expense')
@@ -258,21 +269,6 @@ export function HomePage() {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const daysLeft = daysInMonth - now.getDate() + 1
 
-  // Balance as of this same day last month, so we only compare against a
-  // point in time the wallet's history actually reaches back to.
-  const lastMonthSameDay = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-  const lastMonthSameDayStr = `${lastMonthSameDay.getFullYear()}-${String(lastMonthSameDay.getMonth() + 1).padStart(2, '0')}-${String(lastMonthSameDay.getDate()).padStart(2, '0')}`
-  const hasLastMonthRecord = transactions.some((tx) => tx.transaction_date <= lastMonthSameDayStr)
-  const balanceLastMonthSameDayMinor = transactions
-    .filter((tx) => tx.transaction_date <= lastMonthSameDayStr)
-    .reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0), 0)
-  const balanceGrowthPct =
-    hasLastMonthRecord && balanceLastMonthSameDayMinor !== 0
-      ? Math.round(((balanceMinor - balanceLastMonthSameDayMinor) / Math.abs(balanceLastMonthSameDayMinor)) * 1000) / 10
-      : null
-  const balanceGrowthPositive = balanceMinor >= balanceLastMonthSameDayMinor
-
-  // ── Safe to spend today (prefer spending-plan math when a plan exists) ─
   const monthlyBudgets = budgetProgress.filter((b) => b.period === 'monthly')
   const totalBudgetMinor = monthlyBudgets.reduce((sum, b) => sum + b.effective_amount_minor, 0)
   const totalSpentMinor = monthlyBudgets.reduce((sum, b) => sum + b.spent_minor, 0)
@@ -297,42 +293,17 @@ export function HomePage() {
   const safeToSpendPerDayMinor = planSafe
     ? Math.max(0, planSafe.perDayMinor)
     : Math.max(0, Math.round(remainingBudgetMinor / daysLeft))
-  const safeCap = plan ? plan.intended_amount_minor : totalBudgetMinor
-  const safeToSpendRingPct = Math.max(
-    0,
-    Math.min(100, safeCap > 0 ? Math.round((remainingBudgetMinor / safeCap) * 100) : 0),
-  )
 
-  // ── Top category this month ─────────────────────────────────
-  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const prevMonthPrefix = localMonthPrefix(prevMonthDate)
-  const categoryTotals = new Map<string, { name: string; icon: string | null; amount: number }>()
-  for (const tx of thisMonthTx) {
-    if (tx.type !== 'expense') continue
-    const key = tx.category_id ?? 'uncategorized'
-    const existing = categoryTotals.get(key)
-    categoryTotals.set(key, {
-      name: tx.category?.name ?? 'Uncategorized',
-      icon: tx.category?.icon ?? null,
-      amount: (existing?.amount ?? 0) + tx.amount_minor,
-    })
-  }
-  const topCategoryEntry = Array.from(categoryTotals.entries()).sort((a, b) => b[1].amount - a[1].amount)[0]
-  const topCategory = topCategoryEntry ? { id: topCategoryEntry[0], ...topCategoryEntry[1] } : null
-  let topCategoryDeltaPct: number | null = null
-  if (topCategory) {
-    const prevAmount = transactions
-      .filter(
-        (tx) =>
-          tx.type === 'expense' &&
-          tx.transaction_date.startsWith(prevMonthPrefix) &&
-          (tx.category_id ?? 'uncategorized') === topCategory.id,
-      )
-      .reduce((sum, tx) => sum + tx.amount_minor, 0)
-    topCategoryDeltaPct = prevAmount > 0 ? Math.round(((topCategory.amount - prevAmount) / prevAmount) * 100) : null
-  }
+  const topGoal = [...goals].sort(
+    (a, b) =>
+      b.current_amount_minor / Math.max(1, b.target_amount_minor) -
+      a.current_amount_minor / Math.max(1, a.target_amount_minor),
+  )[0]
+  const topGoalPct =
+    topGoal && topGoal.target_amount_minor > 0
+      ? Math.round((topGoal.current_amount_minor / topGoal.target_amount_minor) * 100)
+      : null
 
-  // ── AI insights ──────────────────────────────────────────────
   const weekCutoff = new Date()
   weekCutoff.setDate(weekCutoff.getDate() - 7)
   const weekCutoffStr = localDateStr(weekCutoff)
@@ -344,8 +315,8 @@ export function HomePage() {
     buffer != null
       ? `That ${formatMoney(buffer.incomeTx.amount_minor, currency)} cash-in is large — move ${formatMoney(buffer.suggestMinor, currency)} to a buffer for next month?`
       : last7Spent > 0
-      ? `You've spent ${formatMoney(last7Spent, currency)} in the last 7 days.`
-      : "Nothing logged this week yet — tell me about a purchase and I'll take it from there."
+        ? `You've spent ${formatMoney(last7Spent, currency)} in the last 7 days.`
+        : "Nothing logged this week yet — tell me about a purchase and I'll take it from there."
 
   const coachingInsights = detectCoachingInsights({ transactions, budgets, goals, currency })
   const suggestion = coachingInsights[0]
@@ -363,18 +334,45 @@ export function HomePage() {
     }
   }
 
-  const suggestions: { icon: React.ElementType; label: string; onTap: () => void }[] = [
-    { icon: MessageCircle, label: 'Log an expense', onTap: () => openChat('I spent ') },
-    { icon: BarChart3, label: 'This week?', onTap: () => openChat('What did I spend this week?') },
-    { icon: PiggyBank, label: 'My budgets', onTap: () => openChat('How are my budgets doing?') },
-    { icon: ClipboardPaste, label: 'Paste MoMo', onTap: openPaste },
-    { icon: CalendarRange, label: 'Cashflow', onTap: () => navigate('/cashflow') },
-    { icon: NotebookPen, label: 'Journal', onTap: () => navigate('/journal') },
-    { icon: Target, label: 'Missions', onTap: () => navigate('/missions') },
-    { icon: Sparkles, label: 'What if…', onTap: () => navigate('/simulator') },
+  const auraLabel =
+    balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
+
+  const upcoming = (() => {
+    const today = localDateStr(now)
+    const active = recurring
+      .filter((r) => r.is_active && r.next_run_date >= today)
+      .sort((a, b) => a.next_run_date.localeCompare(b.next_run_date))
+    const next = active[0]
+    if (!next) return null
+    const when =
+      next.next_run_date === today
+        ? 'Today'
+        : next.next_run_date === localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+          ? 'Tomorrow'
+          : new Date(next.next_run_date + 'T12:00:00').toLocaleDateString(undefined, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+            })
+    return {
+      title: next.template.merchant || next.template.description || 'Upcoming bill',
+      when,
+      amountMinor: next.template.amount_minor,
+      icon: next.template.type === 'income' ? '💰' : '🧾',
+    }
+  })()
+
+  const recent = [...transactions]
+    .sort((a, b) => b.transaction_date.localeCompare(a.transaction_date) || b.created_at.localeCompare(a.created_at))
+    .slice(0, 5)
+
+  const quickActions = [
+    { icon: MessageCircle, label: 'Log expense', tone: 'iris' as const, onTap: () => openChat('I spent ') },
+    { icon: ClipboardPaste, label: 'Paste MoMo', tone: 'apricot' as const, onTap: openPaste },
     {
       icon: Camera,
       label: 'Scan receipt',
+      tone: 'sun' as const,
       onTap: () => {
         if (isPremium || localStorage.getItem('penda:preview:receipt-scan') === '1') {
           receiptInputRef.current?.click()
@@ -383,16 +381,13 @@ export function HomePage() {
         setPaywallFeature('receipt-scan')
       },
     },
+    { icon: CalendarRange, label: 'Cashflow', tone: 'mint' as const, onTap: () => navigate('/cashflow') },
+    { icon: NotebookPen, label: 'Journal', tone: 'rose' as const, onTap: () => navigate('/journal') },
+    { icon: Sparkles, label: 'What if…', tone: 'iris' as const, onTap: () => navigate('/simulator') },
+    { icon: Target, label: 'Missions', tone: 'apricot' as const, onTap: () => navigate('/missions') },
+    { icon: Trophy, label: 'Compete', tone: 'sun' as const, onTap: () => navigate('/challenges') },
+    { icon: Plus, label: 'Add txn', tone: 'mint' as const, onTap: openAddForm },
   ]
-
-  const auraColor =
-    balanceMinor > monthSpending
-      ? 'var(--mint)'
-      : balanceMinor > 0
-        ? 'var(--apricot)'
-        : 'var(--rose)'
-  const auraLabel =
-    balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
@@ -421,250 +416,220 @@ export function HomePage() {
         onChange={handleReceiptSelected}
       />
 
-      <main className="flex flex-1 flex-col gap-5 px-4 pb-40">
+      <main className="flex flex-1 flex-col gap-6 px-4 pb-40">
         <InstallBanner />
 
-        {/* Quick actions */}
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
-          {suggestions.map(({ icon: Icon, label, onTap }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={onTap}
-              className="flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-3.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-muted"
-            >
-              <Icon className="size-3.5 opacity-70" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Balance card */}
-        <div
-          className="rounded-3xl border bg-card p-5 shadow-sm"
-          style={
-            blindBudgeting
-              ? {
-                  background: `radial-gradient(circle at 20% 30%, color-mix(in srgb, ${auraColor} 22%, var(--card)) 0%, var(--card) 55%)`,
-                }
-              : undefined
-          }
-        >
-          <div className="flex items-stretch gap-4">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">Current balance</p>
-              {blindBudgeting ? (
-                <div className="mt-2">
-                  <p className="text-2xl font-bold" style={{ color: auraColor }}>
-                    {auraLabel}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">Blind mode — exact amounts stay out of sight</p>
-                </div>
-              ) : (
-                <div className="mt-1 flex items-baseline gap-1">
-                  {isNegative && <span className="text-xl font-semibold text-[var(--rose)]">−</span>}
-                  <span className="text-xl font-semibold text-muted-foreground">{balanceParts.symbol}</span>
-                  <HiddenAmount>
-                    <span className="text-4xl font-bold leading-none tracking-tight">{balanceParts.whole}</span>
-                    {balanceParts.decimal && (
-                      <span className="text-xl font-bold leading-none">{balanceParts.decimal}</span>
-                    )}
-                  </HiddenAmount>
-                </div>
-              )}
-
-              <div className="mt-4 flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{monthName} spending</p>
-                {!blindBudgeting && balanceGrowthPct !== null && (
-                  <div
-                    className="flex items-center gap-1 text-xs font-semibold"
-                    style={{ color: balanceGrowthPositive ? 'var(--mint)' : 'var(--rose)' }}
-                  >
-                    {balanceGrowthPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-                    {balanceGrowthPositive ? '+' : ''}
-                    {balanceGrowthPct}% this month
-                  </div>
-                )}
-              </div>
-              {!blindBudgeting && (
-                <p className="font-semibold">
-                  <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
-                </p>
-              )}
-            </div>
-
-            <Separator orientation="vertical" />
-
-            <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 text-center">
-              <span
-                className="grid size-11 shrink-0 place-items-center rounded-full"
-                style={{ background: blindBudgeting ? `color-mix(in srgb, ${auraColor} 16%, transparent)` : 'var(--iris-soft)' }}
-              >
-                <WalletIcon className="size-5" style={{ color: blindBudgeting ? auraColor : 'var(--iris)' }} />
-              </span>
-              <p className="text-2xl font-bold leading-none tabular-nums">{daysLeft}</p>
-              <p className="text-xs text-muted-foreground">days left in {monthName}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Safe to spend today — only meaningful once the wallet has monthly budgets to ration against */}
-        {hasBudgets && (
-          <div
-            className="flex items-center justify-between gap-4 rounded-3xl border p-5 shadow-sm"
-            style={{
-              background: `radial-gradient(circle at 90% 10%, color-mix(in oklch, var(--mint) 6%, var(--card)) 0%, var(--card) 35%)`,
-            }}
-          >
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 text-lg font-semibold">
-                <Sparkles className="size-5 shrink-0" style={{ color: 'var(--iris)' }} />
-                Safe to Spend Today
-              </div>
-              <p className="mt-3 text-3xl font-bold tabular-nums">
-                <HiddenAmount>{formatMoney(safeToSpendPerDayMinor, currency)}</HiddenAmount>
-                <span className="text-base font-normal text-muted-foreground"> /day</span>
-              </p>
-              <p className="mt-2 text-sm font-medium text-muted-foreground">Based on your monthly budgets</p>
-            </div>
-            <div className="relative grid size-24 shrink-0 place-items-center">
-              {/*
-                A donut ring via conic-gradient + a mask hole, rather than an
-                opaque inner circle — the hole reveals the card's actual
-                background (including its gradient) instead of a flat color
-                that would seam against it.
-              */}
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background: `conic-gradient(var(--iris) ${safeToSpendRingPct}%, var(--iris-soft) 0)`,
-                  WebkitMaskImage: 'radial-gradient(circle closest-side, transparent 78%, black 79%)',
-                  maskImage: 'radial-gradient(circle closest-side, transparent 78%, black 79%)',
-                }}
-              />
-              <span className="relative text-xl font-bold tabular-nums" style={{ color: 'var(--iris)' }}>
-                {safeToSpendRingPct}%
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Spending highlights */}
+        {/* Greeting */}
         <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Spending Highlights</h2>
-            <button
-              type="button"
-              onClick={() => navigate('/transactions')}
-              className="text-sm font-medium text-primary hover:text-primary/80"
-            >
-              View All
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {topCategory ? (
-              <div className="flex flex-col rounded-2xl border bg-card p-4 shadow-sm">
-                <span
-                  className="grid size-9 place-items-center rounded-full text-base"
-                  style={{ background: 'var(--apricot-soft)' }}
-                >
-                  {topCategory.icon ?? '💳'}
-                </span>
-                <p className="mt-2 text-xs text-muted-foreground">Top Category</p>
-                <p className="truncate font-medium">{topCategory.name}</p>
-                <div className="mt-1 flex items-baseline gap-1.5">
-                  <span className="text-sm font-semibold">
-                    <HiddenAmount>{formatMoney(topCategory.amount, currency)}</HiddenAmount>
-                  </span>
-                  {topCategoryDeltaPct !== null && (
-                    <span
-                      className="text-xs font-medium"
-                      style={{ color: topCategoryDeltaPct >= 0 ? 'var(--rose)' : 'var(--mint)' }}
-                    >
-                      {topCategoryDeltaPct >= 0 ? '+' : ''}
-                      {topCategoryDeltaPct}%
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center rounded-2xl border bg-card p-4 text-center text-xs text-muted-foreground">
-                No spending yet this month
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => (suggestion?.action ? runInsightAction(suggestion.action) : navigate('/transactions'))}
-              className="flex flex-col rounded-2xl border-2 p-4 text-left"
+          <h1 className="text-[2.5rem] leading-[1.05] tracking-tight text-foreground">
+            <span className="font-bold">{greet}</span>
+            <br />
+            <span className="font-light">{name}</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {wallet.name}
+            <span className="mx-1.5 text-border">·</span>
+            <span
               style={{
-                borderColor: 'var(--iris)',
-                background: 'color-mix(in srgb, var(--iris) 10%, var(--card))',
+                color:
+                  auraLabel === 'Comfortable'
+                    ? 'var(--mint)'
+                    : auraLabel === 'Tight'
+                      ? 'var(--apricot)'
+                      : 'var(--rose)',
               }}
             >
-              <AiOrb tone="default" className="size-7" />
-              <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--iris)' }}>
-                Penda Suggestion
-              </p>
-              <p className="mt-1 line-clamp-4 text-xs leading-snug">{suggestion?.text ?? weekInsight}</p>
-            </button>
+              {auraLabel}
+            </span>
+          </p>
+        </section>
+
+        {/* Hero carousel */}
+        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory [scrollbar-width:none]">
+          <HeroCard
+            tone="iris"
+            className="snap-start"
+            label="Balance"
+            value={
+              blindBudgeting ? (
+                auraLabel
+              ) : (
+                <HiddenAmount>
+                  <span>
+                    {isNegative ? '−' : ''}
+                    {balanceParts.symbol}
+                    {balanceParts.whole}
+                    {balanceParts.decimal && (
+                      <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
+                    )}
+                  </span>
+                </HiddenAmount>
+              )
+            }
+          />
+          {hasBudgets && (
+            <HeroCard
+              tone="mint"
+              className="snap-start"
+              label="Safe to spend"
+              value={
+                <HiddenAmount>
+                  <span>
+                    {formatMoney(safeToSpendPerDayMinor, currency)}
+                    <span className="text-base font-medium opacity-80"> /day</span>
+                  </span>
+                </HiddenAmount>
+              }
+            />
+          )}
+          {topGoal && (
+            <HeroCard
+              tone="apricot"
+              className="snap-start"
+              onClick={() => navigate(`/goals/${topGoal.id}`)}
+              label={topGoal.name}
+              value={
+                <HiddenAmount>
+                  <span>
+                    {topGoalPct ?? 0}
+                    <span className="text-xl font-semibold opacity-80">%</span>
+                  </span>
+                </HiddenAmount>
+              }
+            />
+          )}
+          <HeroCard
+            tone="sun"
+            className="snap-start"
+            onClick={() => navigate('/transactions')}
+            label="This month"
+            value={
+              blindBudgeting ? (
+                '—'
+              ) : (
+                <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
+              )
+            }
+          />
+        </div>
+
+        {/* Quick actions */}
+        <section>
+          <SectionHeader title="Quick actions" />
+          <div className="grid grid-cols-3 gap-2.5">
+            {quickActions.map(({ icon, label, tone, onTap }) => (
+              <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
+            ))}
           </div>
         </section>
 
-        {/* Savings goals */}
+        {/* Upcoming */}
+        {upcoming && (
+          <section>
+            <SectionHeader title="Upcoming" actionLabel="See all" actionTo="/cashflow" />
+            <div
+              className="flex items-center gap-3 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-card)] ring-1 ring-border/50"
+            >
+              <span
+                className="grid size-12 place-items-center rounded-2xl text-xl"
+                style={{ background: 'var(--iris-soft)' }}
+              >
+                {upcoming.icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{upcoming.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{upcoming.when}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                    style={{ background: 'var(--rose-soft)', color: 'var(--rose)' }}
+                  >
+                    <HiddenAmount>{formatMoney(upcoming.amountMinor, currency)}</HiddenAmount>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Penda suggestion */}
         <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Your Savings Goals</h2>
-            <Link to="/goals" className="text-sm font-medium text-primary hover:text-primary/80">
-              See All
-            </Link>
-          </div>
-          {goals.length === 0 ? (
+          <SectionHeader title="Penda says" />
+          <button
+            type="button"
+            onClick={() => (suggestion?.action ? runInsightAction(suggestion.action) : openChat())}
+            className="flex w-full items-start gap-3 rounded-[1.5rem] border-2 p-4 text-left transition-transform active:scale-[0.99]"
+            style={{
+              borderColor: 'var(--iris)',
+              background: 'color-mix(in srgb, var(--iris) 8%, var(--card))',
+              boxShadow: 'var(--shadow-soft)',
+            }}
+          >
+            <AiOrb tone="default" className="mt-0.5 size-8 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold" style={{ color: 'var(--iris)' }}>
+                Suggestion
+              </p>
+              <p className="mt-1 text-sm leading-snug text-foreground">
+                {suggestion?.text ?? weekInsight}
+              </p>
+            </div>
+          </button>
+        </section>
+
+        {/* Recent activity */}
+        <section>
+          <SectionHeader
+            title="Recent activity"
+            actionLabel="View all"
+            actionTo="/transactions"
+          />
+          {recent.length === 0 ? (
             <button
               type="button"
-              onClick={() => navigate('/goals')}
-              className="w-full rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground"
+              onClick={openAddForm}
+              className="w-full rounded-[1.5rem] border border-dashed border-border p-5 text-center text-sm text-muted-foreground"
             >
-              Set a savings goal to start tracking progress
+              No transactions yet — tap to add one
             </button>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {goals.slice(0, 2).map((goal, i) => {
-                const pct = goal.target_amount_minor > 0 ? goal.current_amount_minor / goal.target_amount_minor : 0
-                const remaining = Math.max(0, goal.target_amount_minor - goal.current_amount_minor)
-                const accent = i % 2 === 0 ? 'var(--iris)' : 'var(--apricot)'
+            <div className="flex flex-col gap-2.5">
+              {recent.map((tx) => {
+                const sign = tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''
                 return (
-                  <button
-                    key={goal.id}
-                    type="button"
-                    onClick={() => navigate(`/goals/${goal.id}`)}
-                    className="flex flex-col rounded-2xl border bg-card p-4 text-left shadow-sm"
-                  >
-                    {goal.image_path ? (
-                      <img
-                        src={getGoalImageUrl(goal.image_path)}
-                        alt=""
-                        className="aspect-[4/3] w-full rounded-xl object-cover"
-                      />
-                    ) : (
+                  <ActivityRow
+                    key={tx.id}
+                    onClick={() => {
+                      setEditing(tx)
+                      setMomoDraft(null)
+                      setFormOpen(true)
+                    }}
+                    avatar={<span>{tx.category?.icon ?? (tx.type === 'income' ? '💰' : '💳')}</span>}
+                    title={tx.merchant || tx.description || tx.category?.name || 'Transaction'}
+                    subtitle={
+                      <>
+                        {tx.category?.name ?? 'Uncategorized'}
+                        <span className="mx-1">·</span>
+                        {new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </>
+                    }
+                    trailing={
                       <span
-                        className="grid size-9 place-items-center rounded-full text-base"
-                        style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}
+                        style={{
+                          color: tx.type === 'income' ? 'var(--mint)' : 'var(--foreground)',
+                        }}
                       >
-                        {goal.icon ?? '🎯'}
+                        <HiddenAmount>
+                          {sign}
+                          {formatMoney(tx.amount_minor, tx.currency || currency)}
+                        </HiddenAmount>
                       </span>
-                    )}
-                    <p className="mt-2 truncate text-sm font-semibold">{goal.name}</p>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${Math.max(0, Math.min(1, pct)) * 100}%`, background: accent }}
-                      />
-                    </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      <HiddenAmount>{formatMoney(remaining, currency)}</HiddenAmount> left
-                    </p>
-                  </button>
+                    }
+                    showChevron
+                  />
                 )
               })}
             </div>
@@ -672,9 +637,6 @@ export function HomePage() {
         </section>
       </main>
 
-      {/* ── Floating add button ───────────────────────────── */}
-      {/* Penda chat now opens from the AI button in the bottom nav; this FAB
-          is just the quick "add transaction" affordance. */}
       <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40">
         <div className="mx-auto flex max-w-md items-center justify-end px-4 pb-2">
           <Button

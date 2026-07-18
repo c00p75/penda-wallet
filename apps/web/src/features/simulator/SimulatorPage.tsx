@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { HeroCard } from '@/components/ui/hero-card'
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import { AiInsight } from '@/components/AiInsight'
 import { BottomNav } from '@/components/BottomNav'
 import { cn } from '@/lib/utils'
 import { formatMoney, toMinorUnits } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
@@ -117,27 +119,58 @@ export function SimulatorPage() {
           }
   }
 
+  const endBalance = scenario.days.at(-1)?.balanceMinor ?? 0
+  const heroTone = scenario.lowestBalance.balanceMinor < 0 ? 'rose' : canAfford === false ? 'apricot' : 'iris'
+
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">What if…</h1>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">What if…</h1>
           <p className="text-sm text-muted-foreground">Ask the future out loud</p>
         </div>
       </header>
 
+      <HeroCard tone={heroTone} className="w-full min-h-[8.5rem]">
+        <div className="flex w-full items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-white/85">Balance in {HORIZON_DAYS} days</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums">
+              <HiddenAmount>{formatMoney(endBalance, currency)}</HiddenAmount>
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-medium text-white/75">Lowest point</p>
+            <p
+              className={cn(
+                'mt-1 text-lg font-semibold tabular-nums',
+                scenario.lowestBalance.balanceMinor < 0 ? 'text-white' : 'text-white/90',
+              )}
+            >
+              <HiddenAmount>{formatMoney(scenario.lowestBalance.balanceMinor, currency)}</HiddenAmount>
+            </p>
+          </div>
+        </div>
+      </HeroCard>
+
       {verdict ? (
         <AiInsight tone={verdict.tone}>{verdict.text}</AiInsight>
       ) : (
-        <AiInsight>Try me — put in a purchase or slide to cut spending, and I’ll show the ripple.</AiInsight>
+        <AiInsight>Try me — put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
       )}
 
-      <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
+      <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
         <Label htmlFor="purchase" className="flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" />
+          <Sparkles className="size-4 text-[var(--iris)]" />
           Can I buy this?
         </Label>
         <Input
@@ -148,13 +181,14 @@ export function SimulatorPage() {
           value={purchase}
           onChange={(e) => setPurchase(e.target.value)}
           placeholder={`Price in ${currency}`}
+          className="rounded-2xl"
         />
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
+      <div className="flex flex-col gap-3 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
         <div className="flex items-center justify-between">
           <Label htmlFor="cut">Cut everyday spending by</Label>
-          <span className="text-sm font-semibold text-primary">{cutPct}%</span>
+          <span className="text-sm font-semibold text-[var(--iris)]">{cutPct}%</span>
         </div>
         <input
           id="cut"
@@ -176,13 +210,13 @@ export function SimulatorPage() {
       </div>
 
       {payableDebts.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
           <Label className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
+            <Sparkles className="size-4 text-[var(--iris)]" />
             Pay off a debt faster
           </Label>
           <Select value={selectedDebtId} onValueChange={setSelectedDebtId}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full rounded-2xl">
               <SelectValue placeholder="Choose a debt" />
             </SelectTrigger>
             <SelectContent>
@@ -201,30 +235,13 @@ export function SimulatorPage() {
               value={extraPayment}
               onChange={(e) => setExtraPayment(e.target.value)}
               placeholder={`Extra per month in ${currency}`}
+              className="rounded-2xl"
             />
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Metric label="Balance in 30 days" value={formatMoney(scenario.days.at(-1)?.balanceMinor ?? 0, currency)} />
-        <Metric
-          label="Lowest point"
-          value={formatMoney(scenario.lowestBalance.balanceMinor, currency)}
-          alert={scenario.lowestBalance.balanceMinor < 0}
-        />
-      </div>
-
       <BottomNav />
     </main>
-  )
-}
-
-function Metric({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
-  return (
-    <div className="rounded-2xl border bg-card p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn('text-lg font-semibold', alert && 'text-[var(--rose)]')}>{value}</p>
-    </div>
   )
 }

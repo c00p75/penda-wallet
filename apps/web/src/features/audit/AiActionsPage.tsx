@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ActivityRow } from '@/components/ui/activity-row'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { fetchAiPendingActions, undoSoftDeletedTransaction } from './api'
@@ -41,49 +43,74 @@ export function AiActionsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          asChild
+        >
           <Link to="/settings" aria-label="Back to settings">
             <ArrowLeft className="size-5" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">AI actions</h1>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">AI actions</h1>
           <p className="text-sm text-muted-foreground">What Penda proposed — and how it resolved</p>
         </div>
       </header>
 
       {isLoading ? null : actions.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           No staged AI actions yet. Updates and deletes always land here first.
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {actions.map((a) => {
-            const canUndo = a.status === 'confirmed' && a.kind === 'delete' && a.domain === 'transaction'
-            return (
-              <li key={a.id} className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium leading-snug">{a.summary}</p>
-                  <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(a.created_at)}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize">{a.status}</span>
-                  <span className="capitalize">
-                    {a.kind} · {a.domain}
-                  </span>
-                </div>
-                {canUndo && (
-                  <Button size="sm" variant="outline" className="self-start gap-1.5" onClick={() => handleUndo(a.target_id)}>
-                    <Undo2 className="size-3.5" />
-                    Undo delete
-                  </Button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
+        <section>
+          <SectionHeader title="Recent actions" />
+          <div className="flex flex-col gap-2.5">
+            {actions.map((a) => {
+              const canUndo = a.status === 'confirmed' && a.kind === 'delete' && a.domain === 'transaction'
+              return (
+                <ActivityRow
+                  key={a.id}
+                  avatar={
+                    <span className="text-xs font-bold uppercase text-muted-foreground">
+                      {a.kind.slice(0, 1)}
+                    </span>
+                  }
+                  title={a.summary}
+                  subtitle={
+                    <>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium capitalize">
+                        {a.status}
+                      </span>
+                      <span className="mx-1">·</span>
+                      <span className="capitalize">
+                        {a.kind} · {a.domain}
+                      </span>
+                      <span className="mx-1">·</span>
+                      {relativeTime(a.created_at)}
+                    </>
+                  }
+                  action={
+                    canUndo ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 rounded-full"
+                        onClick={() => handleUndo(a.target_id)}
+                      >
+                        <Undo2 className="size-3.5" />
+                        Undo
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              )
+            })}
+          </div>
+        </section>
       )}
 
       <BottomNav />

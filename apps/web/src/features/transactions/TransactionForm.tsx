@@ -135,7 +135,7 @@ export function TransactionForm({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>
             {isReceiptDraft
@@ -148,12 +148,12 @@ export function TransactionForm({
           </SheetTitle>
         </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 pb-6">
           {receiptImageUrl && (
             <img
               src={receiptImageUrl}
               alt="Receipt"
-              className="max-h-48 w-full rounded-lg border object-contain"
+              className="max-h-48 w-full rounded-2xl border border-border/60 object-contain shadow-[var(--shadow-soft)]"
             />
           )}
 
@@ -235,7 +235,7 @@ export function TransactionForm({
           </div>
 
           {canTeach && (
-            <label className="flex items-start gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-sm">
+            <label className="flex items-start gap-2 rounded-2xl border border-[var(--iris)]/20 bg-[var(--iris-soft)]/60 px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)]">
               <input
                 type="checkbox"
                 className="mt-0.5"

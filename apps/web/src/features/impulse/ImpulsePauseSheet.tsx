@@ -29,11 +29,14 @@ export function ImpulsePauseSheet({
 }: ImpulsePauseSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto max-w-md rounded-t-3xl">
+      <SheetContent side="bottom" className="mx-auto max-w-md border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>Sit on this for 24h?</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            <span className="grid size-2 shrink-0 rounded-full bg-[var(--apricot)]" aria-hidden />
+            Sit on this for 24h?
+          </SheetTitle>
         </SheetHeader>
-        <p className="px-4 text-sm text-muted-foreground">
+        <p className="rounded-2xl bg-[var(--apricot-soft)]/70 px-5 py-3 text-sm text-foreground/80">
           {formatMoney(amountMinor, currency)}
           {merchant ? ` at ${merchant}` : ''} is a big one. Want to sleep on it before it hits the ledger?
         </p>

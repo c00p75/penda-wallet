@@ -58,8 +58,12 @@ const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 export function SettingsPage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
+      <section>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Tune Penda to how you live</p>
+      </section>
       <SettingsContent />
       <BottomNav />
     </main>
@@ -200,8 +204,8 @@ export function SettingsContent() {
                   onClick={() => setMode(m.value)}
                   aria-pressed={active}
                   className={
-                    'flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center ' +
-                    (active ? 'border-primary bg-accent' : 'border-border')
+                    'flex flex-col items-center gap-1.5 rounded-2xl border p-3.5 text-center ' +
+                    (active ? 'border-primary bg-accent shadow-[var(--shadow-soft)]' : 'border-border/70')
                   }
                 >
                   <m.icon className={'size-5 ' + (active ? 'text-primary' : 'text-muted-foreground')} />
@@ -263,8 +267,8 @@ export function SettingsContent() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm">Hide exact balances until unlocked</p>
+          <div className="flex min-h-12 items-center justify-between gap-3">
+            <p className="text-sm font-medium">Hide exact balances until unlocked</p>
             <Switch
               checked={lockEnabled}
               onCheckedChange={(on) => (on ? setSetupLockOpen(true) : setDisableLockOpen(true))}
@@ -284,8 +288,8 @@ export function SettingsContent() {
           <CardTitle className="text-base">Notifications</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm">Budget alerts &amp; bill reminders</p>
+          <div className="flex min-h-12 items-center justify-between gap-3">
+            <p className="text-sm font-medium">Budget alerts &amp; bill reminders</p>
             <Switch
               checked={notificationOptIn}
               disabled={subscribeToPush.isPending}
@@ -327,8 +331,8 @@ export function SettingsContent() {
               ['act_without_confirm', 'Act without confirming (updates/deletes)'],
             ] as const
           ).map(([key, label]) => (
-            <div key={key} className="flex items-center justify-between gap-3">
-              <p className="text-sm">{label}</p>
+            <div key={key} className="flex min-h-12 items-center justify-between gap-3">
+              <p className="text-sm font-medium">{label}</p>
               <Switch
                 checked={aiConsent[key]}
                 onCheckedChange={(on) => patchConsent(key, on)}
@@ -344,16 +348,16 @@ export function SettingsContent() {
           <CardTitle className="text-base">Money habits</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-h-14 items-center justify-between gap-3">
             <div>
-              <p className="text-sm">Blind budgeting</p>
+              <p className="text-sm font-medium">Blind budgeting</p>
               <p className="text-xs text-muted-foreground">Hide exact amounts — show calm auras instead</p>
             </div>
             <Switch checked={blindBudgeting} onCheckedChange={setBlindBudgeting} aria-label="Blind budgeting" />
           </div>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-h-14 items-center justify-between gap-3">
             <div>
-              <p className="text-sm">Round-ups</p>
+              <p className="text-sm font-medium">Round-ups</p>
               <p className="text-xs text-muted-foreground">Save spare change on expenses (coming soon)</p>
             </div>
             <Switch checked={roundUp} onCheckedChange={setRoundUp} aria-label="Round-ups" />

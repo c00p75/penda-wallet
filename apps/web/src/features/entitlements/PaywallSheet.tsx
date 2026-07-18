@@ -14,17 +14,18 @@ export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
 
   return (
     <Sheet open={!!feature} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom">
+      <SheetContent side="bottom" className="border-0 ring-0">
         <SheetHeader>
           <SheetTitle className="sr-only">{copy.title}</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-col gap-4 px-4 pb-4">
+        <div className="flex flex-col gap-4 px-5 pb-6">
           {/* Aspirational preview card — sells the feature instead of blocking it */}
           <div
-            className="flex flex-col gap-2 rounded-2xl p-5 text-white shadow-lg"
+            className="relative isolate flex flex-col gap-2 overflow-hidden rounded-[1.75rem] p-5 text-white"
             style={{
               background:
-                'linear-gradient(150deg, color-mix(in srgb, var(--iris) 88%, #000) 0%, var(--iris) 55%, var(--hero-glow) 130%)',
+                'linear-gradient(145deg, var(--iris-hero-from) 0%, var(--iris-hero-to) 100%)',
+              boxShadow: '0 14px 36px color-mix(in srgb, var(--iris-hero-to) 45%, transparent)',
             }}
           >
             <span className="flex items-center gap-1.5 font-mono text-[0.68rem] uppercase tracking-[0.14em] opacity-90">

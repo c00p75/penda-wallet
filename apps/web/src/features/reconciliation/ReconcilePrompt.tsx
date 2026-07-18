@@ -74,7 +74,7 @@ export function ReconcilePrompt({
 
   if (fixing) {
     return (
-      <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
+      <div className="flex flex-col gap-2 rounded-[1.5rem] border border-border/60 bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
         <p className="text-sm font-medium">What's your actual balance?</p>
         <div className="flex gap-2">
           <Input
@@ -97,7 +97,7 @@ export function ReconcilePrompt({
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4">
+    <div className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-border/60 bg-[var(--mint-soft)]/40 p-4 shadow-[var(--shadow-soft)] ring-1 ring-[var(--mint)]/20">
       <p className="min-w-0 flex-1 text-sm">
         Penda has <span className="font-semibold">{formatMoney(computedBalanceMinor, currency)}</span> — does that
         match your MoMo?

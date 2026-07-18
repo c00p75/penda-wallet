@@ -1,11 +1,15 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { HeroCard } from '@/components/ui/hero-card'
+import { DateChip } from '@/components/ui/date-chip'
+import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -14,7 +18,13 @@ import { useRecurringTransactions } from '@/features/recurring/hooks'
 import { localDateStr } from '@/lib/dates'
 import { projectCashflow, type ProjectedDay } from './projection'
 
-const HORIZON_DAYS = 30
+const HORIZON_OPTIONS = [
+  { value: '7', label: '7d' },
+  { value: '14', label: '14d' },
+  { value: '30', label: '30d' },
+] as const
+
+type Horizon = (typeof HORIZON_OPTIONS)[number]['value']
 
 function formatDay(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
@@ -32,19 +42,18 @@ export function CashflowPage() {
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
+  const [horizon, setHorizon] = useState<Horizon>('30')
+  const horizonDays = Number(horizon)
 
   const projection = useMemo(() => {
     const from = new Date()
     from.setHours(0, 0, 0, 0)
 
-    // Current balance = all-time confirmed income minus expenses.
     const balance = transactions.reduce(
       (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
       0,
     )
 
-    // Everyday spend = discretionary only (exclude auto-posted recurring bills,
-    // which the projection adds separately) over the last 30 days.
     const cutoff = new Date(from)
     cutoff.setDate(cutoff.getDate() - 30)
     const cutoffStr = localDateStr(cutoff)
@@ -57,15 +66,18 @@ export function CashflowPage() {
       recurring,
       avgDailySpendMinor: Math.round(discretionary / 30),
       from,
-      days: HORIZON_DAYS,
+      days: horizonDays,
     })
-  }, [transactions, recurring])
+  }, [transactions, recurring, horizonDays])
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
 
   const currency = wallet.base_currency
   const { nextIncome, freeBeforeNextIncomeMinor, lowestBalance } = projection
+  const endBalance = projection.days.at(-1)?.balanceMinor ?? 0
+  const heroTone =
+    lowestBalance.balanceMinor < 0 ? 'rose' : freeBeforeNextIncomeMinor != null && freeBeforeNextIncomeMinor < 50000 ? 'apricot' : 'mint'
 
   let insight: { tone: 'default' | 'warm' | 'attention'; text: string }
   if (nextIncome && freeBeforeNextIncomeMinor !== null) {
@@ -73,7 +85,7 @@ export function CashflowPage() {
     if (freeBeforeNextIncomeMinor < 0) {
       insight = {
         tone: 'attention',
-        text: `You’re heading ${formatMoney(-freeBeforeNextIncomeMinor, currency)} short before ${paydayLabel}. Let’s trim something to bridge it.`,
+        text: `You're heading ${formatMoney(-freeBeforeNextIncomeMinor, currency)} short before ${paydayLabel}. Let's trim something to bridge it.`,
       }
     } else {
       insight = {
@@ -89,21 +101,51 @@ export function CashflowPage() {
   } else {
     insight = {
       tone: 'default',
-      text: `Your balance drifts to ${formatMoney(lowestBalance.balanceMinor, currency)} over the next ${HORIZON_DAYS} days.`,
+      text: `Your balance drifts to ${formatMoney(lowestBalance.balanceMinor, currency)} over the next ${horizonDays} days.`,
     }
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <header className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">Cashflow timeline</h1>
-          <p className="text-sm text-muted-foreground">The next {HORIZON_DAYS} days, looking forward</p>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Cashflow</h1>
+          <p className="text-sm text-muted-foreground">Looking forward</p>
         </div>
       </header>
+
+      <DateChip
+        value={horizon}
+        onChange={(v) => setHorizon(v as Horizon)}
+        options={HORIZON_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+      />
+
+      <HeroCard tone={heroTone} className="w-full min-h-[8.5rem]">
+        <div className="flex w-full items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-white/85">Lowest projected balance</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums">
+              <HiddenAmount>{formatMoney(lowestBalance.balanceMinor, currency)}</HiddenAmount>
+            </p>
+            <p className="mt-1 text-sm text-white/80">{formatDay(lowestBalance.date)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-medium text-white/75">In {horizonDays} days</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-white/90">
+              <HiddenAmount>{formatMoney(endBalance, currency)}</HiddenAmount>
+            </p>
+          </div>
+        </div>
+      </HeroCard>
 
       <AiInsight tone={insight.tone} askText={insight.text}>
         {insight.text}
@@ -115,18 +157,21 @@ export function CashflowPage() {
             key={q}
             type="button"
             onClick={() => openChat(q)}
-            className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
           >
             {q}
           </button>
         ))}
       </div>
 
-      <ol className="relative flex flex-col gap-0 border-l border-border pl-4">
-        {projection.days.map((day) => (
-          <TimelineRow key={day.date} day={day} currency={currency} isLowest={day.date === lowestBalance.date} />
-        ))}
-      </ol>
+      <section>
+        <SectionHeader title="Timeline" />
+        <ol className="relative flex flex-col gap-0 border-l border-border/60 pl-4">
+          {projection.days.map((day) => (
+            <TimelineRow key={day.date} day={day} currency={currency} isLowest={day.date === lowestBalance.date} />
+          ))}
+        </ol>
+      </section>
 
       <BottomNav />
     </main>
@@ -138,10 +183,10 @@ function TimelineRow({ day, currency, isLowest }: { day: ProjectedDay; currency:
   const negative = day.balanceMinor < 0
 
   return (
-    <li className="relative flex items-start justify-between gap-3 py-2">
+    <li className="relative flex items-start justify-between gap-3 rounded-[1.35rem] py-2.5">
       <span
         className={cn(
-          'absolute -left-[1.3rem] top-3 size-2.5 rounded-full border-2 border-background',
+          'absolute -left-[1.3rem] top-3.5 size-2.5 rounded-full border-2 border-background',
           negative ? 'bg-[var(--rose)]' : hasEvents ? 'bg-primary' : 'bg-muted-foreground/40',
         )}
         aria-hidden
