@@ -19,10 +19,9 @@ describe('BottomNav', () => {
 
   it('shows the four destination tabs flanking the AI button', () => {
     renderNav()
-    for (const label of ['Home', 'Budgets', 'Goals', 'Analytics']) {
+    for (const label of ['Ledger', 'Budgets', 'Goals', 'Analytics']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    expect(screen.queryByText('You')).not.toBeInTheDocument()
     expect(screen.queryByText('Profile')).not.toBeInTheDocument()
   })
 

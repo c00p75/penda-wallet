@@ -619,7 +619,7 @@ export function HomePage() {
         </section>
       </main>
 
-      <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40">
+      <div className="fixed inset-x-0 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-40">
         <div className="mx-auto flex max-w-md items-center justify-end px-4 pb-2">
           <Button
             onClick={openAddForm}

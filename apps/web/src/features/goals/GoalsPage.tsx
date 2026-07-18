@@ -265,7 +265,7 @@ export function GoalsPage() {
           }
         }}
         size="icon"
-        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
+        className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label={tab === 'goals' ? 'Add savings goal' : 'Add debt'}
       >
         <Plus className="size-6" />

@@ -441,7 +441,7 @@ export function LedgerPage() {
       <Button
         onClick={openAddForm}
         size="icon"
-        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
+        className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label="Add transaction"
       >
         <Plus className="size-6" />
