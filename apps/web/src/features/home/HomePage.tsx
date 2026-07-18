@@ -2,40 +2,34 @@ import { useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
-  Bell,
   CalendarRange,
   Camera,
   ClipboardPaste,
-  CloudOff,
   MessageCircle,
-  Mic,
   NotebookPen,
   PiggyBank,
   Plus,
   Sparkles,
   TrendingDown,
   TrendingUp,
-  Users,
   Wallet as WalletIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { BottomNav } from '@/components/BottomNav'
-import { AiInsight, AiOrb } from '@/components/AiInsight'
+import { AppHeader } from '@/components/AppHeader'
+import { AiOrb } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
 import { useOfflineQueue } from '@/pwa/useOfflineQueue'
 import { InstallBanner } from '@/pwa/InstallBanner'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
-import { useWalletPresence } from '@/features/wallets/useWalletPresence'
-import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { useBudgetProgress, useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
-import { useProfile } from '@/features/profile/hooks'
-import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
-import { PERSONALITIES } from '@/features/profile/types'
+import { getGoalImageUrl } from '@/features/goals/api'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
@@ -88,7 +82,6 @@ export function HomePage() {
   const deleteTransaction = useDeleteTransaction(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
-  const { data: profile } = useProfile(session?.user.id)
   const { isPremium } = useEntitlement(session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
@@ -96,12 +89,10 @@ export function HomePage() {
   const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteInitialText, setPasteInitialText] = useState('')
-  const [walletSheetOpen, setWalletSheetOpen] = useState(false)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useWalletRealtime(wallet?.id)
-  const present = useWalletPresence(wallet?.id, session?.user.id, session?.user.email ?? '')
   const offlineQueue = useOfflineQueue()
 
   function openAddForm() {
@@ -193,8 +184,6 @@ export function HomePage() {
   if (!wallet) return null
 
   const currency = wallet.base_currency
-  const personality = profile?.ai_personality ?? 'balanced_coach'
-  const personaAccent = PERSONALITIES.find((p) => p.value === personality)?.accent ?? 'var(--iris)'
 
   // ── Balance & this-month growth ─────────────────────────────
   const balanceMinor = transactions.reduce(
@@ -208,18 +197,25 @@ export function HomePage() {
   const monthSpending = thisMonthTx
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount_minor, 0)
-  const monthIncome = thisMonthTx.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount_minor, 0)
-  const netThisMonth = monthIncome - monthSpending
-  const balanceAtMonthStart = balanceMinor - netThisMonth
-  const growthPct =
-    balanceAtMonthStart !== 0 ? Math.round((netThisMonth / Math.abs(balanceAtMonthStart)) * 1000) / 10 : null
-  const growthPositive = netThisMonth >= 0
-
   const balanceParts = splitBalance(balanceMinor, currency)
   const isNegative = balanceMinor < 0
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const daysLeft = daysInMonth - now.getDate() + 1
+
+  // Balance as of this same day last month, so we only compare against a
+  // point in time the wallet's history actually reaches back to.
+  const lastMonthSameDay = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
+  const lastMonthSameDayStr = `${lastMonthSameDay.getFullYear()}-${String(lastMonthSameDay.getMonth() + 1).padStart(2, '0')}-${String(lastMonthSameDay.getDate()).padStart(2, '0')}`
+  const hasLastMonthRecord = transactions.some((tx) => tx.transaction_date <= lastMonthSameDayStr)
+  const balanceLastMonthSameDayMinor = transactions
+    .filter((tx) => tx.transaction_date <= lastMonthSameDayStr)
+    .reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0), 0)
+  const balanceGrowthPct =
+    hasLastMonthRecord && balanceLastMonthSameDayMinor !== 0
+      ? Math.round(((balanceMinor - balanceLastMonthSameDayMinor) / Math.abs(balanceLastMonthSameDayMinor)) * 1000) / 10
+      : null
+  const balanceGrowthPositive = balanceMinor >= balanceLastMonthSameDayMinor
 
   // ── Safe to spend today ─────────────────────────────────────
   const monthlyBudgets = budgetProgress.filter((b) => b.period === 'monthly')
@@ -227,14 +223,8 @@ export function HomePage() {
   const totalSpentMinor = monthlyBudgets.reduce((sum, b) => sum + b.spent_minor, 0)
   const remainingBudgetMinor = totalBudgetMinor - totalSpentMinor
   const hasBudgets = totalBudgetMinor > 0
-  const safeToSpendPerDayMinor = Math.max(
-    0,
-    Math.round((hasBudgets ? remainingBudgetMinor : balanceMinor) / daysLeft),
-  )
-  const safeToSpendRingPct = hasBudgets
-    ? Math.max(0, Math.min(100, Math.round((remainingBudgetMinor / totalBudgetMinor) * 100)))
-    : null
-  const safeToSpendSubtitle = hasBudgets ? 'Based on your monthly budgets' : 'Based on your current balance'
+  const safeToSpendPerDayMinor = Math.max(0, Math.round(remainingBudgetMinor / daysLeft))
+  const safeToSpendRingPct = Math.max(0, Math.min(100, Math.round((remainingBudgetMinor / totalBudgetMinor) * 100)))
 
   // ── Top category this month ─────────────────────────────────
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
@@ -310,55 +300,7 @@ export function HomePage() {
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
-      {/* ── Header ───────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-2">
-        <div className="flex items-center gap-2">
-          <Link to="/settings" aria-label="Settings" className="shrink-0 transition-transform active:scale-95">
-            <PersonaAvatar value={personality} accent={personaAccent} size={36} />
-          </Link>
-          <button
-            type="button"
-            onClick={() => setWalletSheetOpen(true)}
-            className="flex items-center gap-2 rounded-full bg-muted py-1.5 pl-3 pr-2.5 text-left"
-          >
-            <span className="text-sm font-medium">{wallet.name}</span>
-            {offlineQueue.pendingCount > 0 && (
-              <span
-                className="flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                title="Waiting to sync"
-              >
-                <CloudOff className="size-3" />
-                {offlineQueue.pendingCount}
-              </span>
-            )}
-            <span className="flex -space-x-1.5">
-              {present.length > 1 ? (
-                present.slice(0, 3).map((p) => (
-                  <span
-                    key={p.userId}
-                    title={p.label}
-                    className="flex size-5 items-center justify-center rounded-full border-2 border-muted bg-primary text-[9px] font-medium text-primary-foreground"
-                  >
-                    {p.label.slice(0, 1).toUpperCase()}
-                  </span>
-                ))
-              ) : (
-                <Users className="size-4 text-muted-foreground" />
-              )}
-            </span>
-          </button>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-9 rounded-full"
-          onClick={() => openChat()}
-          aria-label="Notifications"
-        >
-          <Bell className="size-4" />
-        </Button>
-      </header>
+      <AppHeader />
 
       <input
         ref={receiptInputRef}
@@ -371,8 +313,6 @@ export function HomePage() {
 
       <main className="flex flex-1 flex-col gap-5 px-4 pb-40">
         <InstallBanner />
-
-        <AiInsight>{weekInsight}</AiInsight>
 
         {/* Quick actions */}
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
@@ -391,78 +331,91 @@ export function HomePage() {
 
         {/* Balance card */}
         <div className="rounded-3xl border bg-card p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex items-stretch gap-4">
+            <div className="min-w-0 flex-1">
               <p className="text-sm text-muted-foreground">Current balance</p>
               <div className="mt-1 flex items-baseline gap-1">
-                {isNegative && <span className="text-2xl font-bold text-[var(--rose)]">−</span>}
-                <span className="text-2xl font-bold text-muted-foreground">{balanceParts.symbol}</span>
+                {isNegative && <span className="text-xl font-semibold text-[var(--rose)]">−</span>}
+                <span className="text-xl font-semibold text-muted-foreground">{balanceParts.symbol}</span>
                 <HiddenAmount>
                   <span className="text-4xl font-bold leading-none tracking-tight">{balanceParts.whole}</span>
-                  {balanceParts.decimal && (
-                    <span className="text-xl font-semibold text-muted-foreground">{balanceParts.decimal}</span>
-                  )}
+                  {balanceParts.decimal && <span className="text-xl font-bold leading-none">{balanceParts.decimal}</span>}
                 </HiddenAmount>
               </div>
-              {growthPct !== null && (
-                <div
-                  className="mt-2 flex w-fit items-center gap-1 text-sm font-medium"
-                  style={{ color: growthPositive ? 'var(--mint)' : 'var(--rose)' }}
-                >
-                  {growthPositive ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
-                  {growthPositive ? '+' : ''}
-                  {growthPct}% this month
-                </div>
-              )}
-            </div>
-            <span
-              className="grid size-11 shrink-0 place-items-center rounded-full"
-              style={{ background: 'var(--iris-soft)' }}
-            >
-              <WalletIcon className="size-5" style={{ color: 'var(--iris)' }} />
-            </span>
-          </div>
 
-          <div className="mt-4 flex items-center justify-between border-t pt-3">
-            <div>
-              <p className="text-xs text-muted-foreground">{monthName} spending</p>
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">{monthName} spending</p>
+                {balanceGrowthPct !== null && (
+                  <div
+                    className="flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: balanceGrowthPositive ? 'var(--mint)' : 'var(--rose)' }}
+                  >
+                    {balanceGrowthPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
+                    {balanceGrowthPositive ? '+' : ''}
+                    {balanceGrowthPct}% this month
+                  </div>
+                )}
+              </div>
               <p className="font-semibold">
                 <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-xl font-bold tabular-nums">{daysLeft}</p>
+
+            <Separator orientation="vertical" />
+
+            <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 text-center">
+              <span
+                className="grid size-11 shrink-0 place-items-center rounded-full"
+                style={{ background: 'var(--iris-soft)' }}
+              >
+                <WalletIcon className="size-5" style={{ color: 'var(--iris)' }} />
+              </span>
+              <p className="text-2xl font-bold leading-none tabular-nums">{daysLeft}</p>
               <p className="text-xs text-muted-foreground">days left in {monthName}</p>
             </div>
           </div>
         </div>
 
-        {/* Safe to spend today */}
-        <div className="flex items-center justify-between gap-4 rounded-3xl border bg-card p-5 shadow-sm">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--iris)' }}>
-              <Sparkles className="size-4" />
-              Safe to Spend Today
-            </div>
-            <p className="mt-2 text-2xl font-bold tabular-nums">
-              <HiddenAmount>{formatMoney(safeToSpendPerDayMinor, currency)}</HiddenAmount>
-              <span className="text-sm font-normal text-muted-foreground"> /day</span>
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">{safeToSpendSubtitle}</p>
-          </div>
-          {safeToSpendRingPct !== null && (
-            <div
-              className="grid size-16 shrink-0 place-items-center rounded-full"
-              style={{
-                background: `conic-gradient(var(--iris) ${safeToSpendRingPct}%, var(--iris-soft) 0)`,
-              }}
-            >
-              <div className="grid size-12 place-items-center rounded-full bg-card text-sm font-bold tabular-nums">
-                {safeToSpendRingPct}%
+        {/* Safe to spend today — only meaningful once the wallet has monthly budgets to ration against */}
+        {hasBudgets && (
+          <div
+            className="flex items-center justify-between gap-4 rounded-3xl border p-5 shadow-sm"
+            style={{
+              background: `radial-gradient(circle at 90% 10%, color-mix(in oklch, var(--mint) 6%, var(--card)) 0%, var(--card) 35%)`,
+            }}
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-lg font-semibold">
+                <Sparkles className="size-5 shrink-0" style={{ color: 'var(--iris)' }} />
+                Safe to Spend Today
               </div>
+              <p className="mt-3 text-3xl font-bold tabular-nums">
+                <HiddenAmount>{formatMoney(safeToSpendPerDayMinor, currency)}</HiddenAmount>
+                <span className="text-base font-normal text-muted-foreground"> /day</span>
+              </p>
+              <p className="mt-2 text-sm font-medium text-muted-foreground">Based on your monthly budgets</p>
             </div>
-          )}
-        </div>
+            <div className="relative grid size-24 shrink-0 place-items-center">
+              {/*
+                A donut ring via conic-gradient + a mask hole, rather than an
+                opaque inner circle — the hole reveals the card's actual
+                background (including its gradient) instead of a flat color
+                that would seam against it.
+              */}
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: `conic-gradient(var(--iris) ${safeToSpendRingPct}%, var(--iris-soft) 0)`,
+                  WebkitMaskImage: 'radial-gradient(circle closest-side, transparent 78%, black 79%)',
+                  maskImage: 'radial-gradient(circle closest-side, transparent 78%, black 79%)',
+                }}
+              />
+              <span className="relative text-xl font-bold tabular-nums" style={{ color: 'var(--iris)' }}>
+                {safeToSpendRingPct}%
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Spending highlights */}
         <section>
@@ -552,16 +505,24 @@ export function HomePage() {
                   <button
                     key={goal.id}
                     type="button"
-                    onClick={() => navigate('/goals')}
+                    onClick={() => navigate(`/goals/${goal.id}`)}
                     className="flex flex-col rounded-2xl border bg-card p-4 text-left shadow-sm"
                   >
-                    <span
-                      className="grid size-9 place-items-center rounded-full text-base"
-                      style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}
-                    >
-                      {goal.icon ?? '🎯'}
-                    </span>
-                    <p className="mt-2 truncate text-sm font-medium">{goal.name}</p>
+                    {goal.image_path ? (
+                      <img
+                        src={getGoalImageUrl(goal.image_path)}
+                        alt=""
+                        className="aspect-[4/3] w-full rounded-xl object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="grid size-9 place-items-center rounded-full text-base"
+                        style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}
+                      >
+                        {goal.icon ?? '🎯'}
+                      </span>
+                    )}
+                    <p className="mt-2 truncate text-sm font-semibold">{goal.name}</p>
                     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full rounded-full"
@@ -579,9 +540,11 @@ export function HomePage() {
         </section>
       </main>
 
-      {/* ── Floating action bar ───────────────────────────── */}
+      {/* ── Floating add button ───────────────────────────── */}
+      {/* Penda chat now opens from the AI button in the bottom nav; this FAB
+          is just the quick "add transaction" affordance. */}
       <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40">
-        <div className="mx-auto flex max-w-md items-center gap-2 px-4 pb-2">
+        <div className="mx-auto flex max-w-md items-center justify-end px-4 pb-2">
           <Button
             onClick={openAddForm}
             size="icon"
@@ -590,17 +553,6 @@ export function HomePage() {
           >
             <Plus className="size-5" />
           </Button>
-          <button
-            type="button"
-            onClick={() => openChat()}
-            className="flex h-12 flex-1 items-center justify-between rounded-full border bg-card pl-4 pr-1.5 text-left shadow-lg"
-            aria-label="Ask Penda"
-          >
-            <span className="text-sm text-muted-foreground">Ask Penda anything…</span>
-            <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Mic className="size-4" />
-            </span>
-          </button>
         </div>
       </div>
 
@@ -632,7 +584,6 @@ export function HomePage() {
         }}
       />
 
-      <WalletSheet open={walletSheetOpen} onOpenChange={setWalletSheetOpen} wallet={wallet} />
       <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
       <BottomNav />
     </div>

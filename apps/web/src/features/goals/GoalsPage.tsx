@@ -1,22 +1,16 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
+import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
-import {
-  useAddContribution,
-  useContributions,
-  useCreateSavingsGoal,
-  useDeleteSavingsGoal,
-  useSavingsGoals,
-  useUpdateSavingsGoal,
-} from './hooks'
+import { useAddContribution, useContributions, useCreateSavingsGoal, useSavingsGoals } from './hooks'
 import { GoalForm } from './GoalForm'
 import { ContributionForm } from './ContributionForm'
 import { GoalProgressCard } from './GoalProgressCard'
@@ -52,12 +46,11 @@ function GoalCardWithContributions({
 
 export function GoalsPage() {
   const session = useAuthStore((s) => s.session)
+  const navigate = useNavigate()
   const { data: wallet } = useCurrentWallet()
 
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const createGoal = useCreateSavingsGoal(wallet?.id)
-  const updateGoal = useUpdateSavingsGoal(wallet?.id)
-  const deleteGoal = useDeleteSavingsGoal(wallet?.id)
 
   const { data: debts = [] } = useDebts(wallet?.id)
   const createDebt = useCreateDebt(wallet?.id)
@@ -66,7 +59,6 @@ export function GoalsPage() {
 
   const [tab, setTab] = useState<'goals' | 'debts'>('goals')
   const [goalFormOpen, setGoalFormOpen] = useState(false)
-  const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null)
   const [contributingGoal, setContributingGoal] = useState<SavingsGoal | null>(null)
   const [debtFormOpen, setDebtFormOpen] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
@@ -80,24 +72,8 @@ export function GoalsPage() {
 
   async function handleGoalSubmit(input: SavingsGoalInput, initialAmountMinor: number) {
     try {
-      if (editingGoal) {
-        await updateGoal.mutateAsync({ id: editingGoal.id, input })
-        toast('Goal updated.')
-      } else {
-        await createGoal.mutateAsync({ input, initialAmountMinor })
-        toast('Goal added.')
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
-    }
-  }
-
-  async function handleGoalDelete() {
-    if (!editingGoal) return
-    try {
-      await deleteGoal.mutateAsync(editingGoal.id)
-      toast('Goal deleted.')
-      setGoalFormOpen(false)
+      await createGoal.mutateAsync({ input, initialAmountMinor })
+      toast('Goal added.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -188,10 +164,8 @@ export function GoalsPage() {
           })()
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold">{tab === 'goals' ? 'Will I make it?' : 'What do I owe?'}</h1>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+      <AppHeader />
 
       {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
 
@@ -217,10 +191,7 @@ export function GoalsPage() {
                 key={goal.id}
                 goal={goal}
                 currency={wallet.base_currency}
-                onSelect={() => {
-                  setEditingGoal(goal)
-                  setGoalFormOpen(true)
-                }}
+                onSelect={() => navigate(`/goals/${goal.id}`)}
                 onAddFunds={() => setContributingGoal(goal)}
               />
             ))}
@@ -251,7 +222,6 @@ export function GoalsPage() {
       <Button
         onClick={() => {
           if (tab === 'goals') {
-            setEditingGoal(null)
             setGoalFormOpen(true)
           } else {
             setEditingDebt(null)
@@ -268,11 +238,10 @@ export function GoalsPage() {
       <GoalForm
         open={goalFormOpen}
         onOpenChange={setGoalFormOpen}
+        walletId={wallet.id}
         currency={wallet.base_currency}
-        goal={editingGoal}
         onSubmit={handleGoalSubmit}
-        onDelete={editingGoal ? handleGoalDelete : undefined}
-        isSubmitting={createGoal.isPending || updateGoal.isPending}
+        isSubmitting={createGoal.isPending}
       />
 
       <ContributionForm

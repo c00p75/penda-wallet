@@ -6,6 +6,7 @@ import {
   fetchContributions,
   fetchSavingsGoals,
   updateSavingsGoal,
+  uploadGoalImage,
 } from './api'
 import type { SavingsGoalInput } from './types'
 
@@ -55,6 +56,12 @@ export function useDeleteSavingsGoal(walletId: string | undefined) {
   return useMutation({
     mutationFn: (id: string) => deleteSavingsGoal(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: goalsKey(walletId) }),
+  })
+}
+
+export function useUploadGoalImage(walletId: string | undefined) {
+  return useMutation({
+    mutationFn: (file: File) => uploadGoalImage(walletId!, file),
   })
 }
 

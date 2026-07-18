@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AiInsight } from '@/components/AiInsight'
+import { BottomNav } from '@/components/BottomNav'
 import { cn } from '@/lib/utils'
 import { formatMoney, toMinorUnits } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
@@ -117,7 +118,7 @@ export function SimulatorPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <header className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
           <ArrowLeft className="size-5" />
@@ -213,6 +214,8 @@ export function SimulatorPage() {
           alert={scenario.lowestBalance.balanceMinor < 0}
         />
       </div>
+
+      <BottomNav />
     </main>
   )
 }

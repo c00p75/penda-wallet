@@ -1,6 +1,20 @@
 import { supabase } from '@/lib/supabase/client'
 import type { SavingsContribution, SavingsGoal, SavingsGoalInput } from './types'
 
+export async function uploadGoalImage(walletId: string, file: File): Promise<string> {
+  const extension = file.name.split('.').pop() || 'jpg'
+  const path = `${walletId}/${crypto.randomUUID()}.${extension}`
+
+  const { error } = await supabase.storage.from('goal-images').upload(path, file, { contentType: file.type })
+  if (error) throw error
+
+  return path
+}
+
+export function getGoalImageUrl(imagePath: string): string {
+  return supabase.storage.from('goal-images').getPublicUrl(imagePath).data.publicUrl
+}
+
 export async function fetchSavingsGoals(walletId: string): Promise<SavingsGoal[]> {
   const { data, error } = await supabase
     .from('savings_goals')

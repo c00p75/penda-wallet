@@ -1,6 +1,4 @@
-import { useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronUp, Mic } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { ChatSheet } from './ChatSheet'
@@ -8,9 +6,9 @@ import { useChatStore } from './chatStore'
 
 /**
  * The conversation as an ambient layer: one ChatSheet mounted for the whole
- * app plus a pull-up handle so the ask bar is reachable from any page, not a
- * separate screen. The ledger has its own richer ask bar, so the handle hides
- * there to avoid a double affordance.
+ * app so Penda is reachable from any page. The sheet is opened from the AI
+ * button in the center of the bottom nav (see BottomNav) rather than a
+ * separate floating handle.
  */
 export function AmbientChat() {
   const session = useAuthStore((s) => s.session)
@@ -21,54 +19,19 @@ export function AmbientChat() {
   const prefill = useChatStore((s) => s.prefill)
   const autoSend = useChatStore((s) => s.autoSend)
   const setOpen = useChatStore((s) => s.setOpen)
-  const openChat = useChatStore((s) => s.openChat)
   const consumeAutoSend = useChatStore((s) => s.consumeAutoSend)
 
   if (!session || !wallet || location.pathname === '/login') return null
 
-  const showHandle = location.pathname !== '/'
-
   return (
-    <>
-      {showHandle && <PullUpHandle onOpen={() => openChat()} />}
-      <ChatSheet
-        open={open}
-        onOpenChange={setOpen}
-        walletId={wallet.id}
-        initialInput={prefill}
-        autoSend={autoSend}
-        onAutoSendConsumed={consumeAutoSend}
-        currency={wallet.base_currency}
-      />
-    </>
-  )
-}
-
-function PullUpHandle({ onOpen }: { onOpen: () => void }) {
-  const startY = useRef<number | null>(null)
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex justify-center">
-      <button
-        type="button"
-        aria-label="Ask Penda"
-        onPointerDown={(e) => {
-          startY.current = e.clientY
-        }}
-        onPointerUp={(e) => {
-          const dy = startY.current != null ? e.clientY - startY.current : 0
-          startY.current = null
-          // A tap or an upward drag opens; a downward drag is ignored.
-          if (dy < 8) onOpen()
-        }}
-        className="pointer-events-auto flex touch-none items-center gap-2 rounded-full border bg-card/90 py-2 pl-3 pr-1.5 text-sm font-medium shadow-lg backdrop-blur"
-      >
-        <ChevronUp className="size-4 text-muted-foreground" />
-        Ask Penda
-        <span className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Mic className="size-3.5" />
-        </span>
-      </button>
-    </div>
+    <ChatSheet
+      open={open}
+      onOpenChange={setOpen}
+      walletId={wallet.id}
+      initialInput={prefill}
+      autoSend={autoSend}
+      onAutoSendConsumed={consumeAutoSend}
+      currency={wallet.base_currency}
+    />
   )
 }

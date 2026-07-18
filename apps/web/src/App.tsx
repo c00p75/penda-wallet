@@ -13,10 +13,14 @@ const AnalyticsPage = lazy(() =>
 )
 const BudgetsPage = lazy(() => import('@/features/budgets/BudgetsPage').then((m) => ({ default: m.BudgetsPage })))
 const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })))
+const GoalDetailPage = lazy(() =>
+  import('@/features/goals/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
+)
 const ChallengesPage = lazy(() =>
   import('@/features/challenges/ChallengesPage').then((m) => ({ default: m.ChallengesPage })),
 )
 const SettingsPage = lazy(() => import('@/features/profile/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const ProfilePage = lazy(() => import('@/features/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const CashflowPage = lazy(() =>
   import('@/features/cashflow/CashflowPage').then((m) => ({ default: m.CashflowPage })),
 )
@@ -38,8 +42,10 @@ function App() {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/budgets" element={<BudgetsPage />} />
           <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/goals/:id" element={<GoalDetailPage />} />
           <Route path="/challenges" element={<ChallengesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/cashflow" element={<CashflowPage />} />
         <Route path="/journal" element={<JournalPage />} />
         <Route path="/simulator" element={<SimulatorPage />} />

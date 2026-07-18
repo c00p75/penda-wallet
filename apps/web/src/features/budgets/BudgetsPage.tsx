@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
+import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
@@ -255,10 +256,8 @@ export function BudgetsPage() {
           }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold">How am I doing?</h1>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+      <AppHeader />
 
       {insight && <AiInsight tone={insight.tone}>{insight.text}</AiInsight>}
 

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BottomNav } from '@/components/BottomNav'
+import { AppHeader } from '@/components/AppHeader'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
@@ -17,6 +18,17 @@ import { SpendingCalendar } from './SpendingCalendar'
 import { InsightsList } from './InsightsList'
 
 export function AnalyticsPage() {
+  return (
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+      <AppHeader />
+      <AnalyticsContent />
+      <BottomNav />
+    </main>
+  )
+}
+
+/** The actual analytics UI, shared between the standalone page and the Profile tab-switcher. */
+export function AnalyticsContent() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
@@ -52,11 +64,7 @@ export function AnalyticsPage() {
     .reduce((sum, tx) => sum + tx.amount_minor, 0)
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold">What happened?</h1>
-      </header>
-
+    <>
       <AiInsight tone={latestInsight?.type === 'anomaly' ? 'attention' : 'default'}>
         {latestInsight ? (
           latestInsight.content.text
@@ -122,8 +130,6 @@ export function AnalyticsPage() {
           )}
         </CardContent>
       </Card>
-
-      <BottomNav />
-    </main>
+    </>
   )
 }

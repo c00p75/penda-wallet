@@ -76,7 +76,7 @@ export function OnboardingScreen() {
   const householdLabel = mode === 'business' ? 'Team size' : 'Household size'
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 p-6">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 bg-background p-6">
       <div className="flex flex-col items-center gap-2 text-center">
         <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
           Welcome to Penda

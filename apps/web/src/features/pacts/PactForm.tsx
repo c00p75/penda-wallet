@@ -24,6 +24,8 @@ interface PactFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categories: Category[]
+  goalId?: string | null
+  goalName?: string
   onSubmit: (input: CommitmentPactInput) => Promise<void>
   isSubmitting?: boolean
 }
@@ -39,7 +41,7 @@ function weekFromNowStr(): string {
 }
 
 /** Penda holds you to it (roadmap bet #2) — a pact is a category to avoid over a window. */
-export function PactForm({ open, onOpenChange, categories, onSubmit, isSubmitting }: PactFormProps) {
+export function PactForm({ open, onOpenChange, categories, goalId, goalName, onSubmit, isSubmitting }: PactFormProps) {
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -57,6 +59,7 @@ export function PactForm({ open, onOpenChange, categories, onSubmit, isSubmittin
     await onSubmit({
       description: description.trim(),
       category_id: categoryId,
+      goal_id: goalId ?? null,
       start_date: todayStr(),
       end_date: endDate,
     })
@@ -80,6 +83,9 @@ export function PactForm({ open, onOpenChange, categories, onSubmit, isSubmittin
               placeholder="No takeout this week"
               required
             />
+            {goalName && (
+              <p className="text-xs text-muted-foreground">In service of your {goalName} goal.</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

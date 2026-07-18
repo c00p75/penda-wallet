@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
+import { AppHeader } from '@/components/AppHeader'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { useLockStore } from '@/store/lockStore'
@@ -33,6 +34,17 @@ const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 ]
 
 export function SettingsPage() {
+  return (
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+      <AppHeader />
+      <SettingsContent />
+      <BottomNav />
+    </main>
+  )
+}
+
+/** The actual settings UI, shared between the standalone page and the Profile tab-switcher. */
+export function SettingsContent() {
   const session = useAuthStore((s) => s.session)
   const userId = session?.user.id
   const { data: profile } = useProfile(userId)
@@ -86,11 +98,7 @@ export function SettingsPage() {
       notificationOptIn !== profile.notification_opt_in)
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold">Settings</h1>
-      </header>
-
+    <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Plan</CardTitle>
@@ -358,8 +366,6 @@ export function SettingsPage() {
       </Card>
 
       <SetupLockSheet open={setupLockOpen} onOpenChange={setSetupLockOpen} />
-
-      <BottomNav />
-    </main>
+    </>
   )
 }

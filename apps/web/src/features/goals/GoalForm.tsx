@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { ImagePlus, X } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -12,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { EmojiPicker } from '@/components/EmojiPicker'
+import { getGoalImageUrl } from './api'
+import { useUploadGoalImage } from './hooks'
 import type { SavingsGoal, SavingsGoalInput } from './types'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
 import { monthlyContributionMinor } from './dreamBuilder'
@@ -24,6 +28,7 @@ const ICON_CHOICES = [
 interface GoalFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  walletId: string
   currency: string
   goal?: SavingsGoal | null
   onSubmit: (input: SavingsGoalInput, initialAmountMinor: number) => Promise<void>
@@ -31,13 +36,26 @@ interface GoalFormProps {
   isSubmitting?: boolean
 }
 
-export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelete, isSubmitting }: GoalFormProps) {
+export function GoalForm({
+  open,
+  onOpenChange,
+  walletId,
+  currency,
+  goal,
+  onSubmit,
+  onDelete,
+  isSubmitting,
+}: GoalFormProps) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState<string | null>(null)
   const [targetAmount, setTargetAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
   const [alreadySaved, setAlreadySaved] = useState('')
   const [motivation, setMotivation] = useState('')
+  const [imagePath, setImagePath] = useState<string | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const uploadImage = useUploadGoalImage(walletId)
 
   useEffect(() => {
     if (!open) return
@@ -48,6 +66,8 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
       setTargetDate(goal.target_date ?? '')
       setAlreadySaved('')
       setMotivation(goal.motivation ?? '')
+      setImagePath(goal.image_path)
+      setImagePreviewUrl(goal.image_path ? getGoalImageUrl(goal.image_path) : null)
     } else {
       setName('')
       setIcon(null)
@@ -55,8 +75,30 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
       setTargetDate('')
       setAlreadySaved('')
       setMotivation('')
+      setImagePath(null)
+      setImagePreviewUrl(null)
     }
   }, [open, goal])
+
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setImagePreviewUrl(URL.createObjectURL(file))
+    try {
+      const path = await uploadImage.mutateAsync(file)
+      setImagePath(path)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not upload photo.')
+      setImagePreviewUrl(goal?.image_path ? getGoalImageUrl(goal.image_path) : null)
+    }
+  }
+
+  function handleRemoveImage() {
+    setImagePath(null)
+    setImagePreviewUrl(null)
+  }
 
   // Dream Builder: show what it'll take per month to hit the goal on time.
   const targetNumber = Number(targetAmount)
@@ -74,6 +116,7 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
       {
         name: name.trim(),
         icon,
+        image_path: imagePath,
         target_amount_minor: toMinorUnits(targetNumber),
         target_date: targetDate || null,
         motivation: motivation.trim() || null,
@@ -100,6 +143,44 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
               onChange={(e) => setName(e.target.value)}
               placeholder="Emergency fund"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Photo (optional)</Label>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+            {imagePreviewUrl ? (
+              <div className="relative">
+                <img src={imagePreviewUrl} alt="" className="h-32 w-full rounded-xl object-cover" />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  aria-label="Remove photo"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
+                >
+                  <X className="size-3.5" />
+                </button>
+                {uploadImage.isPending && (
+                  <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 text-sm font-medium text-white">
+                    Uploading…
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="flex h-32 w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border text-muted-foreground hover:bg-muted/40"
+              >
+                <ImagePlus className="size-6" />
+                <span className="text-sm">Add a photo</span>
+              </button>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -182,7 +263,7 @@ export function GoalForm({ open, onOpenChange, currency, goal, onSubmit, onDelet
                 Cancel
               </Button>
             </SheetClose>
-            <Button type="submit" disabled={isSubmitting} className="flex-1">
+            <Button type="submit" disabled={isSubmitting || uploadImage.isPending} className="flex-1">
               {goal ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>

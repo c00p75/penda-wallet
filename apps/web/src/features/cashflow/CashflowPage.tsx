@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BottomNav } from '@/components/BottomNav'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
@@ -90,7 +91,7 @@ export function CashflowPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <header className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
           <ArrowLeft className="size-5" />
@@ -108,6 +109,8 @@ export function CashflowPage() {
           <TimelineRow key={day.date} day={day} currency={currency} isLowest={day.date === lowestBalance.date} />
         ))}
       </ol>
+
+      <BottomNav />
     </main>
   )
 }

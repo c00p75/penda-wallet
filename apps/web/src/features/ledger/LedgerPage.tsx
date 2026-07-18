@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
@@ -177,7 +178,7 @@ export function LedgerPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-28">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-28">
       <header className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
           <ArrowLeft className="size-5" />
@@ -246,6 +247,8 @@ export function LedgerPage() {
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
       />
+
+      <BottomNav />
     </main>
   )
 }

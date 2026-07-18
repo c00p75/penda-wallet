@@ -4,6 +4,7 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { BottomNav } from '@/components/BottomNav'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -50,7 +51,7 @@ export function JournalPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
       <header className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate(-1)} aria-label="Back">
           <ArrowLeft className="size-5" />
@@ -122,6 +123,8 @@ export function JournalPage() {
           ))}
         </ol>
       )}
+
+      <BottomNav />
     </main>
   )
 }

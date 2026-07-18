@@ -13,6 +13,7 @@ import {
   SheetClose,
 } from '@/components/ui/sheet'
 import { BottomNav } from '@/components/BottomNav'
+import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -29,6 +30,17 @@ import { TYPE_ICONS, TYPE_LABELS, daysLeft, formatTarget, hasEnded } from './cha
 import type { Challenge, ChallengeInput } from './types'
 
 export function ChallengesPage() {
+  return (
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 bg-background p-4 pb-24">
+      <AppHeader />
+      <ChallengesContent />
+      <BottomNav />
+    </main>
+  )
+}
+
+/** The actual challenges UI, shared between the standalone page and the Profile tab-switcher. */
+export function ChallengesContent() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
 
@@ -120,14 +132,13 @@ export function ChallengesPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-4 p-4 pb-24">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Am I winning?</h1>
+    <>
+      <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => setJoinOpen(true)}>
           <Ticket className="size-4" />
           Join with code
         </Button>
-      </header>
+      </div>
 
       {challenges.length > 0 && (
         <AiInsight>
@@ -222,8 +233,6 @@ export function ChallengesPage() {
         onLeave={handleLeave}
         onDelete={handleDelete}
       />
-
-      <BottomNav />
-    </main>
+    </>
   )
 }

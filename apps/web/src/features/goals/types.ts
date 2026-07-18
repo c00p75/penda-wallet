@@ -3,6 +3,7 @@ export interface SavingsGoal {
   wallet_id: string
   name: string
   icon: string | null
+  image_path: string | null
   target_amount_minor: number
   current_amount_minor: number
   target_date: string | null
@@ -14,6 +15,7 @@ export interface SavingsGoal {
 export interface SavingsGoalInput {
   name: string
   icon: string | null
+  image_path: string | null
   target_amount_minor: number
   target_date: string | null
   motivation: string | null
