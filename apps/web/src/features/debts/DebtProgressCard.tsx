@@ -1,4 +1,5 @@
-import { ArrowDownLeft, ArrowUpRight, CheckCircle2 } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight } from '@/components/icons/product'
 import { Progress } from '@/components/ui/progress'
 import { formatMoney } from '@/lib/money'
 import type { Debt } from './types'

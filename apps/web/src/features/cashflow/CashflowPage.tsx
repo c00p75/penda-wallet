@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Navigate } from 'react-router-dom'
 import { HeroCard } from '@/components/ui/hero-card'
 import { DateChip } from '@/components/ui/date-chip'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
@@ -37,7 +36,6 @@ function formatDay(dateStr: string): string {
 
 export function CashflowPage() {
   const session = useAuthStore((s) => s.session)
-  const navigate = useNavigate()
   const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
@@ -106,22 +104,8 @@ export function CashflowPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Cashflow</h1>
-          <p className="text-sm text-muted-foreground">Looking forward</p>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Cashflow" subtitle="Looking forward" />
 
       <DateChip
         value={horizon}

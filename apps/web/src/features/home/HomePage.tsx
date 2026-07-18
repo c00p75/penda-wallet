@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
 import { HeroCard } from '@/components/ui/hero-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiMark } from '@/components/AiInsight'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
 import { useOfflinePending } from '@/pwa/useOfflineQueue'
@@ -25,9 +24,7 @@ import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
 import { useCreateTransaction, useDeleteTransaction, useTransactions, useUpdateTransaction } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
-import { MoMoPasteSheet, parsedToDraft } from '@/features/transactions/MoMoPasteSheet'
-import { parseMoMoText } from '@/features/transactions/momoParser'
-import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
+import type { Transaction, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useQuickActionStore } from '@/features/home/quickActionStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
@@ -35,7 +32,6 @@ import { formatMoney, fromMinorUnits } from '@/lib/money'
 import { localDateStr, localMonthEnd, localMonthPrefix, localMonthStart } from '@/lib/dates'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useCategories } from '@/features/categories/hooks'
-import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
 import { suggestBufferFromIncome } from '@/features/planning/bufferSuggest'
 import { useSpendingPlan } from '@/features/planning/hooks'
 import { computeSafeToSpend } from '@/features/planning/spendingPlan'
@@ -102,19 +98,16 @@ export function HomePage() {
   const deleteTransaction = useDeleteTransaction(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
-  const { isPremium } = useEntitlement(session?.user.id)
+  const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
   const { data: profile } = useProfile(session?.user.id)
   const blindBudgeting = !!profile?.blind_budgeting
   const pauseImpulse = useImpulseStore((s) => s.pause)
   const isImpulseDismissed = useImpulseStore((s) => s.isDismissed)
   const dismissImpulse = useImpulseStore((s) => s.dismiss)
+  const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
-  const [momoDraft, setMomoDraft] = useState<TransactionDraft | null>(null)
-  const [momoReportedBalance, setMomoReportedBalance] = useState<number | null>(null)
-  const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteInitialText, setPasteInitialText] = useState('')
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
@@ -124,34 +117,19 @@ export function HomePage() {
 
   function openAddForm() {
     setEditing(null)
-    setMomoDraft(null)
     setFormOpen(true)
   }
 
+  function openReceiptPicker() {
+    receiptInputRef.current?.click()
+  }
+
   function openScanReceipt() {
-    if (isPremium || localStorage.getItem('penda:preview:receipt-scan') === '1') {
-      receiptInputRef.current?.click()
+    if (canScanReceipt) {
+      openReceiptPicker()
       return
     }
     setPaywallFeature('receipt-scan')
-  }
-
-  async function openPaste() {
-    let clip = ''
-    try {
-      clip = (await navigator.clipboard?.readText()) ?? ''
-    } catch {
-      // Clipboard read blocked — fall back to paste.
-    }
-    const parsed = clip ? parseMoMoText(clip) : null
-    if (parsed) {
-      setEditing(null)
-      setMomoDraft(parsedToDraft(parsed))
-      setFormOpen(true)
-      return
-    }
-    setPasteInitialText(clip)
-    setPasteOpen(true)
   }
 
   useEffect(() => {
@@ -160,10 +138,6 @@ export function HomePage() {
     if (!intent) return
     if (intent === 'add-txn') {
       openAddForm()
-      return
-    }
-    if (intent === 'paste-momo') {
-      void openPaste()
       return
     }
     openScanReceipt()
@@ -181,7 +155,6 @@ export function HomePage() {
       await saveOffline(input)
       return
     }
-    const reportedBalance = !editing ? (momoDraft?.reported_balance_minor ?? null) : null
     try {
       if (editing) {
         const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
@@ -190,8 +163,6 @@ export function HomePage() {
       } else {
         await createTransaction.mutateAsync(input)
         toast('Transaction added.')
-        if (reportedBalance != null) setMomoReportedBalance(reportedBalance)
-        setMomoDraft(null)
       }
     } catch (error) {
       if (!editing && error instanceof TypeError) {
@@ -215,19 +186,6 @@ export function HomePage() {
       }
     }
     await commitTransaction(input)
-  }
-
-  async function handleReconcileAdjust(deltaMinor: number) {
-    if (!wallet) return
-    await createTransaction.mutateAsync({
-      category_id: null,
-      amount_minor: Math.abs(deltaMinor),
-      currency: wallet.base_currency,
-      type: deltaMinor > 0 ? 'income' : 'expense',
-      merchant: null,
-      description: 'Balance reconciliation adjustment',
-      transaction_date: localDateStr(),
-    })
   }
 
   async function handleDelete() {
@@ -384,20 +342,6 @@ export function HomePage() {
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <AppHeader />
-
-      {momoReportedBalance != null && session && (
-        <div className="px-4 pt-2">
-          <ReconcilePrompt
-            walletId={wallet.id}
-            userId={session.user.id}
-            currency={currency}
-            computedBalanceMinor={balanceMinor}
-            suggestedActualMinor={momoReportedBalance}
-            onResolved={() => setMomoReportedBalance(null)}
-            onAdjust={handleReconcileAdjust}
-          />
-        </div>
-      )}
 
       <input
         ref={receiptInputRef}
@@ -565,15 +509,23 @@ export function HomePage() {
             title="Recent activity"
             actionLabel="View all"
             actionTo="/transactions"
+            leadingAction={
+              <button
+                type="button"
+                onClick={(e) => {
+                  captureOverlayOrigin(e.currentTarget)
+                  openAddForm()
+                }}
+                className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                + Add
+              </button>
+            }
           />
           {recent.length === 0 ? (
-            <button
-              type="button"
-              onClick={openAddForm}
-              className="w-full rounded-[1.5rem] border border-dashed border-border p-5 text-center text-sm text-muted-foreground"
-            >
-              No transactions yet — tap to add one
-            </button>
+            <p className="px-1 text-sm text-muted-foreground">
+              No transactions yet — tap + Add to log one.
+            </p>
           ) : (
             <div className="flex flex-col gap-2.5">
               {recent.map((tx) => {
@@ -583,7 +535,6 @@ export function HomePage() {
                     key={tx.id}
                     onClick={() => {
                       setEditing(tx)
-                      setMomoDraft(null)
                       setFormOpen(true)
                     }}
                     avatar={<span>{tx.category?.icon ?? (tx.type === 'income' ? '💰' : '💳')}</span>}
@@ -619,19 +570,6 @@ export function HomePage() {
         </section>
       </main>
 
-      <div className="fixed inset-x-0 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-40">
-        <div className="mx-auto flex max-w-md items-center justify-end px-4 pb-2">
-          <Button
-            onClick={openAddForm}
-            size="icon"
-            className="size-12 shrink-0 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
-            aria-label="Add transaction"
-          >
-            <Plus className="size-5" />
-          </Button>
-        </div>
-      </div>
-
       <TransactionForm
         open={formOpen}
         onOpenChange={setFormOpen}
@@ -639,29 +577,16 @@ export function HomePage() {
         currency={currency}
         walletId={wallet.id}
         transaction={editing}
-        draft={momoDraft}
         onSubmit={handleSubmit}
         onDelete={editing ? handleDelete : undefined}
         isSubmitting={createTransaction.isPending || updateTransaction.isPending}
       />
 
-      <MoMoPasteSheet
-        open={pasteOpen}
-        onOpenChange={setPasteOpen}
-        initialText={pasteInitialText}
-        onParsed={(draft) => {
-          setPasteOpen(false)
-          setEditing(null)
-          setMomoDraft(draft)
-          setFormOpen(true)
-        }}
-        onFallbackToAi={(text) => {
-          setPasteOpen(false)
-          openChat(text)
-        }}
+      <PaywallSheet
+        feature={paywallFeature}
+        onOpenChange={(open) => !open && setPaywallFeature(null)}
+        onPreviewOnce={openReceiptPicker}
       />
-
-      <PaywallSheet feature={paywallFeature} onOpenChange={(open) => !open && setPaywallFeature(null)} />
 
       <ImpulsePauseSheet
         open={!!pendingImpulse}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ClipboardPaste, Sparkles } from 'lucide-react'
+import { ClipboardText, Sparkle } from '@/components/icons/product'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -67,7 +67,7 @@ export function MoMoPasteSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <span className="grid size-9 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
-              <ClipboardPaste className="size-4" />
+              <ClipboardText className="size-4" weight="duotone" />
             </span>
             Paste a MoMo message
           </SheetTitle>
@@ -97,7 +97,7 @@ export function MoMoPasteSheet({
 
           {failed ? (
             <Button type="button" onClick={() => onFallbackToAi(text.trim())} className="w-full">
-              <Sparkles className="size-4" />
+              <Sparkle className="size-4" weight="fill" />
               Ask Penda to read it
             </Button>
           ) : (

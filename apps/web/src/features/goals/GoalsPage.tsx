@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -256,7 +257,8 @@ export function GoalsPage() {
       )}
 
       <Button
-        onClick={() => {
+        onClick={(e) => {
+          captureOverlayOrigin(e.currentTarget)
           if (tab === 'goals') {
             setGoalFormOpen(true)
           } else {
@@ -265,7 +267,7 @@ export function GoalsPage() {
           }
         }}
         size="icon"
-        className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label={tab === 'goals' ? 'Add savings goal' : 'Add debt'}
       >
         <Plus className="size-6" />

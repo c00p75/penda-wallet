@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Fingerprint } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Fingerprint } from '@/components/icons/product'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useLockStore } from '@/store/lockStore'
@@ -69,18 +75,18 @@ export function ConfirmDisableLockSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 px-5 pb-6 ring-0">
-        <SheetHeader>
-          <SheetTitle>Turn off balance privacy?</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-4 border-0 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Turn off balance privacy?</DialogTitle>
+          <DialogDescription>
             Confirm with {hasBiometric ? 'biometrics or your PIN' : 'your PIN'} before balances stay visible.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {hasBiometric && (
           <Button variant="outline" onClick={attemptBiometric} disabled={busy} className="gap-2 rounded-2xl shadow-[var(--shadow-soft)]">
-            <Fingerprint className="size-4" />
+            <Fingerprint className="size-4" weight="duotone" />
             Confirm with biometrics
           </Button>
         )}
@@ -104,7 +110,7 @@ export function ConfirmDisableLockSheet({
             {busy ? 'Checking…' : 'Turn off privacy'}
           </Button>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

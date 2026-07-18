@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronRight, Sparkles, Target, TrendingDown, TrendingUp } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { Sparkle, Target, TrendDown, TrendUp } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -165,7 +166,7 @@ export function SpendingPlanCard({
     return (
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
         <div className="flex items-center gap-2">
-          <Target className="size-5 text-primary" />
+          <Target className="size-5 text-primary" weight="duotone" />
           <p className="font-medium">This month, I intend to spend…</p>
         </div>
         {retro && (
@@ -265,9 +266,9 @@ export function SpendingPlanCard({
         {prevMonthSpentMinor > 0 && (
           <div className="mt-4 flex items-center gap-1.5 border-t pt-3 text-sm">
             {vsLastMonthMinor >= 0 ? (
-              <TrendingDown className="size-3.5 shrink-0 text-[var(--mint)]" />
+              <TrendDown className="size-3.5 shrink-0 text-[var(--mint)]" weight="bold" />
             ) : (
-              <TrendingUp className="size-3.5 shrink-0 text-[var(--rose)]" />
+              <TrendUp className="size-3.5 shrink-0 text-[var(--rose)]" weight="bold" />
             )}
             <span className={cn('font-medium', vsLastMonthMinor >= 0 ? 'text-[var(--mint)]' : 'text-[var(--rose)]')}>
               {formatMoney(Math.abs(vsLastMonthMinor), currency)} {vsLastMonthMinor >= 0 ? 'less' : 'more'} than{' '}
@@ -295,7 +296,7 @@ export function SpendingPlanCard({
         className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
       >
         <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
-          <Sparkles className="size-5" />
+          <Sparkle className="size-5" weight="fill" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="font-medium">Plan it with Penda</p>

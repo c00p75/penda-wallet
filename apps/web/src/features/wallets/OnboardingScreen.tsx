@@ -172,12 +172,21 @@ export function OnboardingScreen() {
                   onClick={() => setMode(m.value)}
                   aria-pressed={active}
                   className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition-colors',
-                    active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
+                    'flex flex-col items-center gap-2 rounded-xl border px-2 py-2.5 text-center transition-colors',
+                    active
+                      ? 'border-primary bg-[var(--iris-soft)]'
+                      : 'border-border/60 bg-background hover:bg-muted/50',
                   )}
                 >
-                  <m.icon className={cn('size-5', active ? 'text-[var(--iris)]' : 'text-muted-foreground')} />
-                  <span className="text-xs font-medium">{m.label}</span>
+                  <span
+                    className={cn(
+                      'grid size-8 place-items-center rounded-lg',
+                      active ? 'bg-background/80 text-[var(--iris)]' : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <m.icon weight="duotone" className="size-4" />
+                  </span>
+                  <span className="text-xs font-medium leading-none">{m.label}</span>
                 </button>
               )
             })}

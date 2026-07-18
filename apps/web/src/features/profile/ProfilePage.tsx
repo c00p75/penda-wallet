@@ -1,11 +1,10 @@
-import { Link, Navigate } from 'react-router-dom'
-import { Bell, LogOut, Trophy } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
 import { BottomNav } from '@/components/BottomNav'
-import { AppHeader } from '@/components/AppHeader'
+import { PageHeader } from '@/components/PageHeader'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
+import { WalletConfigPanel } from '@/features/wallets/WalletConfigPanel'
 import { SettingsContent } from './SettingsPage'
-import { supabase } from '@/lib/supabase/client'
 
 export function ProfilePage() {
   const session = useAuthStore((s) => s.session)
@@ -22,10 +21,10 @@ export function ProfilePage() {
   const avatarUrl = session.user.user_metadata?.avatar_url as string | undefined
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <AppHeader />
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Profile" subtitle="You and your wallet" />
 
-      <section className="flex flex-col items-center gap-3 pt-2 text-center">
+      <section className="flex flex-col items-center gap-3 text-center">
         <div
           className="relative grid size-24 place-items-center overflow-hidden rounded-full text-2xl font-bold text-[var(--iris)] shadow-[var(--shadow-card)] ring-4 ring-[var(--iris-soft)]"
           style={{ background: 'var(--iris-soft)' }}
@@ -37,36 +36,12 @@ export function ProfilePage() {
           )}
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{fullName}</h1>
+          <h2 className="text-2xl font-bold tracking-tight">{fullName}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{wallet.name}</p>
-        </div>
-        <div className="flex flex-wrap justify-center gap-2 pt-1">
-          <Link
-            to="/challenges"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-2 text-xs font-semibold shadow-[var(--shadow-soft)]"
-          >
-            <Trophy className="size-3.5 text-[var(--apricot)]" />
-            Compete
-          </Link>
-          <Link
-            to="/activity"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-2 text-xs font-semibold shadow-[var(--shadow-soft)]"
-          >
-            <Bell className="size-3.5 text-[var(--iris)]" />
-            Activity
-          </Link>
-          <button
-            type="button"
-            onClick={() => void supabase.auth.signOut()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-2 text-xs font-semibold shadow-[var(--shadow-soft)]"
-          >
-            <LogOut className="size-3.5 text-[var(--rose)]" />
-            Sign out
-          </button>
         </div>
       </section>
 
-      <SettingsContent />
+      <SettingsContent walletPanel={<WalletConfigPanel wallet={wallet} />} />
 
       <BottomNav />
     </main>

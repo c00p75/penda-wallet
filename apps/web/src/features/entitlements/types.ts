@@ -5,6 +5,8 @@ export interface Entitlement {
   plan: Plan
   status: string | null
   current_period_end: string | null
+  /** True after the account's one free receipt scan was claimed server-side. */
+  receipt_scan_preview_used: boolean
 }
 
 export type PremiumFeature = 'receipt-scan' | 'insights' | 'shared-wallets'

@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -31,7 +32,6 @@ function monthLabel(key: string): string {
 export function JournalPage() {
   const session = useAuthStore((s) => s.session)
   const userId = session?.user.id
-  const navigate = useNavigate()
   const { data: wallet } = useCurrentWallet()
 
   const { data: memories = [] } = useMemories(userId)
@@ -88,22 +88,8 @@ export function JournalPage() {
   const oldest = journal[journal.length - 1]
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Journal</h1>
-          <p className="text-sm text-muted-foreground">What money feels like, over time</p>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Journal" subtitle="What money feels like, over time" />
 
       {oneYearAgo ? (
         <AiInsight tone="warm">

@@ -7,9 +7,8 @@ import { pageContextFromPathname } from './pageContext'
 
 /**
  * The conversation as an ambient layer: one ChatSheet mounted for the whole
- * app so Penda is reachable from any page. The sheet is opened from the AI
- * button in the center of the bottom nav (see BottomNav) rather than a
- * separate floating handle.
+ * app so Penda is reachable from any page. Opens as a full-screen surface from
+ * the AI button in the bottom nav (see BottomNav).
  */
 export function AmbientChat() {
   const session = useAuthStore((s) => s.session)

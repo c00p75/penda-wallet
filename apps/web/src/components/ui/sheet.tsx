@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useOverlayOriginStore } from "@/lib/overlayOrigin"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -37,7 +38,7 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/10 duration-200 supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 z-50 bg-black/40 duration-200 supports-backdrop-filter:backdrop-blur-[2px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -45,24 +46,63 @@ function SheetOverlay({
   )
 }
 
+function useOriginStyle(): React.CSSProperties | undefined {
+  const [originStyle] = React.useState<React.CSSProperties | undefined>(() => {
+    const { x, y, at } = useOverlayOriginStore.getState()
+    if (!at || Date.now() - at > 2000) return undefined
+    return {
+      "--overlay-ox": `${x}px`,
+      "--overlay-oy": `${y}px`,
+    } as React.CSSProperties
+  })
+  return originStyle
+}
+
+/**
+ * Floating modal card — inset from the screen edges with full rounding.
+ * `side` only chooses where the card sits (bottom / left / right / top),
+ * not an edge-docked drawer.
+ * Pass `size="page"` for a full-viewport surface (e.g. chat).
+ */
 function SheetContent({
   className,
   children,
-  side = "right",
+  side = "bottom",
+  size = "card",
   showCloseButton = true,
+  style,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
+  size?: "card" | "page"
   showCloseButton?: boolean
 }) {
+  const originStyle = useOriginStyle()
+  const isPage = size === "page"
+
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}
+        data-size={size}
+        style={{ ...originStyle, ...style }}
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-card bg-clip-padding text-sm text-card-foreground shadow-[var(--shadow-card)] ring-1 ring-border/50 transition duration-200 ease-in-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:rounded-t-[1.75rem] data-[side=bottom]:border-0 data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:rounded-r-[1.75rem] data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:rounded-l-[1.75rem] data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:rounded-b-[1.75rem] data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-[side=bottom]:data-open:slide-in-from-bottom-10 data-[side=left]:data-open:slide-in-from-left-10 data-[side=right]:data-open:slide-in-from-right-10 data-[side=top]:data-open:slide-in-from-top-10 data-closed:animate-out data-closed:fade-out-0 data-[side=bottom]:data-closed:slide-out-to-bottom-10 data-[side=left]:data-closed:slide-out-to-left-10 data-[side=right]:data-closed:slide-out-to-right-10 data-[side=top]:data-closed:slide-out-to-top-10",
+          "fixed z-50 flex flex-col gap-4 overflow-y-auto border-0 bg-clip-padding text-sm outline-none",
+          isPage
+            ? "inset-0 h-svh max-h-svh w-full max-w-none rounded-none bg-background text-foreground shadow-none ring-0"
+            : cn(
+                "max-h-[min(90svh,calc(100%-2rem))] bg-card text-card-foreground",
+                "rounded-[1.75rem] shadow-[var(--shadow-card)] ring-1 ring-border/40",
+                // Bottom-anchored floating card (forms, most sheets)
+                "data-[side=bottom]:inset-x-4 data-[side=bottom]:bottom-[max(1rem,env(safe-area-inset-bottom))] data-[side=bottom]:top-auto data-[side=bottom]:mx-auto data-[side=bottom]:w-auto data-[side=bottom]:max-w-md",
+                // Side floating cards
+                "data-[side=left]:top-[max(1rem,env(safe-area-inset-top))] data-[side=left]:bottom-[max(1rem,env(safe-area-inset-bottom))] data-[side=left]:left-4 data-[side=left]:right-auto data-[side=left]:w-[min(22rem,calc(100%-2rem))]",
+                "data-[side=right]:top-[max(1rem,env(safe-area-inset-top))] data-[side=right]:bottom-[max(1rem,env(safe-area-inset-bottom))] data-[side=right]:right-4 data-[side=right]:left-auto data-[side=right]:w-[min(22rem,calc(100%-2rem))]",
+                // Top floating card
+                "data-[side=top]:inset-x-4 data-[side=top]:top-[max(1rem,env(safe-area-inset-top))] data-[side=top]:bottom-auto data-[side=top]:mx-auto data-[side=top]:w-auto data-[side=top]:max-w-md",
+              ),
           className
         )}
         {...props}
@@ -72,11 +112,10 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-4 right-4 rounded-2xl"
+              className="absolute top-3 right-3 z-10 rounded-full"
               size="icon-sm"
             >
-              <XIcon
-              />
+              <XIcon />
               <span className="sr-only">Close</span>
             </Button>
           </SheetPrimitive.Close>
@@ -114,7 +153,7 @@ function SheetTitle({
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "font-heading text-base font-medium text-foreground",
+        "font-heading text-base font-semibold text-foreground",
         className
       )}
       {...props}

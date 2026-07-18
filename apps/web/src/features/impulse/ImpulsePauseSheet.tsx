@@ -1,10 +1,10 @@
 import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { formatMoney } from '@/lib/money'
 
@@ -28,19 +28,19 @@ export function ImpulsePauseSheet({
   onProceed,
 }: ImpulsePauseSheetProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto max-w-md border-0 ring-0">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-4 border-0 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <span className="grid size-2 shrink-0 rounded-full bg-[var(--apricot)]" aria-hidden />
             Sit on this for 24h?
-          </SheetTitle>
-        </SheetHeader>
-        <p className="rounded-2xl bg-[var(--apricot-soft)]/70 px-5 py-3 text-sm text-foreground/80">
+          </DialogTitle>
+        </DialogHeader>
+        <p className="rounded-2xl bg-[var(--apricot-soft)]/70 px-4 py-3 text-sm text-foreground/80">
           {formatMoney(amountMinor, currency)}
           {merchant ? ` at ${merchant}` : ''} is a big one. Want to sleep on it before it hits the ledger?
         </p>
-        <SheetFooter className="flex-col gap-2 sm:flex-col">
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button
             onClick={() => {
               onPause()
@@ -58,8 +58,8 @@ export function ImpulsePauseSheet({
           >
             Log it anyway
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,4 +1,5 @@
-import { Copy, Crown, LogOut, Trash2 } from 'lucide-react'
+import { Copy, Crown, Trash2 } from 'lucide-react'
+import { SignOut } from '@/components/icons/product'
 import { toast } from 'sonner'
 import {
   Sheet,
@@ -59,7 +60,7 @@ export function ChallengeDetailSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
-              <TypeIcon className="size-3.5" />
+              <TypeIcon className="size-3.5" weight="duotone" />
             </span>
             {challenge.name}
           </SheetTitle>
@@ -163,7 +164,7 @@ export function ChallengeDetailSheet({
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" onClick={() => onLeave(challenge)}>
-                <LogOut className="size-4" />
+                <SignOut className="size-4" weight="duotone" />
                 Leave challenge
               </Button>
             )}

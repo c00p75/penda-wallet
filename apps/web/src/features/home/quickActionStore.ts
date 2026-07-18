@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type QuickActionIntent = 'add-txn' | 'paste-momo' | 'scan-receipt'
+export type QuickActionIntent = 'add-txn' | 'scan-receipt'
 
 interface QuickActionState {
   intent: QuickActionIntent | null

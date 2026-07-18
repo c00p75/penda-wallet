@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Lightbulb, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
+import { Lightbulb } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -10,6 +11,7 @@ import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { localDateStr, localMonthEnd, localMonthStart } from '@/lib/dates'
 import { useChatStore } from '@/features/chat/chatStore'
@@ -355,7 +357,7 @@ export function BudgetsPage() {
           className="flex items-center gap-3 rounded-[1.35rem] border border-border/60 bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-colors hover:bg-accent/60"
         >
           <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
-            <Lightbulb className="size-5" />
+            <Lightbulb className="size-5" weight="duotone" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-medium">Suggest budgets</p>
@@ -440,12 +442,13 @@ export function BudgetsPage() {
 
       {tab === 'recurring' && (
         <Button
-          onClick={() => {
+          onClick={(e) => {
+            captureOverlayOrigin(e.currentTarget)
             setEditingRecurring(null)
             setRecurringFormOpen(true)
           }}
           size="icon"
-          className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
           aria-label="Add recurring transaction"
         >
           <Plus className="size-6" />

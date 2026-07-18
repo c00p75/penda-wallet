@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { ArrowRight, Lightbulb } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -24,7 +25,7 @@ function InsightCardView({ card }: { card: InsightCard }) {
           className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-2xl"
           style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
         >
-          <Lightbulb className="size-4" style={{ color: 'var(--apricot)' }} />
+          <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--apricot)' }} />
         </span>
       ) : (
         <AiMark className="mt-0.5 size-7" />

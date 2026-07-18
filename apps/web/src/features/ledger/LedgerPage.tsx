@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Split, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { Scissors } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DateChip } from '@/components/ui/date-chip'
@@ -8,6 +9,8 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { AiMark } from '@/components/AiInsight'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
@@ -302,18 +305,22 @@ export function LedgerPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))]">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
-      </header>
+      <PageHeader
+        title="Transactions"
+        size="compact"
+        trailing={
+          <button
+            type="button"
+            onClick={(e) => {
+              captureOverlayOrigin(e.currentTarget)
+              openAddForm()
+            }}
+            className="shrink-0 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+          >
+            + Add
+          </button>
+        }
+      />
 
       <DateChip
         value={period}
@@ -390,9 +397,9 @@ export function LedgerPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
           <p className="font-medium text-foreground">No transactions</p>
-          <p className="text-sm">Nothing in this period yet.</p>
+          <p className="text-sm">Nothing in this period yet — tap + Add to log one.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-5">
@@ -438,27 +445,18 @@ export function LedgerPage() {
         </div>
       )}
 
-      <Button
-        onClick={openAddForm}
-        size="icon"
-        className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
-        aria-label="Add transaction"
-      >
-        <Plus className="size-6" />
-      </Button>
-
       {editing?.type === 'expense' && members.length > 1 && formOpen && (
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="fixed bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-6 gap-1.5 rounded-full shadow-md"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 gap-1.5 rounded-full shadow-md"
           onClick={() => {
             setSplitTx(editing)
             setFormOpen(false)
           }}
         >
-          <Split className="size-3.5" />
+          <Scissors className="size-3.5" weight="duotone" />
           Split
         </Button>
       )}

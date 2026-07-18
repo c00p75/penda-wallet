@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus, Ticket, Trophy } from 'lucide-react'
+import { Plus } from 'lucide-react'
+import { Ticket, Trophy } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +15,9 @@ import {
 } from '@/components/ui/sheet'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
-import { AppHeader } from '@/components/AppHeader'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import {
@@ -32,12 +34,8 @@ import type { Challenge, ChallengeInput } from './types'
 
 export function ChallengesPage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <AppHeader />
-      <section>
-        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Challenges</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Compete with friends on savings goals</p>
-      </section>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Challenges" subtitle="Compete with friends on savings goals" />
       <ChallengesContent />
       <BottomNav />
     </main>
@@ -119,7 +117,7 @@ export function ChallengesContent() {
         className="flex w-full items-center gap-3 rounded-[1.35rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50 transition-transform active:scale-[0.99]"
       >
         <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
-          <TypeIcon className="size-5" />
+          <TypeIcon className="size-5" weight="duotone" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
@@ -146,7 +144,7 @@ export function ChallengesContent() {
     <>
       <div className="flex justify-end">
         <Button variant="outline" size="sm" className="rounded-full" onClick={() => setJoinOpen(true)}>
-          <Ticket className="size-4" />
+          <Ticket className="size-4" weight="duotone" />
           Join with code
         </Button>
       </div>
@@ -172,7 +170,7 @@ export function ChallengesContent() {
       {challenges.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[1.5rem] border border-dashed border-border py-16 text-center text-muted-foreground">
           <span className="grid size-14 place-items-center rounded-2xl bg-[var(--sun-soft)] text-[var(--sun)]">
-            <Trophy className="size-7" />
+            <Trophy className="size-7" weight="duotone" />
           </span>
           <p className="font-semibold text-foreground">No challenges yet</p>
           <p className="text-sm">
@@ -205,9 +203,12 @@ export function ChallengesContent() {
       )}
 
       <Button
-        onClick={() => setFormOpen(true)}
+        onClick={(e) => {
+          captureOverlayOrigin(e.currentTarget)
+          setFormOpen(true)
+        }}
         size="icon"
-        className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label="Create challenge"
       >
         <Plus className="size-6" />

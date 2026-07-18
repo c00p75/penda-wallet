@@ -1,4 +1,4 @@
-import { Briefcase, User, Users, type LucideIcon } from 'lucide-react'
+import { Briefcase, User, Users, type Icon } from '@/components/icons/product'
 
 export type ProfileMode = 'individual' | 'family' | 'business'
 
@@ -13,7 +13,7 @@ export interface ModeConfig {
   value: ProfileMode
   label: string
   description: string
-  icon: LucideIcon
+  icon: Icon
   terms: ModeTerms
   /** Steers how the AI frames things for this mode. */
   aiContext: string

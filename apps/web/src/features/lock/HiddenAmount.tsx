@@ -1,5 +1,6 @@
-import { Lock } from 'lucide-react'
+import { Lock } from '@/components/icons/product'
 import { cn } from '@/lib/utils'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useLockStore } from '@/store/lockStore'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
@@ -37,14 +38,17 @@ export function HiddenAmount({ children, className }: { children: React.ReactNod
   return (
     <button
       type="button"
-      onClick={promptUnlock}
+      onClick={(e) => {
+        captureOverlayOrigin(e.currentTarget)
+        promptUnlock()
+      }}
       className={cn('inline-flex items-center gap-1 align-middle text-muted-foreground', className)}
       aria-label="Balance hidden — tap to reveal"
     >
       <span className="tracking-widest" aria-hidden>
         ••••
       </span>
-      <Lock className="size-3.5" />
+      <Lock className="size-3.5" weight="fill" />
     </button>
   )
 }

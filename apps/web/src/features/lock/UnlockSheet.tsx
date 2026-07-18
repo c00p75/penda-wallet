@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Fingerprint } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Fingerprint } from '@/components/icons/product'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useLockStore } from '@/store/lockStore'
@@ -28,7 +34,6 @@ export function UnlockSheet({ open, onOpenChange }: { open: boolean; onOpenChang
       biometricTried.current = false
       return
     }
-    // Auto-offer biometric once per open when it's set up.
     if (hasBiometric && !biometricTried.current) {
       biometricTried.current = true
       void attemptBiometric()
@@ -61,16 +66,16 @@ export function UnlockSheet({ open, onOpenChange }: { open: boolean; onOpenChang
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="flex flex-col gap-4 border-0 px-5 pb-6 ring-0">
-        <SheetHeader>
-          <SheetTitle>Reveal balances</SheetTitle>
-          <SheetDescription>Your balances are hidden. Unlock to show them.</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-4 border-0 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reveal balances</DialogTitle>
+          <DialogDescription>Your balances are hidden. Unlock to show them.</DialogDescription>
+        </DialogHeader>
 
         {hasBiometric && (
           <Button variant="outline" onClick={attemptBiometric} disabled={busy} className="gap-2 rounded-2xl shadow-[var(--shadow-soft)]">
-            <Fingerprint className="size-4" />
+            <Fingerprint className="size-4" weight="duotone" />
             Unlock with biometrics
           </Button>
         )}
@@ -94,8 +99,8 @@ export function UnlockSheet({ open, onOpenChange }: { open: boolean; onOpenChang
             {busy ? 'Checking…' : 'Unlock'}
           </Button>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
 

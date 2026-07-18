@@ -1,4 +1,10 @@
-import { Mic, MessageCircle, Camera, RefreshCw, Smartphone } from 'lucide-react'
+import {
+  ArrowsClockwise,
+  Camera,
+  ChatCircle,
+  DeviceMobile,
+  Microphone,
+} from '@/components/icons/product'
 import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Transaction } from './types'
@@ -47,11 +53,11 @@ const SOURCE_LABEL: Record<Exclude<Transaction['source'], 'manual'>, string> = {
 function SourceDot({ source }: { source: Transaction['source'] }) {
   if (source === 'manual') return null
   const map: Record<string, { icon: React.ElementType; color: string }> = {
-    voice: { icon: Mic, color: 'var(--iris)' },
-    chat: { icon: MessageCircle, color: 'var(--mint)' },
+    voice: { icon: Microphone, color: 'var(--iris)' },
+    chat: { icon: ChatCircle, color: 'var(--mint)' },
     receipt: { icon: Camera, color: 'var(--apricot)' },
-    recurring: { icon: RefreshCw, color: 'var(--muted-foreground)' },
-    sms: { icon: Smartphone, color: 'var(--iris)' },
+    recurring: { icon: ArrowsClockwise, color: 'var(--muted-foreground)' },
+    sms: { icon: DeviceMobile, color: 'var(--iris)' },
   }
   const entry = map[source]
   if (!entry) return null
@@ -62,7 +68,7 @@ function SourceDot({ source }: { source: Transaction['source'] }) {
       title={SOURCE_LABEL[source]}
       aria-label={SOURCE_LABEL[source]}
     >
-      <Icon className="size-2.5" style={{ color: entry.color }} strokeWidth={2.5} />
+      <Icon className="size-2.5" style={{ color: entry.color }} weight="fill" />
     </span>
   )
 }

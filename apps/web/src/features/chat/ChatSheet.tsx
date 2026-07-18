@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Mic, X } from 'lucide-react'
+import { Check, Send, X } from 'lucide-react'
+import { Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
@@ -126,6 +127,15 @@ export function ChatSheet({
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [toolProgress, setToolProgress] = useState<string | null>(null)
   const sentConversationIdRef = useRef(conversationId)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // field-sizing:content shrinks width to the text; grow height manually instead.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = '0px'
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+  }, [input])
 
   // Persist across app reloads — restored above via loadStoredChat's lazy init.
   useEffect(() => {
@@ -202,12 +212,12 @@ export function ChatSheet({
     setMessages((prev) => [...prev.filter((m) => m.id !== id), message].slice(-MAX_STORED_MESSAGES))
   }
 
-  // Subscribe for tool-progress broadcasts while a send is in flight.
+  // Keep the tool-progress channel subscribed while the sheet is open, not
+  // just while a send is in flight: joining only on isPending raced the
+  // server — the WS join often hadn't completed when the first tool
+  // broadcast fired, so early cues were silently missed.
   useEffect(() => {
-    if (!sendMessage.isPending || !conversationId) {
-      setToolProgress(null)
-      return
-    }
+    if (!open || !conversationId) return
     const channel = supabase.channel(`chat:${conversationId}`)
     channel
       .on('broadcast', { event: 'tool' }, ({ payload }) => {
@@ -219,7 +229,12 @@ export function ChatSheet({
       void supabase.removeChannel(channel)
       setToolProgress(null)
     }
-  }, [sendMessage.isPending, conversationId])
+  }, [open, conversationId])
+
+  // Progress cues only mean something while a reply is in flight.
+  useEffect(() => {
+    if (!sendMessage.isPending) setToolProgress(null)
+  }, [sendMessage.isPending])
 
   // The network round-trip shared by a fresh send and a retry. `replaceId`,
   // when set, is the failed bubble being retried — its error is replaced by
@@ -455,25 +470,22 @@ export function ChatSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
+        size="page"
         showCloseButton={false}
-        // `data-[side=bottom]:h-[85svh]` matches the base sheet's own
-        // `data-[side=bottom]:h-auto` in specificity (both are attribute-
-        // scoped), so it actually overrides it — a plain `h-[85svh]` loses to
-        // that attribute selector and the sheet grows unbounded with content.
-        className="flex h-[85svh] flex-col gap-0 overflow-hidden rounded-t-[1.75rem] border-0 p-0 ring-0 data-[side=bottom]:h-[85svh] data-[side=bottom]:rounded-t-[1.75rem]"
+        className="gap-0 overflow-hidden p-0"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
         // and buttons stay visible while typing.
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
       >
         <div
-          className="flex h-full flex-col"
+          className="mx-auto flex h-full w-full max-w-md flex-col"
           style={{
             transform: dragY ? `translateY(${dragY}px)` : undefined,
             transition: draggingRef.current ? 'none' : 'transform 200ms ease-out',
           }}
         >
           <div
-            className="flex shrink-0 touch-none justify-center pt-3 pb-1"
+            className="flex shrink-0 touch-none justify-center pt-[max(0.75rem,env(safe-area-inset-top))] pb-1"
             onPointerDown={onHandlePointerDown}
             onPointerMove={onHandlePointerMove}
             onPointerUp={onHandlePointerEnd}
@@ -586,7 +598,10 @@ export function ChatSheet({
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="border-t border-border/50 bg-card/90 p-4 backdrop-blur-md">
+          <form
+            onSubmit={handleSubmit}
+            className="border-t border-border/50 bg-background/90 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md"
+          >
             {statusText && (
               <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <span className="relative flex size-2.5">
@@ -596,17 +611,25 @@ export function ChatSheet({
                 {statusText}
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Input
+            <div className="flex w-full items-end gap-1 rounded-2xl border border-border/60 bg-secondary/40 p-1.5 shadow-[var(--shadow-soft)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+              <Textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  e.preventDefault()
+                  if (sendMessage.isPending || !input.trim()) return
+                  submitText(input)
+                }}
                 placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
                 autoComplete="off"
-                className="h-12 rounded-2xl border-border/60 bg-secondary/40 shadow-[var(--shadow-soft)]"
+                rows={1}
+                className="max-h-36 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-2.5 shadow-none [field-sizing:fixed] focus-visible:border-transparent focus-visible:ring-0"
               />
               <Button
                 type="button"
-                variant={isRecording ? 'destructive' : 'outline'}
+                variant={isRecording ? 'destructive' : 'ghost'}
                 size="icon"
                 disabled={voice.state === 'transcribing'}
                 onPointerDown={onMicPointerDown}
@@ -614,14 +637,20 @@ export function ChatSheet({
                 onPointerCancel={onMicPointerCancel}
                 onContextMenu={(e) => e.preventDefault()}
                 onClick={onMicClick}
-                className={cn('size-12 shrink-0 touch-none rounded-2xl', isRecording && 'animate-pulse')}
+                className={cn('size-10 shrink-0 touch-none self-end rounded-xl', isRecording && 'animate-pulse')}
                 aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
                 aria-pressed={isRecording}
               >
-                <Mic className="size-4" />
+                <Microphone className="size-4" weight="fill" />
               </Button>
-              <Button type="submit" disabled={sendMessage.isPending} className="h-12 rounded-2xl px-4">
-                Send
+              <Button
+                type="submit"
+                size="icon"
+                disabled={sendMessage.isPending || !input.trim()}
+                className="size-10 shrink-0 self-end rounded-xl"
+                aria-label="Send"
+              >
+                <Send className="size-4" />
               </Button>
             </div>
           </form>

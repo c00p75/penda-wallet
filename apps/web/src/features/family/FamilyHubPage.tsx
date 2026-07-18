@@ -1,13 +1,12 @@
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Baby, Users, Wallet } from 'lucide-react'
+import { Baby, Users, Wallet } from '@/components/icons/product'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
 import { HeroCard } from '@/components/ui/hero-card'
 import { IconTile } from '@/components/ui/icon-tile'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
-import { AppHeader } from '@/components/AppHeader'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
@@ -56,23 +55,8 @@ export function FamilyHubPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <AppHeader />
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Family hub</h1>
-          <p className="text-sm text-muted-foreground">Household plan &amp; allowances</p>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Family hub" subtitle="Household plan & allowances" />
 
       <AiInsight askText="Help us stay on track as a household this month">
         Your {termFor(mode, 'plan').toLowerCase()} is the shared intention — invite members from the wallet
@@ -82,7 +66,7 @@ export function FamilyHubPage() {
       <HeroCard tone="iris" className="w-full min-h-[8rem]">
         <div className="flex items-center gap-3">
           <span className="grid size-12 place-items-center rounded-2xl bg-white/20">
-            <Users className="size-6" />
+            <Users className="size-6" weight="duotone" />
           </span>
           <div>
             <p className="text-sm font-medium text-white/85">Household plan</p>

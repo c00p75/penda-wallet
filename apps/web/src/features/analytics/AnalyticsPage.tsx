@@ -1,4 +1,4 @@
-import { Bell, BellRing, Sparkles } from 'lucide-react'
+import { Bell, BellRinging, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -184,7 +184,11 @@ export function AnalyticsContent() {
               onClick={handleEnableNotifications}
               disabled={isSubscribed || subscribeToPush.isPending}
             >
-              {isSubscribed ? <BellRing className="size-4" /> : <Bell className="size-4" />}
+              {isSubscribed ? (
+                <BellRinging className="size-4" weight="duotone" />
+              ) : (
+                <Bell className="size-4" weight="duotone" />
+              )}
               {isSubscribed ? 'Enabled' : 'Enable alerts'}
             </Button>
           )}
@@ -194,7 +198,7 @@ export function AnalyticsContent() {
             <InsightsList insights={insights} onDismiss={(id) => dismissInsight.mutate(id)} />
           ) : (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <Sparkles className="size-6 text-primary" />
+              <Sparkle className="size-6 text-primary" weight="duotone" />
               <p className="text-sm font-medium">{FEATURE_COPY.insights.title}</p>
               <p className="text-sm text-muted-foreground">{FEATURE_COPY.insights.description}</p>
               <p className="text-xs text-muted-foreground">Premium isn't available to purchase yet.</p>

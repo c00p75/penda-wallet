@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Download, Share, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { Download, ShareNetwork } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { useInstallPrompt } from './useInstallPrompt'
 
@@ -36,19 +37,19 @@ export function InstallBanner() {
 
       {canPrompt ? (
         <Button onClick={promptInstall} className="mt-3 w-full">
-          <Download className="size-4" />
+          <Download className="size-4" weight="duotone" />
           Add to home screen
         </Button>
       ) : showIosSteps ? (
         <div className="mt-3 flex flex-col gap-1 rounded-2xl bg-[var(--iris-soft)]/60 p-3.5 text-sm text-foreground/75 ring-1 ring-[var(--iris)]/15">
           <p className="flex items-center gap-1.5">
-            1. Tap <Share className="inline size-4" /> Share in Safari
+            1. Tap <ShareNetwork className="inline size-4" weight="regular" /> Share in Safari
           </p>
           <p>2. Choose "Add to Home Screen"</p>
         </div>
       ) : (
         <Button variant="outline" onClick={() => setShowIosSteps(true)} className="mt-3 w-full">
-          <Share className="size-4" />
+          <ShareNetwork className="size-4" weight="duotone" />
           How to install
         </Button>
       )}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { CalendarClock, Landmark, Receipt } from 'lucide-react'
+import { Bank, ClockCountdown, Receipt } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,7 @@ import { HeroCard } from '@/components/ui/hero-card'
 import { IconTile } from '@/components/ui/icon-tile'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
-import { AppHeader } from '@/components/AppHeader'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { formatMoney } from '@/lib/money'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
@@ -99,15 +99,13 @@ export function BusinessHubPage() {
   const monthLabel = now.toLocaleDateString(undefined, { month: 'long' })
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <AppHeader />
-
-      <section>
-        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Business hub</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {isBusiness ? `${monthLabel} · profit, runway, AR, tax` : 'Most useful in Business mode — always available'}
-        </p>
-      </section>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader
+        title="Business hub"
+        subtitle={
+          isBusiness ? `${monthLabel} · profit, runway, AR, tax` : 'Most useful in Business mode — always available'
+        }
+      />
 
       <HeroCard tone={profit >= 0 ? 'mint' : 'rose'} className="w-full min-h-[8.5rem]">
         <div>
@@ -126,7 +124,7 @@ export function BusinessHubPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <IconTile
-          icon={CalendarClock}
+          icon={ClockCountdown}
           label="Cash runway"
           tone="iris"
           className="col-span-1"
@@ -171,7 +169,7 @@ export function BusinessHubPage() {
         <SectionHeader
           title={
             <span className="flex items-center gap-1.5">
-              <Landmark className="size-4 text-muted-foreground" />
+              <Bank className="size-4 text-muted-foreground" weight="duotone" />
               Tax set-aside
             </span>
           }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Check, Sparkles } from 'lucide-react'
+import { Check } from 'lucide-react'
+import { Sparkle } from '@/components/icons/product'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,7 @@ export function BudgetSuggestionsSheet({
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Sparkles className="size-5 text-primary" />
+            <Sparkle className="size-5 text-primary" weight="duotone" />
             {isStarter ? 'A starting point' : 'Budgets from your spending'}
           </SheetTitle>
           <SheetDescription>

@@ -1,11 +1,12 @@
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Undo2 } from 'lucide-react'
+import { ArrowCounterClockwise } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
 import { useAuthStore } from '@/store/authStore'
 import { fetchAiPendingActions, undoSoftDeletedTransaction } from './api'
 
@@ -43,23 +44,8 @@ export function AiActionsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          asChild
-        >
-          <Link to="/settings" aria-label="Back to settings">
-            <ArrowLeft className="size-5" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">AI actions</h1>
-          <p className="text-sm text-muted-foreground">What Penda proposed — and how it resolved</p>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="AI actions" subtitle="What Penda proposed — and how it resolved" />
 
       {isLoading ? null : actions.length === 0 ? (
         <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
@@ -101,7 +87,7 @@ export function AiActionsPage() {
                         className="gap-1 rounded-full"
                         onClick={() => handleUndo(a.target_id)}
                       >
-                        <Undo2 className="size-3.5" />
+                        <ArrowCounterClockwise className="size-3.5" weight="bold" />
                         Undo
                       </Button>
                     ) : undefined

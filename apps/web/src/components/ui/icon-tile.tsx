@@ -1,5 +1,8 @@
 import type { ElementType, ReactNode } from 'react'
+import type { IconWeight } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
+import { PRODUCT_ICON_WEIGHT } from '@/components/icons/product'
 
 export type IconTileTone = 'iris' | 'apricot' | 'sun' | 'mint' | 'rose' | 'muted'
 
@@ -17,6 +20,8 @@ type IconTileProps = {
   emoji?: string
   label: string
   tone?: IconTileTone
+  /** Phosphor weight for `icon` — duotone by default on product tiles. */
+  iconWeight?: IconWeight
   progress?: number
   progressColor?: string
   onClick?: () => void
@@ -26,12 +31,14 @@ type IconTileProps = {
 
 /**
  * Tinted icon + label tile for quick-action / category grids.
+ * Prefer Phosphor product icons (or emoji for categories).
  */
 export function IconTile({
   icon: Icon,
   emoji,
   label,
   tone = 'iris',
+  iconWeight = PRODUCT_ICON_WEIGHT,
   progress,
   progressColor,
   onClick,
@@ -44,7 +51,14 @@ export function IconTile({
   return (
     <Comp
       type={onClick ? 'button' : undefined}
-      onClick={onClick}
+      onClick={
+        onClick
+          ? (e) => {
+              captureOverlayOrigin(e.currentTarget)
+              onClick()
+            }
+          : undefined
+      }
       className={cn(
         'flex flex-col items-start gap-2.5 rounded-2xl border border-border/60 bg-card p-3.5 text-left shadow-[var(--shadow-soft)]',
         onClick && 'transition-transform active:scale-[0.97]',
@@ -55,7 +69,7 @@ export function IconTile({
         className="grid size-10 place-items-center rounded-2xl text-base"
         style={{ background: colors.bg, color: colors.fg }}
       >
-        {emoji ?? (Icon ? <Icon className="size-5" /> : null)}
+        {emoji ?? (Icon ? <Icon className="size-5" weight={iconWeight} /> : null)}
       </span>
       <p className="line-clamp-2 text-xs font-semibold leading-snug text-foreground">{label}</p>
       {progress != null && (

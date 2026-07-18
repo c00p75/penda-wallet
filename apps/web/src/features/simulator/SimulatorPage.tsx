@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Navigate } from 'react-router-dom'
+import { MagicWand } from '@/components/icons/product'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { HeroCard } from '@/components/ui/hero-card'
@@ -14,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { AiInsight } from '@/components/AiInsight'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
 import { formatMoney, toMinorUnits } from '@/lib/money'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
@@ -38,7 +38,6 @@ function fmtDay(dateStr: string): string {
 
 export function SimulatorPage() {
   const session = useAuthStore((s) => s.session)
-  const navigate = useNavigate()
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
@@ -123,22 +122,8 @@ export function SimulatorPage() {
   const heroTone = scenario.lowestBalance.balanceMinor < 0 ? 'rose' : canAfford === false ? 'apricot' : 'iris'
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">What if…</h1>
-          <p className="text-sm text-muted-foreground">Ask the future out loud</p>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="What if…" subtitle="Ask the future out loud" />
 
       <HeroCard tone={heroTone} className="w-full min-h-[8.5rem]">
         <div className="flex w-full items-end justify-between gap-4">
@@ -170,7 +155,7 @@ export function SimulatorPage() {
 
       <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
         <Label htmlFor="purchase" className="flex items-center gap-2">
-          <Sparkles className="size-4 text-[var(--iris)]" />
+          <MagicWand className="size-4 text-[var(--iris)]" weight="duotone" />
           Can I buy this?
         </Label>
         <Input
@@ -212,7 +197,7 @@ export function SimulatorPage() {
       {payableDebts.length > 0 && (
         <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
           <Label className="flex items-center gap-2">
-            <Sparkles className="size-4 text-[var(--iris)]" />
+            <MagicWand className="size-4 text-[var(--iris)]" weight="duotone" />
             Pay off a debt faster
           </Label>
           <Select value={selectedDebtId} onValueChange={setSelectedDebtId}>

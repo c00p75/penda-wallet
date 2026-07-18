@@ -1,11 +1,12 @@
 import { Navigate } from 'react-router-dom'
-import { Check, Sparkles, Target, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
+import { Path, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { HeroCard } from '@/components/ui/hero-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
-import { AppHeader } from '@/components/AppHeader'
+import { PageHeader } from '@/components/PageHeader'
 import { AiInsight } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -63,18 +64,13 @@ export function MissionsPage() {
   const active = missions.filter((m) => m.status === 'active')
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
-      <AppHeader />
-
-      <section>
-        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Missions</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Small commitments that compound</p>
-      </section>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
+      <PageHeader title="Missions" subtitle="Small commitments that compound" />
 
       <HeroCard tone="apricot" className="w-full min-h-[7.5rem]">
         <div className="flex items-center gap-3">
           <span className="grid size-12 place-items-center rounded-2xl bg-white/20">
-            <Target className="size-6" />
+            <Path className="size-6" weight="duotone" />
           </span>
           <div>
             <p className="text-sm font-medium text-white/85">Active missions</p>
@@ -90,7 +86,7 @@ export function MissionsPage() {
       </AiInsight>
 
       <Button onClick={handleSuggest} disabled={createMission.isPending} className="gap-1.5 rounded-full">
-        <Sparkles className="size-4" />
+        <Sparkle className="size-4" weight="fill" />
         Suggest a mission
       </Button>
 

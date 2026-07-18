@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
 
 export type InsightTone = 'default' | 'warm' | 'attention'
@@ -76,7 +77,10 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
       <button
         type="button"
         className={sharedClass}
-        onClick={() => openChat(`${askText} — tell me more / what should I do?`, { autoSend: true })}
+        onClick={(e) => {
+          captureOverlayOrigin(e.currentTarget)
+          openChat(`${askText} — tell me more / what should I do?`, { autoSend: true })
+        }}
         aria-label="Ask Penda about this insight"
       >
         {body}

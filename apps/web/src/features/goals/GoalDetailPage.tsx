@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, MessageCircle, Plus, Sparkles } from 'lucide-react'
+import { Plus } from 'lucide-react'
+import { ChatCircle, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from '@/components/BottomNav'
+import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
@@ -118,30 +120,26 @@ export function GoalDetailPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-6 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl bg-card shadow-[var(--shadow-soft)] ring-1 ring-border/50"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-lg font-semibold">
-          {goal.icon && <span aria-hidden>{goal.icon}</span>}
-          <span className="truncate">{goal.name}</span>
-        </h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-2xl"
-          aria-label="Ask about this goal"
-          onClick={() => openChat(`About my "${goal.name}" goal: `)}
-        >
-          <MessageCircle className="size-5" />
-        </Button>
-      </header>
+      <PageHeader
+        size="compact"
+        title={
+          <span className="flex min-w-0 items-center gap-1.5">
+            {goal.icon && <span aria-hidden>{goal.icon}</span>}
+            <span className="truncate">{goal.name}</span>
+          </span>
+        }
+        trailing={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 shrink-0 rounded-2xl"
+            aria-label="Ask about this goal"
+            onClick={() => openChat(`About my "${goal.name}" goal: `)}
+          >
+            <ChatCircle className="size-5" weight="duotone" />
+          </Button>
+        }
+      />
 
       <div
         className="relative flex flex-col items-center gap-3 overflow-hidden rounded-[1.75rem] p-6 shadow-[var(--shadow-card)]"
@@ -184,7 +182,7 @@ export function GoalDetailPage() {
 
       <div className="flex w-full flex-col items-center gap-2 text-center">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--iris)' }}>
-          <Sparkles className="size-3.5" />
+          <Sparkle className="size-3.5" weight="fill" />
           AI Projection
         </div>
         <h1 className="text-2xl font-semibold">Will I make it?</h1>
@@ -215,7 +213,7 @@ export function GoalDetailPage() {
             openChat(`About my "${goal.name}" goal at ${ringPct}%: what should I do next?`, { autoSend: true })
           }
         >
-          <MessageCircle className="size-3.5" />
+          <ChatCircle className="size-3.5" weight="duotone" />
           Ask about this goal
         </Button>
       </div>

@@ -1,27 +1,33 @@
-import { Sparkles } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sparkle } from '@/components/icons/product'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { FEATURE_COPY, type PremiumFeature } from './types'
 
 interface PaywallSheetProps {
   feature: PremiumFeature | null
   onOpenChange: (open: boolean) => void
+  /** Receipt scan only — opens the camera/file picker for the one free preview. */
+  onPreviewOnce?: () => void
 }
 
-export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
+export function PaywallSheet({ feature, onOpenChange, onPreviewOnce }: PaywallSheetProps) {
   if (!feature) return null
   const copy = FEATURE_COPY[feature]
 
   return (
-    <Sheet open={!!feature} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="border-0 ring-0">
-        <SheetHeader>
-          <SheetTitle className="sr-only">{copy.title}</SheetTitle>
-        </SheetHeader>
-        <div className="flex flex-col gap-4 px-5 pb-6">
-          {/* Aspirational preview card — sells the feature instead of blocking it */}
+    <Dialog open={!!feature} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-4 border-0 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="sr-only">{copy.title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
           <div
-            className="relative isolate flex flex-col gap-2 overflow-hidden rounded-[1.75rem] p-5 text-white"
+            className="relative isolate flex flex-col gap-2 overflow-hidden rounded-[1.5rem] p-5 text-white"
             style={{
               background:
                 'linear-gradient(145deg, var(--iris-hero-from) 0%, var(--iris-hero-to) 100%)',
@@ -29,7 +35,7 @@ export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
             }}
           >
             <span className="flex items-center gap-1.5 font-mono text-[0.68rem] uppercase tracking-[0.14em] opacity-90">
-              <Sparkles className="size-3.5" />
+              <Sparkle className="size-3.5" weight="fill" />
               Penda+
             </span>
             <h3 className="text-xl font-semibold leading-tight">{copy.title}</h3>
@@ -37,25 +43,25 @@ export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Try the magic once — then Premium unlocks it for good. Purchase isn’t live yet; your free
-            preview is saved on this device.
+            Try the magic once on your account — then Premium unlocks it for good. Purchase isn’t
+            live yet.
           </p>
 
-          {feature === 'receipt-scan' && (
+          {feature === 'receipt-scan' && onPreviewOnce && (
             <Button
               variant="outline"
               onClick={() => {
-                localStorage.setItem('penda:preview:receipt-scan', '1')
                 onOpenChange(false)
+                onPreviewOnce()
               }}
             >
-              Preview once on this device
+              Preview once
             </Button>
           )}
 
           <Button onClick={() => onOpenChange(false)}>Sounds good</Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

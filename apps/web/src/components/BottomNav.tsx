@@ -1,55 +1,42 @@
-import { BarChart3, PiggyBank, Sparkles, Target, Wallet } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { ChartColumn } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
+import {
+  ChatCircleIcon,
+  PiggyBankIcon,
+  SparkleIcon,
+  TargetIcon,
+  WalletIcon,
+  type IconWeight,
+} from '@/components/icons/product'
+
+type PhosphorTabIcon = ComponentType<{ className?: string; weight?: IconWeight }>
+type LucideTabIcon = ComponentType<{ className?: string; strokeWidth?: number }>
+
+type Tab = {
+  to: string
+  label: string
+} & ({ icon: PhosphorTabIcon; glyph?: 'phosphor' } | { icon: LucideTabIcon; glyph: 'lucide' })
 
 // Two tabs sit on each side of the raised AI button. Profile lives in the
-// header avatar; Analytics is a first-class destination here.
-const LEFT = [
-  { to: '/', label: 'Ledger', icon: Wallet },
-  { to: '/budgets', label: 'Budgets', icon: PiggyBank },
+// AppHeader avatar on primary tabs, so the corner tab is Analytics.
+const LEFT: Tab[] = [
+  { to: '/', label: 'Home', icon: WalletIcon },
+  { to: '/budgets', label: 'Budgets', icon: PiggyBankIcon },
 ]
-const RIGHT = [
-  { to: '/goals', label: 'Goals', icon: Target },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+const RIGHT: Tab[] = [
+  { to: '/goals', label: 'Goals', icon: TargetIcon },
+  { to: '/analytics', label: 'Analytics', icon: ChartColumn, glyph: 'lucide' },
 ]
-
-/**
- * Solid dock with an upward center hump — filled SVG material that cradles
- * the AI button. Not a punched cutout / mask.
- *
- * viewBox 375×80 (rough phone width units). Flat top at y=28, arch peaks at y=6.
- */
-function DockShape() {
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 size-full"
-      viewBox="0 0 375 80"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      <path
-        fill="currentColor"
-        d="
-          M0 28
-          H118
-          C138 28 148 6 187.5 6
-          C227 6 237 28 257 28
-          H375
-          V80
-          H0
-          Z
-        "
-      />
-    </svg>
-  )
-}
 
 export function BottomNav() {
   const location = useLocation()
   const openChat = useChatStore((s) => s.openChat)
 
-  const renderTab = ({ to, label, icon: Icon }: (typeof LEFT)[number]) => {
+  const renderTab = ({ to, label, icon: Icon, glyph = 'phosphor' }: Tab) => {
     const active = location.pathname === to
     return (
       <Link
@@ -57,16 +44,40 @@ export function BottomNav() {
         to={to}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
-        className="relative z-10 flex flex-1 items-center justify-center transition-transform active:scale-95"
+        className="relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-transform active:scale-95"
       >
-        <Icon
+        {active && (
+          <span
+            className="absolute top-0.5 size-1.5 rounded-full motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
+            style={{ background: 'var(--apricot)' }}
+            aria-hidden
+          />
+        )}
+        {glyph === 'lucide' ? (
+          <Icon
+            className={cn(
+              'size-[1.35rem] -scale-x-100 transition-colors',
+              active ? 'text-primary' : 'text-muted-foreground/55',
+            )}
+            strokeWidth={active ? 2.4 : 1.75}
+          />
+        ) : (
+          <Icon
+            className={cn(
+              'size-[1.35rem] transition-colors',
+              active ? 'text-primary' : 'text-muted-foreground/55',
+            )}
+            weight={active ? 'fill' : 'duotone'}
+          />
+        )}
+        <span
           className={cn(
-            'size-6 transition-opacity',
-            active ? 'text-white opacity-100' : 'text-white/55',
+            'text-[10px] font-medium leading-none tracking-wide',
+            active ? 'text-primary' : 'text-muted-foreground/60',
           )}
-          strokeWidth={active ? 2.35 : 2}
-        />
-        <span className="sr-only">{label}</span>
+        >
+          {label}
+        </span>
       </Link>
     )
   }
@@ -75,32 +86,44 @@ export function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-40">
       <div className="relative mx-auto max-w-md">
         <div
-          className="relative text-[#141414] dark:text-[#0a0a0a]"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          className="flex items-center justify-around gap-1 rounded-t-[1.75rem] px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+          style={{
+            background: 'var(--card)',
+            boxShadow: 'var(--shadow-card)',
+            borderTop: '1px solid color-mix(in srgb, var(--border) 70%, transparent)',
+          }}
         >
-          {/* Flat icon row sits on the lower band of the dock */}
-          <div className="relative h-[4.5rem]">
-            <DockShape />
-            <div className="absolute inset-x-0 bottom-0 flex h-[3.25rem] items-center px-1">
-              {LEFT.map(renderTab)}
-              <div className="w-[4.75rem] shrink-0" aria-hidden />
-              {RIGHT.map(renderTab)}
-            </div>
-          </div>
+          {LEFT.map(renderTab)}
+          <div className="w-20 shrink-0" aria-hidden />
+          {RIGHT.map(renderTab)}
         </div>
 
         <button
           type="button"
-          onClick={() => openChat()}
+          onClick={(e) => {
+            captureOverlayOrigin(e.currentTarget)
+            openChat()
+          }}
           aria-label="Ask Penda"
-          className="absolute inset-x-0 top-0 z-10 mx-auto flex size-16 -translate-y-[30%] items-center justify-center rounded-full text-white transition-transform active:scale-95"
+          className="absolute inset-x-0 -top-7 z-10 mx-auto flex size-[4.25rem] items-center justify-center rounded-full text-white transition-transform active:scale-95"
           style={{
             background:
-              'linear-gradient(155deg, color-mix(in oklch, var(--primary) 45%, white 55%) 0%, var(--primary) 48%, color-mix(in oklch, var(--primary) 72%, black 28%) 100%)',
+              'linear-gradient(155deg, color-mix(in oklch, var(--primary) 55%, white 45%) 0%, var(--primary) 50%, color-mix(in oklch, var(--primary) 70%, black 30%) 100%)',
             boxShadow: 'var(--shadow-hero)',
           }}
         >
-          <Sparkles className="size-6" />
+          {/* Twinkling sparkles mark this as AI; chat icon stays the primary glyph */}
+          <SparkleIcon
+            className="penda-sparkle absolute right-2.5 top-2 size-2.5 text-white/90"
+            weight="fill"
+            style={{ ['--twinkle-dur' as string]: '2.8s', ['--twinkle-delay' as string]: '0s' }}
+          />
+          <SparkleIcon
+            className="penda-sparkle absolute bottom-3 left-2.5 size-2 text-white/80"
+            weight="fill"
+            style={{ ['--twinkle-dur' as string]: '3.4s', ['--twinkle-delay' as string]: '0.9s' }}
+          />
+          <ChatCircleIcon className="size-7" weight="fill" />
         </button>
       </div>
     </nav>
