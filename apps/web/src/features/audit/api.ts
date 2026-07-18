@@ -149,7 +149,7 @@ export async function undoAiAction(action: AiPendingAction, userId: string): Pro
         .eq('id', action.target_id)
       if (error) throw error
     } else {
-      const row = { ...before, id: action.target_id }
+      const row: Record<string, unknown> = { ...before, id: action.target_id }
       // Drop join/computed fields that aren't columns.
       delete row.category
       delete row.deleted_at
