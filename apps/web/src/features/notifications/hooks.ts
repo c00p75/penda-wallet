@@ -47,8 +47,9 @@ export function useUnreadNotificationCount() {
 
 export function useMarkNotificationsRead() {
   const queryClient = useQueryClient()
-  return useMutation<number, Error, string[] | undefined>({
-    mutationFn: (ids) => markNotificationsRead(ids),
+  // Pass specific ids, or [] to mark everything read.
+  return useMutation<number, Error, string[]>({
+    mutationFn: (ids) => markNotificationsRead(ids.length ? ids : undefined),
     onSuccess: () => invalidateNotificationQueries(queryClient),
   })
 }
