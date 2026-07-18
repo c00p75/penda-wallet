@@ -108,8 +108,8 @@ async function sendMorningMinute(
   const netLabel = formatMinor(net, currency)
   const body =
     billCount > 0
-      ? `Month-to-date net ${netLabel}. ${billCount} bill${billCount === 1 ? '' : 's'} due today or tomorrow — open Penda when you have a minute.`
-      : `Month-to-date net ${netLabel}. No bills due today or tomorrow — a calm start.`
+      ? `Month-to-date net ${netLabel}. ${billCount} bill${billCount === 1 ? '' : 's'} due today or tomorrow, open Penda when you have a minute.`
+      : `Month-to-date net ${netLabel}. No bills due today or tomorrow, a calm start.`
 
   const result = await notifyUser(supabase, {
     userId: profile.id,

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { cardAccentClass, type CardAccent } from '@/components/ui/cardAccent'
 
 type ActivityRowProps = {
   avatar?: ReactNode
@@ -11,6 +12,8 @@ type ActivityRowProps = {
   onClick?: () => void
   className?: string
   showChevron?: boolean
+  /** Soft colored edge; omit for neutral border. */
+  accent?: CardAccent
 }
 
 /**
@@ -26,6 +29,7 @@ export function ActivityRow({
   onClick,
   className,
   showChevron = false,
+  accent,
 }: ActivityRowProps) {
   const Comp = onClick ? 'button' : 'div'
 
@@ -34,7 +38,8 @@ export function ActivityRow({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50',
+        'flex w-full items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-[var(--shadow-soft)]',
+        cardAccentClass(accent),
         onClick && 'transition-transform active:scale-[0.99]',
         className,
       )}

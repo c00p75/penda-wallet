@@ -82,7 +82,7 @@ export function MissionsPage() {
       <AiInsight>
         {active.length > 0
           ? `You're on ${active.length} active mission${active.length === 1 ? '' : 's'}. Small commitments compound.`
-          : 'Missions are short, concrete challenges — five no-spend days, cook at home this week. Want one?'}
+          : 'Missions are short, concrete challenges, five no-spend days, cook at home this week. Want one?'}
       </AiInsight>
 
       <Button onClick={handleSuggest} disabled={createMission.isPending} className="gap-1.5 rounded-full">

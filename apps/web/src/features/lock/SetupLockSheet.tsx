@@ -52,7 +52,7 @@ export function SetupLockSheet({ open, onOpenChange }: { open: boolean; onOpenCh
       let credentialId: string | null = null
       if (useBio && bioAvailable && session) {
         credentialId = await registerBiometric(session.user.id, session.user.email ?? 'Penda user')
-        if (!credentialId) toast('Saved with PIN — biometrics were skipped.')
+        if (!credentialId) toast('Saved with PIN, biometrics were skipped.')
       }
       enable({ pinSalt, pinHash, credentialId })
       toast('Balance lock on. Tap a hidden balance to reveal it.')
@@ -70,7 +70,7 @@ export function SetupLockSheet({ open, onOpenChange }: { open: boolean; onOpenCh
         <SheetHeader>
           <SheetTitle>Set up balance lock</SheetTitle>
           <SheetDescription>
-            Pick a PIN to reveal your balances. It’s stored only on this device — never sent to Penda.
+            Pick a PIN to reveal your balances. It’s stored only on this device, never sent to Penda.
           </SheetDescription>
         </SheetHeader>
 

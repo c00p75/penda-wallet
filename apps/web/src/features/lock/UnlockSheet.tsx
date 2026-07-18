@@ -48,7 +48,7 @@ export function UnlockSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     const ok = await verifyBiometric(credentialId)
     setBusy(false)
     if (ok) setUnlocked(true)
-    else setError('Biometric unlock didn’t work — enter your PIN.')
+    else setError('Biometric unlock didn’t work, enter your PIN.')
   }
 
   async function submitPin(e: React.FormEvent) {

@@ -85,7 +85,7 @@ export function parseMoMoText(text: string, opts: ParseOptions = {}): ParsedMoMo
   const isExpense = EXPENSE_RE.test(text)
   const isIncome = INCOME_RE.test(text)
   if (isExpense === isIncome) {
-    // Neither found, or an ambiguous message with both — not safe to auto-fill.
+    // Neither found, or an ambiguous message with both, not safe to auto-fill.
     if (!isExpense) return null
   }
 

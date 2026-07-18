@@ -44,7 +44,7 @@ export function PaymentForm({ open, onOpenChange, debtName, onSubmit, isSubmitti
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>Log payment — {debtName}</SheetTitle>
+          <SheetTitle>Log payment, {debtName}</SheetTitle>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">

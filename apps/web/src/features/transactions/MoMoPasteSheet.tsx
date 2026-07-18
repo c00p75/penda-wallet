@@ -72,7 +72,7 @@ export function MoMoPasteSheet({
             Paste a MoMo message
           </SheetTitle>
           <SheetDescription>
-            Copy the SMS from Airtel Money, MTN MoMo, or your bank and paste it here — I’ll turn it
+            Copy the SMS from Airtel Money, MTN MoMo, or your bank and paste it here. I’ll turn it
             into a transaction.
           </SheetDescription>
         </SheetHeader>
@@ -91,7 +91,7 @@ export function MoMoPasteSheet({
 
           {failed && (
             <p className="text-sm text-muted-foreground">
-              I couldn’t read that automatically — let me take a closer look.
+              I couldn’t read that automatically, let me take a closer look.
             </p>
           )}
 

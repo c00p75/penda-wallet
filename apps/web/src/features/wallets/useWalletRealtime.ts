@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client'
 /**
  * Keeps the transactions list in sync across every member of a shared
  * wallet. Uses Realtime Broadcast (via a `broadcast_changes` trigger +
- * RLS on realtime.messages) rather than the classic postgres_changes path —
+ * RLS on realtime.messages) rather than the classic postgres_changes path , 
  * the latter's wal2json replication slot was not reliably streaming on
  * this project, while Broadcast is Supabase's current recommended approach.
  * Aggregates (balances, budgets) are always recomputed from a refetch

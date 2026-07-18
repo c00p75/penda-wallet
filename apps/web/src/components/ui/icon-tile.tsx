@@ -20,7 +20,7 @@ type IconTileProps = {
   emoji?: string
   label: string
   tone?: IconTileTone
-  /** Phosphor weight for `icon` — duotone by default on product tiles. */
+  /** Phosphor weight for `icon`. duotone by default on product tiles. */
   iconWeight?: IconWeight
   progress?: number
   progressColor?: string

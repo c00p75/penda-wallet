@@ -52,10 +52,12 @@ import { useProfile, useUpdateProfile } from './hooks'
 import { PersonaAvatar } from './PersonaAvatar'
 import {
   DEFAULT_AI_CONSENT,
+  DEFAULT_COMPANION_PREFS,
   DEFAULT_NOTIFICATION_PREFS,
   PERSONALITIES,
   type AiConsent,
   type AiPersonality,
+  type CompanionPrefs,
 } from './types'
 import { PROFILE_MODES, type ProfileMode } from './modes'
 
@@ -76,7 +78,7 @@ export function SettingsPage() {
 }
 
 type SettingsContentProps = {
-  /** Optional wallet panel — shown as its own tab on Profile. */
+  /** Optional wallet panel, shown as its own tab on Profile. */
   walletPanel?: ReactNode
 }
 
@@ -104,6 +106,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [notificationPrefs, setNotificationPrefs] =
     useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS)
   const [aiConsent, setAiConsent] = useState<AiConsent>(DEFAULT_AI_CONSENT)
+  const [companionPrefs, setCompanionPrefs] = useState<CompanionPrefs>(DEFAULT_COMPANION_PREFS)
   const [blindBudgeting, setBlindBudgeting] = useState(false)
   const [roundUp, setRoundUp] = useState(false)
   const [payYourselfFirst, setPayYourselfFirst] = useState('0')
@@ -123,6 +126,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     setNotificationOptIn(profile.notification_opt_in)
     setNotificationPrefs(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS)
     setAiConsent(profile.ai_consent ?? DEFAULT_AI_CONSENT)
+    setCompanionPrefs(profile.companion_prefs ?? DEFAULT_COMPANION_PREFS)
     setBlindBudgeting(profile.blind_budgeting)
     setRoundUp(profile.round_up_enabled)
     setPayYourselfFirst(String(profile.pay_yourself_first_pct ?? 0))
@@ -154,6 +158,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         mode,
         notification_opt_in: notificationOptIn,
         notification_prefs: notificationPrefs,
+        companion_prefs: companionPrefs,
         ai_consent: aiConsent,
         ...(trustPatch ? { ai_trust: trustPatch } : {}),
         blind_budgeting: blindBudgeting,
@@ -177,6 +182,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
       JSON.stringify(notificationPrefs) !==
         JSON.stringify(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS) ||
       JSON.stringify(aiConsent) !== JSON.stringify(profile.ai_consent ?? DEFAULT_AI_CONSENT) ||
+      JSON.stringify(companionPrefs) !==
+        JSON.stringify(profile.companion_prefs ?? DEFAULT_COMPANION_PREFS) ||
       blindBudgeting !== profile.blind_budgeting ||
       roundUp !== profile.round_up_enabled ||
       payYourselfFirst !== String(profile.pay_yourself_first_pct ?? 0) ||
@@ -240,7 +247,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Voice is free for everyone. Premium unlocks the depth: receipt scanning, weekly AI
-                  insights history, and unlimited shared wallet members. Not available to purchase yet —
+                  insights history, and unlimited shared wallet members. Not available to purchase yet , 
                   check back soon.
                 </p>
               </CardContent>
@@ -253,7 +260,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">
-                Changes the wording and how Penda frames advice — the same money, seen your way.
+                Changes the wording and how Penda frames advice, the same money, seen your way.
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {PROFILE_MODES.map((m) => {
@@ -347,7 +354,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               </div>
               <p className="text-xs text-muted-foreground">
                 {lockEnabled
-                  ? `On — reveal with ${lockHasBiometric ? 'biometrics or your PIN' : 'your PIN'}. Tap a hidden balance to unlock.`
+                  ? `On. Reveal with ${lockHasBiometric ? 'biometrics or your PIN' : 'your PIN'}. Tap a hidden balance to unlock.`
                   : 'Balances stay masked on shared or lost phones. Your PIN is kept on this device only, never sent to Penda.'}
               </p>
             </CardContent>
@@ -435,7 +442,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 <div>
                   <p className="text-sm font-medium">Blind budgeting</p>
                   <p className="text-xs text-muted-foreground">
-                    Hide exact amounts — show calm auras instead
+                    Hide exact amounts, show calm auras instead
                   </p>
                 </div>
                 <Switch
@@ -473,7 +480,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   value={habitsGoalId}
                   onChange={(e) => setHabitsGoalId(e.target.value)}
                 >
-                  <option value="">Auto — Round-ups &amp; savings</option>
+                  <option value="">Auto: Round-ups &amp; savings</option>
                   {goals.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -526,12 +533,44 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         <TabsContent value="ai" className="flex flex-col gap-4">
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Companion presence</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Quiet hours, check-ins, and how often your persona reaches out.
+              </p>
+              {(
+                [
+                  ['quiet_enabled', 'Quiet hours (evening → morning)'],
+                  ['quiet_on_sundays', 'Quiet on Sundays'],
+                  ['quiet_when_stressed', 'Hush tips when I’m stressed'],
+                  ['continuity_openers', '“Last time…” chat openers'],
+                  ['pact_follow_up', 'Pact & impulse follow-ups'],
+                  ['payday_companion', 'Payday companion'],
+                  ['weekly_letter', 'Weekly letter from my persona'],
+                  ['family_nudges', 'Family-mode household nudges'],
+                ] as const
+              ).map(([key, label]) => (
+                <div key={key} className="flex min-h-12 items-center justify-between gap-3">
+                  <p className="text-sm font-medium">{label}</p>
+                  <Switch
+                    checked={companionPrefs[key]}
+                    onCheckedChange={(on) => setCompanionPrefs((p) => ({ ...p, [key]: on }))}
+                    aria-label={label}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">AI consent</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
                 Plain-language controls for what Penda may do unprompted. After 10 confirmed
-                updates/deletes with no undo, Penda graduates to act without asking — undo
+                updates/deletes with no undo, Penda graduates to act without asking, undo
                 resets that trust.
               </p>
               {profile?.ai_trust?.auto_loose && aiConsent.act_without_confirm ? (
@@ -543,7 +582,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                     color: 'var(--foreground)',
                   }}
                 >
-                  Penda can act without asking — undo anytime in{' '}
+                  Penda can act without asking, undo anytime in{' '}
                   <Link to="/ai-actions" className="font-medium underline underline-offset-2">
                     AI actions
                   </Link>
@@ -561,7 +600,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                     <p className="text-sm font-medium">{label}</p>
                     {key === 'act_without_confirm' && profile?.ai_trust?.auto_loose ? (
                       <p className="text-xs text-muted-foreground">
-                        Graduated from confirmed actions — turn off anytime to require asks again
+                        Graduated from confirmed actions, turn off anytime to require asks again
                       </p>
                     ) : null}
                   </div>
@@ -623,7 +662,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 })}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Changes how Penda talks to you in chat — never what it does with your money.
+                Changes how Penda talks to you in chat, never what it does with your money.
               </p>
             </CardContent>
           </Card>
@@ -665,7 +704,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             <CardContent className="flex flex-col gap-2">
               {install.installed ? (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <DeviceMobile className="size-4" weight="duotone" /> Installed — you're using the
+                  <DeviceMobile className="size-4" weight="duotone" /> Installed. You're using the
                   app.
                 </p>
               ) : install.canPrompt ? (

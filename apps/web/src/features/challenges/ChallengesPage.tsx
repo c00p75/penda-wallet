@@ -155,7 +155,7 @@ export function ChallengesContent() {
             active.length > 0
               ? (() => {
                   const soonest = Math.min(...active.map((c) => daysLeft(c)))
-                  return `${active.length} live challenge${active.length === 1 ? '' : 's'} — ${
+                  return `${active.length} live challenge${active.length === 1 ? '' : 's'}, ${
                     soonest === 0 ? 'one ends today' : `one ends in ${soonest}d`
                   }. Stay sharp.`
                 })()

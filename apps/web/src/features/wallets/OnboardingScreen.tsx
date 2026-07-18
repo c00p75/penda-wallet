@@ -77,14 +77,14 @@ export function OnboardingScreen() {
         const memories = buildOnboardingMemories({ mode, householdSize, primaryGoal, incomeRange, gender }, wallet.id)
         await Promise.all(memories.map((m) => createMemory(userId!, m)))
       } catch {
-        // Best-effort enrichment — never block onboarding completion on this.
+        // Best-effort enrichment, never block onboarding completion on this.
       }
 
       try {
         const starter = starterGoalFromPrimary(primaryGoal)
         if (starter) await createSavingsGoal(wallet.id, starter, 0)
       } catch {
-        // Starter goal is optional — user can create one later.
+        // Starter goal is optional, user can create one later.
       }
 
       if (notificationOptIn && userId) {
@@ -230,7 +230,7 @@ export function OnboardingScreen() {
         <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="What matters" light="most right now?" />
-            <p className="text-sm text-muted-foreground">Optional — helps Penda's advice stay relevant.</p>
+            <p className="text-sm text-muted-foreground">Optional, helps Penda's advice stay relevant.</p>
           </div>
           <div className="flex flex-col gap-2">
             {GOAL_OPTIONS.map((g) => {
@@ -267,7 +267,7 @@ export function OnboardingScreen() {
         <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="A bit more" light="about you" />
-            <p className="text-sm text-muted-foreground">All optional — skip anything you'd rather not share.</p>
+            <p className="text-sm text-muted-foreground">All optional, skip anything you'd rather not share.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">

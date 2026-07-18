@@ -66,7 +66,7 @@ describe('buildOnboardingMemories', () => {
       {
         wallet_id: 'wallet-1',
         kind: 'preference',
-        content: 'They identify as Non-binary. Use this only to keep tone natural and relatable — never to shape financial advice or logic.',
+        content: 'They identify as Non-binary. Use this only to keep tone natural and relatable, never to shape financial advice or logic.',
         mood: null,
       },
     ])

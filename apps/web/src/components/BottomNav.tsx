@@ -19,25 +19,30 @@ type LucideTabIcon = ComponentType<{ className?: string; strokeWidth?: number }>
 type Tab = {
   to: string
   label: string
+  /** Paths that also light this tab (nested plan destinations). */
+  match?: string[]
 } & ({ icon: PhosphorTabIcon; glyph?: 'phosphor' } | { icon: LucideTabIcon; glyph: 'lucide' })
 
-// Two tabs sit on each side of the raised AI button. Profile lives in the
-// AppHeader avatar on primary tabs, so the corner tab is Analytics.
+// Home · Plan · Ask · Insights · Goals. Ask stays the raised center; Compete /
+// suite hubs live in the menu so chrome stays companion-first.
 const LEFT: Tab[] = [
   { to: '/', label: 'Home', icon: WalletIcon },
-  { to: '/budgets', label: 'Budgets', icon: PiggyBankIcon },
+  { to: '/budgets', label: 'Plan', icon: PiggyBankIcon, match: ['/budgets', '/cashflow'] },
 ]
 const RIGHT: Tab[] = [
-  { to: '/goals', label: 'Goals', icon: TargetIcon },
-  { to: '/analytics', label: 'Analytics', icon: ChartColumn, glyph: 'lucide' },
+  { to: '/analytics', label: 'Insights', icon: ChartColumn, glyph: 'lucide' },
+  { to: '/goals', label: 'Goals', icon: TargetIcon, match: ['/goals'] },
 ]
 
 export function BottomNav() {
   const location = useLocation()
   const openChat = useChatStore((s) => s.openChat)
 
-  const renderTab = ({ to, label, icon: Icon, glyph = 'phosphor' }: Tab) => {
-    const active = location.pathname === to
+  const renderTab = ({ to, label, icon: Icon, glyph = 'phosphor', match }: Tab) => {
+    const active =
+      location.pathname === to ||
+      (match?.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`)) ??
+        false)
     return (
       <Link
         key={to}

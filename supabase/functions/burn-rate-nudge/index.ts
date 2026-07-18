@@ -18,7 +18,7 @@ type Period = 'weekly' | 'monthly'
 interface BudgetRow {
   id: string
   category_id: string | null
-  /** Cap used for pacing — effective amount when rollover is on. */
+  /** Cap used for pacing, effective amount when rollover is on. */
   amount_minor: number
   period: Period
 }
@@ -41,7 +41,7 @@ interface PaceResult {
 }
 
 // Roadmap bet #7 (proactive coaching): when nothing is burning, still look for
-// something worth surfacing unprompted — an underspend to redirect, a pattern
+// something worth surfacing unprompted, an underspend to redirect, a pattern
 // with no budget yet, or a goal worth celebrating. "One thing a day" means
 // this only fires when the burn-rate pace check above found nothing.
 type CoachingKind = 'opportunity' | 'observability' | 'celebration'
@@ -97,7 +97,7 @@ export function pickCoachingInsight(
     toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - n)))
   const today = daysAgoStr(0)
 
-  // Opportunity — spent noticeably less than the recent baseline this week.
+  // Opportunity, spent noticeably less than the recent baseline this week.
   const last7 = sumExpense(transactions, daysAgoStr(7), today)
   const baselineWeekly = sumExpense(transactions, daysAgoStr(35), daysAgoStr(7)) / 4
   if (baselineWeekly >= OPPORTUNITY_MIN_BASELINE_MINOR && last7 <= baselineWeekly * OPPORTUNITY_UNDERSPEND_FACTOR) {
@@ -107,14 +107,14 @@ export function pickCoachingInsight(
       kind: 'opportunity',
       title: 'Nice spending week',
       body: goal
-        ? `You spent ${fmt(diff, currency)} less than usual this week — want to move it toward "${goal.name}"?`
+        ? `You spent ${fmt(diff, currency)} less than usual this week, want to move it toward "${goal.name}"?`
         : `You spent ${fmt(diff, currency)} less than usual this week. A great moment to stash it.`,
       url: '/goals',
       meta: { diff_minor: diff, goal_id: goal?.id ?? null },
     }
   }
 
-  // Observability — a real spending pattern (90 days) with no budget behind it.
+  // Observability, a real spending pattern (90 days) with no budget behind it.
   const budgetedCategoryIds = new Set(budgets.map((b) => b.category_id).filter((id): id is string => !!id))
   const byCategory = new Map<string, { total: number; count: number }>()
   for (const t of transactions) {
@@ -140,7 +140,7 @@ export function pickCoachingInsight(
     }
   }
 
-  // Celebration — a goal that's funded or nearly there.
+  // Celebration, a goal that's funded or nearly there.
   const closest = goals
     .map((g) => ({ g, pct: g.target_amount_minor > 0 ? g.current_amount_minor / g.target_amount_minor : 0 }))
     .filter((x) => x.pct >= CELEBRATION_MIN_PCT)
@@ -154,7 +154,7 @@ export function pickCoachingInsight(
       body:
         pct >= 1
           ? `You fully funded "${g.name}". Time to set the next dream?`
-          : `You're ${Math.round(pct * 100)}% of the way to "${g.name}" — only ${fmt(remaining, currency)} to go!`,
+          : `You're ${Math.round(pct * 100)}% of the way to "${g.name}", only ${fmt(remaining, currency)} to go!`,
       url: '/goals',
       meta: { goal_id: g.id },
     }
@@ -166,7 +166,7 @@ export function pickCoachingInsight(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
 
-  // Cron-only, cross-wallet — same shared-secret authorization as the weekly
+  // Cron-only, cross-wallet, same shared-secret authorization as the weekly
   // digest (not an end-user session), so it deliberately skips the RLS pattern.
   if (req.headers.get('X-Cron-Secret') !== CRON_SECRET) {
     return jsonResponse({ error: 'Forbidden' }, 403)
@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
       .select('id, base_currency')
     if (walletsError) throw walletsError
 
-    // Bounded fan-out with per-wallet failure isolation — the old sequential
+    // Bounded fan-out with per-wallet failure isolation, the old sequential
     // loop's runtime grew linearly with wallets and one throw sank the run.
     const results = await mapLimit(wallets ?? [], 6, async (wallet) => {
       try {
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
 })
 
 async function nudgeForWallet(supabase: SupabaseClient, walletId: string, currency: string) {
-  // Premium members first (parity with the weekly digest — proactive coaching
+  // Premium members first (parity with the weekly digest, proactive coaching
   // is a Premium surface): an all-free wallet skips the pace computation and
   // coaching scan entirely. One entitlements query instead of an is_premium
   // RPC per member (this runs on the service role client).
@@ -225,7 +225,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
   const premiumIds = (premiumRows ?? []).map((r) => r.user_id)
   if (premiumIds.length === 0) return { skipped: 'no premium members' }
 
-  // Prefer effective caps (incl. rollover carry) — same source as the Budgets UI.
+  // Prefer effective caps (incl. rollover carry), same source as the Budgets UI.
   const { data: progressRows, error: progressError } = await supabase.rpc('get_budget_progress', {
     p_wallet_id: walletId,
   })
@@ -282,7 +282,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
     body = nudgeCopy(worst, currency, categoryName)
     content = { text: body, kind: 'burn_rate', budget_id: worst.budgetId }
   } else {
-    // Nothing burning — still see if there's something worth saying unprompted
+    // Nothing burning, still see if there's something worth saying unprompted
     // (roadmap bet #7). Needs a wider window than the burn-rate check above.
     const wideStart = toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 90)))
     const [{ data: wideTx }, { data: goals }, { data: categories }] = await Promise.all([
@@ -331,7 +331,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
 
   let notified = 0
   for (const userId of premiumIds) {
-    // At most one nudge per member per day — burn-rate or coaching, never both.
+    // At most one nudge per member per day, burn-rate or coaching, never both.
     if (alreadyNudged.has(userId)) continue
 
     // Soft coaching tips respect adaptive cadence; budget alerts always send.
@@ -413,10 +413,10 @@ function nudgeCopy(r: PaceResult, currency: string, categoryName: string): strin
   const periodWord = r.period === 'weekly' ? 'week' : 'month'
   const pct = Math.round(r.spentFrac * 100)
   if (r.over) {
-    return `${categoryName} is over budget — ${fmt(r.spentMinor, currency)} of ${fmt(r.amountMinor, currency)} this ${periodWord}. Want to rebalance?`
+    return `${categoryName} is over budget, ${fmt(r.spentMinor, currency)} of ${fmt(r.amountMinor, currency)} this ${periodWord}. Want to rebalance?`
   }
   const daysWord = r.daysLeft === 1 ? 'day' : 'days'
-  return `${categoryName} is running hot — ${pct}% spent with ${r.daysLeft} ${daysWord} left this ${periodWord}.`
+  return `${categoryName} is running hot, ${pct}% spent with ${r.daysLeft} ${daysWord} left this ${periodWord}.`
 }
 
 interface PeriodBounds {

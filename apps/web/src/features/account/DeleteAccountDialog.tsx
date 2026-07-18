@@ -27,7 +27,7 @@ export function DeleteAccountDialog() {
     setBusy(true)
     try {
       await deleteAccount()
-      // Account's gone — clear the local session and send them to login.
+      // Account's gone, clear the local session and send them to login.
       await supabase.auth.signOut()
       window.location.href = '/login'
     } catch (error) {

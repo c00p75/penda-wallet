@@ -40,7 +40,7 @@ function weekFromNowStr(): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Penda holds you to it (roadmap bet #2) — a pact is a category to avoid over a window. */
+/** Penda holds you to it (roadmap bet #2), a pact is a category to avoid over a window. */
 export function PactForm({ open, onOpenChange, categories, goalId, goalName, onSubmit, isSubmitting }: PactFormProps) {
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState('')

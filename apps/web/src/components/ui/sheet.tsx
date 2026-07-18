@@ -59,10 +59,11 @@ function useOriginStyle(): React.CSSProperties | undefined {
 }
 
 /**
- * Floating modal card — inset from the screen edges with full rounding.
+ * Floating modal card, inset from the screen edges with full rounding.
  * `side` only chooses where the card sits (bottom / left / right / top),
  * not an edge-docked drawer.
  * Pass `size="page"` for a full-viewport surface (e.g. chat).
+ * Pass `size="half"` for a tall bottom sheet (quick-log chat).
  */
 function SheetContent({
   className,
@@ -74,11 +75,12 @@ function SheetContent({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
-  size?: "card" | "page"
+  size?: "card" | "page" | "half"
   showCloseButton?: boolean
 }) {
   const originStyle = useOriginStyle()
   const isPage = size === "page"
+  const isHalf = size === "half"
 
   return (
     <SheetPortal>
@@ -92,7 +94,12 @@ function SheetContent({
           "fixed z-50 flex flex-col gap-4 overflow-y-auto border-0 bg-clip-padding text-sm outline-none",
           isPage
             ? "inset-0 h-svh max-h-svh w-full max-w-none rounded-none bg-background text-foreground shadow-none ring-0"
-            : cn(
+            : isHalf
+              ? cn(
+                  "inset-x-0 bottom-0 top-auto mx-auto h-[min(62svh,34rem)] max-h-[min(70svh,calc(100%-3rem))] w-full max-w-md",
+                  "rounded-t-[1.75rem] bg-background text-foreground shadow-[var(--shadow-card)] ring-1 ring-border/40",
+                )
+              : cn(
                 "max-h-[min(90svh,calc(100%-2rem))] bg-card text-card-foreground",
                 "rounded-[1.75rem] shadow-[var(--shadow-card)] ring-1 ring-border/40",
                 // Bottom-anchored floating card (forms, most sheets)

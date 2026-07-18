@@ -1,4 +1,6 @@
 import { formatMoney } from '@/lib/money'
+import { cardAccentClass, type CardAccent } from '@/components/ui/cardAccent'
+import { cn } from '@/lib/utils'
 import type { Category } from '@/features/categories/types'
 import type { BudgetProgress } from './types'
 
@@ -11,13 +13,17 @@ interface BudgetProgressCardProps {
 
 // Coaching over shaming: over-budget goes warm rose with an offer to help,
 // never an alarm-red failure state.
-function statusColorFor(pct: number) {
-  if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)' }
-  if (pct >= 0.8) return { bg: 'var(--apricot-soft)', fg: 'var(--apricot)' }
-  return { bg: 'var(--mint-soft)', fg: 'var(--mint)' }
+function statusColorFor(pct: number): {
+  bg: string
+  fg: string
+  accent: CardAccent
+} {
+  if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)', accent: 'rose' }
+  if (pct >= 0.8) return { bg: 'var(--apricot-soft)', fg: 'var(--apricot)', accent: 'apricot' }
+  return { bg: 'var(--mint-soft)', fg: 'var(--mint)', accent: 'mint' }
 }
 
-// A category without a custom color still needs visual variety in the grid —
+// A category without a custom color still needs visual variety in the grid , 
 // pick one of the brand tints deterministically from its id so the same
 // category always lands on the same color.
 const FALLBACK_TINTS = [
@@ -50,7 +56,10 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
     <button
       type="button"
       onClick={onSelect}
-      className="flex flex-col gap-3 rounded-[1.35rem] border border-border/60 bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.98]"
+      className={cn(
+        'flex flex-col gap-3 rounded-[1.35rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.98]',
+        cardAccentClass(status.accent),
+      )}
     >
       <div className="flex items-center justify-between">
         <span

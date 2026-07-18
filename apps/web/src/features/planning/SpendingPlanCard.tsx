@@ -38,7 +38,7 @@ function monthEndOf(now: Date): string {
  * user's own ask so it reads naturally in the thread, but it carries the guard
  * rails from the roadmap: propose a few items, infer what you can, keep it short.
  * Detected recurring spend is named explicitly so the AI treats it as already
- * known — "ask only what can't be inferred" — instead of asking about it.
+ * known, "ask only what can't be inferred", instead of asking about it.
  */
 function assistPrompt(
   amount: number,
@@ -48,7 +48,7 @@ function assistPrompt(
 ): string {
   const base =
     `I just set my ${monthLabel} spending plan at ${currency} ${amount.toLocaleString()}. ` +
-    `Help me split it into a few budget categories — look at how I've been spending, ` +
+    `Help me split it into a few budget categories, look at how I've been spending, ` +
     `suggest 2–3 amounts that fit the plan, and only ask me about things you can't work ` +
     `out yourself. Keep it short.`
   if (detected.length === 0) return base
@@ -97,7 +97,7 @@ export function SpendingPlanCard({
     .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 
   // Fixed spend Penda has noticed on its own (rent, subscriptions) even where
-  // no recurring rule was registered — so the assist can skip asking about it.
+  // no recurring rule was registered, so the assist can skip asking about it.
   const detected = detectRecurringSpend(transactions, { now })
 
   async function saveIntention() {
@@ -112,7 +112,7 @@ export function SpendingPlanCard({
         reflection: plan?.reflection ?? null,
       })
       setEditing(false)
-      // The plan is already saved — the assist is an offer on top, never a gate.
+      // The plan is already saved, the assist is an offer on top, never a gate.
       // Penda speaks first (autoSend) with a few tappable category suggestions;
       // the sheet is freely dismissible for anyone who'd rather do it themselves.
       if (wasNew) {
@@ -148,20 +148,20 @@ export function SpendingPlanCard({
   }
 
   // End-of-period retro: how last month actually went, computed the moment a
-  // new month starts with no plan yet — it seeds the next plan (a rounded
+  // new month starts with no plan yet, it seeds the next plan (a rounded
   // read of last month's actual spend) instead of leaving the input blank.
   const retro = !plan && prevPlan ? computeRetro(prevPlan.intended_amount_minor, prevMonth, transactions) : null
   const retroSeedMinor = retro ? Math.round(retro.spentMinor / 10_000) * 10_000 : null
 
   // Variable/irregular income: when income swings enough that the average
   // would overstate what's reliably there, plan off the conservative
-  // baseline instead — and prefer it over the retro seed, since it protects
+  // baseline instead, and prefer it over the retro seed, since it protects
   // against a lean month rather than just repeating last month's spend.
   const incomeBaseline = !plan ? computeIncomeBaseline(transactions, now) : null
   const seedAmountMinor =
     incomeBaseline?.isIrregular ? incomeBaseline.conservativeMinor : (retroSeedMinor ?? incomeBaseline?.conservativeMinor ?? null)
 
-  // Empty / editing state — set the intention.
+  // Empty / editing state, set the intention.
   if (!plan || editing) {
     return (
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
@@ -173,16 +173,16 @@ export function SpendingPlanCard({
           <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{prevMonthLabel} recap: </span>
             {retro.pace === 'under' &&
-              `You spent ${formatMoney(retro.spentMinor, currency)} — ${formatMoney(retro.deltaMinor, currency)} under plan. Nice.`}
+              `You spent ${formatMoney(retro.spentMinor, currency)}, ${formatMoney(retro.deltaMinor, currency)} under plan. Nice.`}
             {retro.pace === 'over' &&
-              `You spent ${formatMoney(retro.spentMinor, currency)} — ${formatMoney(-retro.deltaMinor, currency)} over plan.`}
+              `You spent ${formatMoney(retro.spentMinor, currency)}, ${formatMoney(-retro.deltaMinor, currency)} over plan.`}
             {retro.pace === 'on-target' &&
               `You landed right on plan at ${formatMoney(retro.spentMinor, currency)}.`}
           </div>
         )}
         {incomeBaseline?.isIrregular && (
           <div className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Income varies month to month — </span>
+            <span className="font-medium text-foreground">Income varies month to month, </span>
             planning around {formatMoney(incomeBaseline.conservativeMinor, currency)} (your leanest of the last{' '}
             {incomeBaseline.monthsConsidered} months) rather than your average, so a quiet month doesn't catch you
             out.
@@ -209,7 +209,7 @@ export function SpendingPlanCard({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          A single intention for {monthLabel} — Penda paces you against it. Amounts in {currency}.
+          A single intention for {monthLabel}. Penda paces you against it. Amounts in {currency}.
           Set it and Penda will help you break it into budgets (or skip and do it yourself).
         </p>
       </div>

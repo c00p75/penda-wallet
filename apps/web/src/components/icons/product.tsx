@@ -1,5 +1,5 @@
 /**
- * Product icons — Phosphor duotone for places users look (nav, hubs, tiles,
+ * Product icons. Phosphor duotone for places users look (nav, hubs, tiles,
  * provenance). Keep lucide-react for shadcn / form chrome (X, Check, Chevron…).
  *
  * Usage: `<WalletIcon className="size-5" />` or

@@ -9,8 +9,14 @@
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
-    "typecheck": "npm run typecheck --workspace=apps/web",
-    "supabase": "supabase"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "supabase": "supabase",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:mobile": "npm run start --workspace=apps/mobile",
+    "ios": "npm run ios --workspace=apps/mobile",
+    "android": "npm run android --workspace=apps/mobile",
+    "typecheck:web": "npm run typecheck --workspace=apps/web",
+    "typecheck:mobile": "npm run typecheck --workspace=apps/mobile"
   },
   "devDependencies": {
     "supabase": "^2.109.1"

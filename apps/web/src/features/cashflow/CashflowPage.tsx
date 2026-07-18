@@ -140,7 +140,7 @@ export function CashflowPage() {
           <button
             key={q}
             type="button"
-            onClick={() => openChat(q)}
+            onClick={() => openChat(q, { autoSend: true })}
             className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
           >
             {q}

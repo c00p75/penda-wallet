@@ -14,7 +14,7 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET')!
 const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 
-// Persona voice + profile-context fragments live in _shared/personas.ts —
+// Persona voice + profile-context fragments live in _shared/personas.ts , 
 // previously duplicated here and already drifting from chat's versions.
 
 interface CategoryTotal {
@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
   }
 
   // This function is triggered by pg_cron (or manually for testing), never by
-  // an end user — it operates across every wallet, not one user's session, so
+  // an end user, it operates across every wallet, not one user's session, so
   // it intentionally skips the RLS-scoped pattern used by user-facing
   // functions. Authorization is a dedicated shared secret (not the service
   // role key, whose exact runtime format isn't guaranteed) sent as a custom
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     // Bounded fan-out instead of a strict one-at-a-time walk over every
     // wallet (audit finding: sequential runtime grows linearly with wallets
     // and heads for the function execution limit). Per-wallet failures are
-    // isolated — one bad wallet no longer sinks the whole weekly run.
+    // isolated, one bad wallet no longer sinks the whole weekly run.
     const results = await mapLimit(wallets ?? [], 5, async (wallet) => {
       try {
         const weekly = await generateForWallet(
@@ -93,7 +93,7 @@ async function generateForWallet(
 ) {
   // Premium members FIRST (audit finding): the digest is a Premium feature,
   // and the old order paid for an LLM generation before checking whether
-  // anyone in the wallet could see it — every all-free wallet burned a model
+  // anyone in the wallet could see it, every all-free wallet burned a model
   // call per week for content that was then thrown away.
   const { data: members, error: membersError } = await supabase
     .from('wallet_members')
@@ -104,7 +104,7 @@ async function generateForWallet(
   const memberIds = (members ?? []).map((m) => m.user_id)
   if (memberIds.length === 0) return { skipped: 'no members' }
 
-  // One query instead of an is_premium RPC per member — this function runs on
+  // One query instead of an is_premium RPC per member, this function runs on
   // the service role client, so it can read entitlements directly (the same
   // table is_premium consults).
   const { data: premiumRows, error: premiumError } = await supabase
@@ -344,7 +344,7 @@ function buildPrompt(
   const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
 
   // Hard requirement, not a suggestion: gender may only ever shape tone here,
-  // never the numbers or the advice — see chat-message/index.ts for the
+  // never the numbers or the advice, see chat-message/index.ts for the
   // matching (and more heavily used) instance of this same guardrail.
   const contextLines: string[] = []
   if (profile.primaryGoal && GOAL_LABELS[profile.primaryGoal]) {
@@ -354,14 +354,14 @@ function buildPrompt(
   }
   if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {
     contextLines.push(
-      `The user identifies as ${GENDER_LABELS[profile.gender]}. Use this ONLY to make tone feel natural — it ` +
+      `The user identifies as ${GENDER_LABELS[profile.gender]}. Use this ONLY to make tone feel natural, it ` +
         'must NEVER influence the numbers, advice, or any other logic in this digest.',
     )
   }
   const contextSection = contextLines.length > 0 ? `\n\n${contextLines.join(' ')}` : ''
 
   return `You are ${personaName}, an AI assistant persona in Penda, a personal finance app, writing a
-short weekly spending digest for the user. Penda is the app, not your name — write in your own
+short weekly spending digest for the user. Penda is the app, not your name, write in your own
 voice as ${personaName}, never referring to yourself as "Penda". ${personalityFragment}${contextSection}
 
 This week's numbers:
@@ -370,7 +370,7 @@ This week's numbers:
 - Top spending categories:
 ${categoryLines}
 
-Write a 2-3 sentence digest grounded in these exact numbers — mention the biggest category by name
+Write a 2-3 sentence digest grounded in these exact numbers, mention the biggest category by name
 and amount, and give one concrete, specific suggestion. Do not invent numbers not listed above. Do
 not use markdown formatting. Keep it under 300 characters since it will show in a push notification.`
 }

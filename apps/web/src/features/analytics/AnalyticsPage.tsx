@@ -25,8 +25,8 @@ export function AnalyticsPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
       <section>
-        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Analytics</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Patterns, confidence, and insights</p>
+        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Insights</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Patterns, confidence, and what Penda notices</p>
       </section>
       <AnalyticsContent />
       <BottomNav />
@@ -99,7 +99,7 @@ export function AnalyticsContent() {
   if (!wallet) return null
 
   // AI speaks first: lead with the newest insight (Premium) or, failing that, a
-  // grounded fact computed from this month's own data — never a fabricated line.
+  // grounded fact computed from this month's own data, never a fabricated line.
   const latestInsight = isPremium ? insights[0] : undefined
   const monthSpentMinor = monthExpenseMinor
   const askText = latestInsight
@@ -123,7 +123,7 @@ export function AnalyticsContent() {
             this month. Here’s where it went.
           </>
         ) : (
-          <>No spending logged this month yet — add a few and I’ll start spotting patterns for you.</>
+          <>No spending logged this month yet, add a few and I’ll start spotting patterns for you.</>
         )}
       </AiInsight>
 
@@ -144,7 +144,7 @@ export function AnalyticsContent() {
           <div>
             <p className="font-medium">{CONFIDENCE_LABEL_COPY[confidence.label]}</p>
             <p className="text-sm text-muted-foreground">
-              From cash position, this month’s flow, goals, and budget pace — not a credit score.
+              From cash position, this month’s flow, goals, and budget pace, not a credit score.
             </p>
           </div>
         </CardContent>

@@ -57,8 +57,8 @@ function sumExpenseBetween(transactions: Transaction[], afterExclusive: string, 
 
 /**
  * Penda's "speak first, unprompted" brain: derive at most a handful of coaching
- * insights from real data — an underspend opportunity, an unbudgeted-spend
- * nudge, a goal to celebrate — ranked so the most useful one leads. Pure so it
+ * insights from real data, an underspend opportunity, an unbudgeted-spend
+ * nudge, a goal to celebrate, ranked so the most useful one leads. Pure so it
  * can drive both the in-app card and (later) scheduled push.
  */
 export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] {
@@ -66,7 +66,7 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
   const { transactions, budgets, goals, currency } = ctx
   const insights: CoachingInsight[] = []
 
-  // Opportunity — spent noticeably less than usual this week.
+  // Opportunity, spent noticeably less than usual this week.
   const last7 = sumExpenseBetween(transactions, offsetStr(now, -7), offsetStr(now, 0))
   const priorFourWeeks = sumExpenseBetween(transactions, offsetStr(now, -35), offsetStr(now, -7))
   const baselineWeekly = priorFourWeeks / 4
@@ -79,7 +79,7 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
       tone: 'warm',
       amountMinor: diff,
       text: goal
-        ? `You spent ${formatMoney(diff, currency)} less than usual this week — want to move it toward "${goal.name}"?`
+        ? `You spent ${formatMoney(diff, currency)} less than usual this week, want to move it toward "${goal.name}"?`
         : `You spent ${formatMoney(diff, currency)} less than usual this week. A great moment to stash it.`,
       action: goal
         ? { label: `Fund ${goal.name}`, kind: 'fund-goal', goalId: goal.id }
@@ -87,7 +87,7 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
     })
   }
 
-  // Observability — a category with a clear pattern but no budget.
+  // Observability, a category with a clear pattern but no budget.
   const budgetedCategoryIds = budgets.map((b) => b.category_id).filter((id): id is string => !!id)
   const [topUnbudgeted] = suggestBudgets(transactions, { now, existingCategoryIds: budgetedCategoryIds })
   if (topUnbudgeted) {
@@ -101,7 +101,7 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
     })
   }
 
-  // Celebration — a goal that's funded or nearly there.
+  // Celebration, a goal that's funded or nearly there.
   const closest = goals
     .map((g) => ({ g, pct: g.target_amount_minor > 0 ? g.current_amount_minor / g.target_amount_minor : 0 }))
     .filter((x) => x.pct >= 0.8)
@@ -117,12 +117,12 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
       text:
         pct >= 1
           ? `🎉 You fully funded "${g.name}". Time to set the next dream?`
-          : `You’re ${Math.round(pct * 100)}% of the way to "${g.name}" — only ${formatMoney(remaining, currency)} to go!`,
+          : `You’re ${Math.round(pct * 100)}% of the way to "${g.name}", only ${formatMoney(remaining, currency)} to go!`,
       action: { label: 'View goals', kind: 'view-goals', goalId: g.id },
     })
   }
 
-  // Ghost leaks — fees and tiny repeated P2P sends.
+  // Ghost leaks, fees and tiny repeated P2P sends.
   insights.push(...detectGhostLeaks({ transactions, currency, now }))
 
   return insights.sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind])

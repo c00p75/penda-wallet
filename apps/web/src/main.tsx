@@ -13,7 +13,7 @@ import { initInstallCapture } from '@/pwa/installStore'
 
 const queryClient = new QueryClient()
 
-// `beforeinstallprompt` fires once, early — capture it before React mounts so
+// `beforeinstallprompt` fires once, early, capture it before React mounts so
 // the install offer survives navigation and never gets missed.
 initInstallCapture()
 

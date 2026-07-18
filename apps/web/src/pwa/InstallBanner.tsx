@@ -6,8 +6,8 @@ import { useInstallPrompt } from './useInstallPrompt'
 
 /**
  * Prominent, dismissible home-screen install offer. Renders only when the app
- * can actually be installed — a native prompt is ready (Android/desktop) or we
- * can show iOS's manual steps — and disappears once installed or dismissed.
+ * can actually be installed, a native prompt is ready (Android/desktop) or we
+ * can show iOS's manual steps, and disappears once installed or dismissed.
  */
 export function InstallBanner() {
   const { installed, canPrompt, showIosInstructions, dismissed, promptInstall, dismiss } = useInstallPrompt()

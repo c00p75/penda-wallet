@@ -85,7 +85,7 @@ export function BusinessHubPage() {
   if (profit >= 0) {
     insight = `This month you're up ${formatMoney(profit, currency)} after expenses.`
   } else {
-    insight = `This month you're ${formatMoney(-profit, currency)} in the red — worth a look at burn and receivables.`
+    insight = `This month you're ${formatMoney(-profit, currency)} in the red, worth a look at burn and receivables.`
   }
   if (runwayDays != null) {
     insight +=
@@ -103,7 +103,7 @@ export function BusinessHubPage() {
       <PageHeader
         title="Business hub"
         subtitle={
-          isBusiness ? `${monthLabel} · profit, runway, AR, tax` : 'Most useful in Business mode — always available'
+          isBusiness ? `${monthLabel} · profit, runway, AR, tax` : 'Most useful in Business mode, always available'
         }
       />
 
@@ -129,7 +129,7 @@ export function BusinessHubPage() {
           tone="iris"
           className="col-span-1"
         >
-          <p className="text-lg font-bold tabular-nums">{runwayDays == null ? '—' : `${runwayDays}d`}</p>
+          <p className="text-lg font-bold tabular-nums">{runwayDays == null ? '···' : `${runwayDays}d`}</p>
           <p className="text-[11px] text-muted-foreground">
             Burn {formatMoney(Math.round(avgDailyBurn), currency)}/day
           </p>
@@ -180,7 +180,7 @@ export function BusinessHubPage() {
           <span className="font-semibold text-foreground">
             <HiddenAmount>{formatMoney(taxSetAside, currency)}</HiddenAmount>
           </span>
-          {reservePct > 0 ? ` (${reservePct}% of income)` : ' — set a % below'}
+          {reservePct > 0 ? ` (${reservePct}% of income)` : ', set a % below'}
         </p>
         <div className="mt-3 flex items-end gap-2">
           <div className="flex-1">

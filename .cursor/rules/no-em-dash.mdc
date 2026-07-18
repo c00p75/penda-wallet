@@ -1,0 +1,34 @@
+---
+description: Never use em dashes in product copy or agent-written text
+alwaysApply: true
+---
+
+# No em dashes (—)
+
+Do not use the em dash character (`—`, U+2014) anywhere in this project:
+
+- User-facing UI copy (labels, toasts, empty states, chat, onboarding)
+- AI system prompts, tool summaries, and model replies
+- Commit messages, PR descriptions, and comments you write in-repo
+- Docs the product surfaces (README product blurbs, ROADMAP)
+
+## Why
+
+Em dashes are a strong “AI-generated copy” tell. They make the app feel less trustworthy.
+
+## What to use instead
+
+Rewrite so the sentence still reads naturally:
+
+| Instead of | Prefer |
+|---|---|
+| `Queued — sends when online.` | `Queued. Sends when online.` |
+| `Meet Penda — your companion.` | `Meet Penda, your companion.` |
+| `Listening — release to send` | `Listening. Release to send` |
+| `Status — details follow` | `Status: details follow` |
+
+Prefer a **period** for two clauses, a **comma** for a soft pause, or a **colon** to introduce detail. Spaced hyphen (` - `) is acceptable sparingly; do not replace every em dash with a hyphen mechanically if a period reads better.
+
+## Checklist
+
+Before finishing UI or prompt work, search the touched files for `—` and remove any hits.

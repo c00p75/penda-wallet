@@ -4,7 +4,7 @@ import { b64ToBytes, bufToB64 } from '@/lib/lockCrypto'
 // This is a *local* gate, not server authentication: we register a platform
 // credential when the user enables the lock, then a successful get() ceremony
 // with userVerification 'required' is our proof the device owner is present.
-// There's no relying-party server verifying the assertion — the ceremony
+// There's no relying-party server verifying the assertion, the ceremony
 // succeeding is the signal.
 
 function challenge(): Uint8Array {

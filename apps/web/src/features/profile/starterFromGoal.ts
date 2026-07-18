@@ -9,7 +9,7 @@ export function starterGoalFromPrimary(primaryGoal: PrimaryGoal | null): Savings
         name: 'Emergency fund',
         icon: '🛡️',
         image_path: null,
-        target_amount_minor: 500_000, // soft starter — user can edit
+        target_amount_minor: 500_000, // soft starter, user can edit
         target_date: null,
         motivation: 'A cushion for surprises',
       }
@@ -20,7 +20,7 @@ export function starterGoalFromPrimary(primaryGoal: PrimaryGoal | null): Savings
         image_path: null,
         target_amount_minor: 200_000,
         target_date: null,
-        motivation: 'Something specific — rename me',
+        motivation: 'Something specific, rename me',
       }
     default:
       // pay_off_debt / track_spending don't seed a savings goal

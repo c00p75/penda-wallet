@@ -14,7 +14,7 @@ const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Vision is the most expensive per-call AI request in the app (image tokens),
-// and this endpoint previously relied on the premium gate alone — the one AI
+// and this endpoint previously relied on the premium gate alone, the one AI
 // endpoint with no per-user cap, so a single premium account (or a leaked
 // premium token) could run up unbounded spend (audit finding).
 const RECEIPT_RATE_LIMITS = {
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Cost guard on top of the premium gate — same pattern as chat/voice.
+    // Cost guard on top of the premium gate, same pattern as chat/voice.
     const limitMessage = await checkRateLimits(supabase, user.id, 'receipt-vision', RECEIPT_RATE_LIMITS)
     if (limitMessage) {
       return respond({ error: limitMessage }, 429)
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
       return respond({ error: 'walletId must be a UUID' }, 400)
     }
 
-    // Independent reads — the image download and the three DB lookups all go
+    // Independent reads, the image download and the three DB lookups all go
     // out at once (previously four sequential round-trips).
     const [download, categories, rules, walletRow] = await Promise.all([
       supabase.storage.from('receipts').download(body.storagePath),
@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     const mimeType = fileBlob.type || 'image/jpeg'
 
     // The wallet is single-currency and the UI renders each transaction in its
-    // own stored currency, so always store the wallet's currency — never the
+    // own stored currency, so always store the wallet's currency, never the
     // symbol the model happened to read off the receipt.
     const currency = walletRow.data?.base_currency ?? 'USD'
 
@@ -206,16 +206,16 @@ Deno.serve(async (req) => {
       .single()
 
     if (insertError) {
-      // Log the detail, return a generic message — a Postgres error can echo
+      // Log the detail, return a generic message, a Postgres error can echo
       // schema names or row values to the client.
       console.error('Failed to save draft transaction:', insertError.message)
-      return respond({ error: 'Failed to save the draft transaction — please try again.' }, 500)
+      return respond({ error: 'Failed to save the draft transaction, please try again.' }, 500)
     }
 
     return respond({ transaction })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
+    return respond({ error: 'Something went wrong on our side. Please try again.' }, 500)
   }
 })
 
@@ -269,7 +269,7 @@ async function extractWithGroq(base64: string, mimeType: string, categories: Cat
           content: [
             {
               type: 'text',
-              text: `Extract the details from this receipt photo as a JSON object with keys: merchant (string), transaction_date (ISO 8601 YYYY-MM-DD), total_minor (integer, total paid in cents), currency (3-letter code), suggested_category (overall; must be exactly one of: ${categoryNames.join(', ')}), items (array of { description, quantity, amount_minor, suggested_category } for each purchased line — amount_minor is the line total in cents; each item's suggested_category may differ and must be one of the same list; exclude TOTAL/CASH/CHANGE/TAX). Respond with ONLY the JSON object.`,
+              text: `Extract the details from this receipt photo as a JSON object with keys: merchant (string), transaction_date (ISO 8601 YYYY-MM-DD), total_minor (integer, total paid in cents), currency (3-letter code), suggested_category (overall; must be exactly one of: ${categoryNames.join(', ')}), items (array of { description, quantity, amount_minor, suggested_category } for each purchased line, amount_minor is the line total in cents; each item's suggested_category may differ and must be one of the same list; exclude TOTAL/CASH/CHANGE/TAX). Respond with ONLY the JSON object.`,
             },
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
           ],

@@ -10,7 +10,7 @@ export function useUploadReceipt(walletId: string | undefined) {
     mutationFn: (file: File) => uploadReceipt(walletId!, userId!, file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })
-      // Free preview is claimed server-side on first scan — refresh so the
+      // Free preview is claimed server-side on first scan, refresh so the
       // next tap shows the paywall instead of opening the picker again.
       queryClient.invalidateQueries({ queryKey: ['entitlement', userId] })
     },

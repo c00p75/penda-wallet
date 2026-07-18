@@ -12,7 +12,7 @@ export interface PactStatusResult {
 
 /**
  * A pact restricts spending in a category over a date window. Status is
- * always computed fresh from transactions — never stored — so it can never
+ * always computed fresh from transactions, never stored, so it can never
  * drift out of sync with the ledger (any expense in the pact's category
  * during its window breaks it; otherwise it's active until the window ends,
  * then kept).

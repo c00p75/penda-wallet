@@ -37,7 +37,7 @@ export function useDeleteCategory(walletId: string | undefined) {
     mutationFn: (id: string) => deleteCategory(id),
     onSuccess: () => {
       // Deleting a category cascades to its budgets and categorization
-      // rules server-side — refresh those views too, not just the list.
+      // rules server-side, refresh those views too, not just the list.
       queryClient.invalidateQueries({ queryKey: categoriesKey(walletId) })
       queryClient.invalidateQueries({ queryKey: ['budgets', walletId] })
       queryClient.invalidateQueries({ queryKey: ['budget-progress', walletId] })

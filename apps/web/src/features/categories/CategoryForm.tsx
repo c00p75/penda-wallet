@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import type { Category, CategoryInput } from './types'
 
 // Same Tailwind-500 hex set the seeded default categories already use, plus a
-// few unused hues — so a custom category's color sits in the same family
+// few unused hues, so a custom category's color sits in the same family
 // instead of introducing a visibly different palette.
 const COLOR_SWATCHES: (string | null)[] = [
   null,

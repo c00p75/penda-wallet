@@ -1,0 +1,104 @@
+{
+  "expo": {
+    "name": "Penda",
+    "slug": "penda",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "penda",
+    "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.penda.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Penda uses Face ID to reveal hidden balances.",
+        "NSCameraUsageDescription": "Penda uses the camera to scan receipts.",
+        "NSMicrophoneUsageDescription": "Penda uses the microphone for voice money logging.",
+        "NSPhotoLibraryUsageDescription": "Penda uses your photos for receipt scanning."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#5B4FE8",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.penda.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.WAKE_LOCK"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#5B4FE8"
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Penda to use Face ID to reveal hidden balances."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Penda to access your photos for receipt scanning.",
+          "cameraPermission": "Allow Penda to use the camera to scan receipts."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Penda to record voice notes for quick money logging."
+        }
+      ],
+      "expo-sms-listener",
+      [
+        "expo-notifications",
+        {
+          "color": "#5B4FE8"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -15,7 +15,7 @@ import { useOfflinePendingStore } from './offlinePendingStore'
 
 /**
  * Flushes queued offline transactions + chat + AI confirms on reconnect (and on app start).
- * Mount once at the app root — AppHeader/Home only read the shared count.
+ * Mount once at the app root. AppHeader/Home only read the shared count.
  */
 export function useOfflineQueueSync() {
   const queryClient = useQueryClient()

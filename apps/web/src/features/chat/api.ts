@@ -4,7 +4,7 @@ import type { PageContext } from './pageContext'
 import type { ChatResponse, ConfirmActionResponse } from './types'
 
 // supabase.functions.invoke surfaces every non-2xx as a FunctionsHttpError
-// whose .message is just "Edge Function returned a non-2xx status code" — the
+// whose .message is just "Edge Function returned a non-2xx status code", the
 // server's actual user-facing copy (the rate-limit 429 message, premium 402s,
 // validation 400s) sits unread in the response body. Unwrap it so the UI
 // shows what the server said instead of the generic wrapper line.
@@ -15,7 +15,7 @@ async function unwrapFunctionError(error: unknown): Promise<Error> {
       const message = typeof body.error === 'string' ? body.error : body.message
       if (typeof message === 'string' && message) return new Error(message)
     } catch {
-      /* body wasn't JSON — fall through to the original error */
+      /* body wasn't JSON, fall through to the original error */
     }
   }
   return error instanceof Error ? error : new Error(String(error))

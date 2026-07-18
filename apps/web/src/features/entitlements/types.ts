@@ -22,6 +22,6 @@ export const FEATURE_COPY: Record<PremiumFeature, { title: string; description: 
   },
   'shared-wallets': {
     title: 'Unlimited shared members',
-    description: 'Free wallets are limited to 2 members — invite your whole household on Premium.',
+    description: 'Free wallets are limited to 2 members, invite your whole household on Premium.',
   },
 }

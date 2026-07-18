@@ -1,5 +1,5 @@
 // The install singleton. `beforeinstallprompt` fires ONCE, early, right after
-// the page loads — long before the user reaches any settings screen. If the only
+// the page loads, long before the user reaches any settings screen. If the only
 // listener lives inside a component that mounts later, the event is gone and the
 // app can never offer to install. So we capture it at module load (see
 // initInstallCapture, called from main.tsx) and stash the deferred event here,
@@ -38,7 +38,7 @@ export interface InstallSnapshot {
   canPrompt: boolean
   /** Already running as an installed app. */
   installed: boolean
-  /** iOS has no install event — the UI must show manual Share-sheet steps. */
+  /** iOS has no install event, the UI must show manual Share-sheet steps. */
   showIosInstructions: boolean
   /** The user closed the install banner; don't nag again. */
   dismissed: boolean
@@ -121,7 +121,7 @@ export function dismissInstall() {
   try {
     localStorage.setItem(DISMISS_KEY, '1')
   } catch {
-    // Private mode / storage disabled — a session-only dismiss is fine.
+    // Private mode / storage disabled, a session-only dismiss is fine.
   }
   emit()
 }

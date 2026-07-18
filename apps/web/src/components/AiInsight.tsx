@@ -1,10 +1,11 @@
 import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
+import { accentFromInsightTone, cardAccentClass } from '@/components/ui/cardAccent'
 
 export type InsightTone = 'default' | 'warm' | 'attention'
 
-/** Penda brand mark for insight cards — the app icon, not a generic AI glyph. */
+/** Penda brand mark for insight cards, the app icon, not a generic AI glyph. */
 export function AiMark({
   thinking = false,
   className,
@@ -64,11 +65,12 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
   )
 
   const sharedClass = cn(
-    'flex items-start gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50',
-    tone === 'warm' && 'bg-[var(--apricot-soft)]/40 ring-[var(--apricot)]/20',
-    tone === 'attention' && 'bg-[var(--rose-soft)]/40 ring-[var(--rose)]/20',
-    tone === 'default' && 'bg-[var(--iris-soft)]/30',
-    tappable && 'cursor-pointer transition-all hover:shadow-[var(--shadow-card)] hover:ring-border/70 active:scale-[0.99]',
+    'flex items-start gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)]',
+    cardAccentClass(accentFromInsightTone(tone)),
+    tone === 'warm' && 'bg-[var(--apricot-soft)]/25',
+    tone === 'attention' && 'bg-[var(--rose-soft)]/25',
+    tone === 'default' && 'bg-card',
+    tappable && 'cursor-pointer transition-all hover:shadow-[var(--shadow-card)] active:scale-[0.99]',
     className,
   )
 
@@ -79,7 +81,7 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
         className={sharedClass}
         onClick={(e) => {
           captureOverlayOrigin(e.currentTarget)
-          openChat(`${askText} — tell me more / what should I do?`, { autoSend: true })
+          openChat(`${askText}. Tell me more / what should I do?`, { autoSend: true })
         }}
         aria-label="Ask Penda about this insight"
       >

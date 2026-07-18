@@ -43,7 +43,7 @@ export const useLockStore = create<LockState>()(
           pinSalt: config.pinSalt,
           pinHash: config.pinHash,
           credentialId: config.credentialId,
-          unlocked: true, // just set it up — no need to immediately re-unlock
+          unlocked: true, // just set it up, no need to immediately re-unlock
         }),
       disable: () =>
         set({ enabled: false, pinSalt: null, pinHash: null, credentialId: null, unlocked: false, prompting: false }),
@@ -53,7 +53,7 @@ export const useLockStore = create<LockState>()(
     }),
     {
       name: 'penda-lock',
-      // Only the durable config is persisted — unlocked/prompting stay runtime,
+      // Only the durable config is persisted, unlocked/prompting stay runtime,
       // so a fresh load always starts hidden.
       partialize: (state) => ({
         enabled: state.enabled,

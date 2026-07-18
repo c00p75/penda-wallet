@@ -41,7 +41,7 @@ export function normalizeAiConsent(raw: unknown): AiConsent {
   }
 }
 
-/** Manual consent or graduated auto_loose — skip Yes/No card. */
+/** Manual consent or graduated auto_loose, skip Yes/No card. */
 export function mayActWithoutConfirm(consent: AiConsent, trust: AiTrust): boolean {
   return consent.act_without_confirm || trust.auto_loose
 }

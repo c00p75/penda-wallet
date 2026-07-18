@@ -76,7 +76,7 @@ export function useVoiceRecorder({ onLiveTranscript, onError }: VoiceRecorderOpt
     stopRequestedRef.current = false
 
     recognition.onresult = (event) => {
-      // Rebuild from the full results list every event rather than appending —
+      // Rebuild from the full results list every event rather than appending , 
       // Android Chrome re-delivers already-finalized results with resultIndex
       // stuck at 0, so an incremental `+=` double-counts them ("todaytoday…").
       // Assigning the recomputed value each time keeps the handler idempotent.
@@ -92,11 +92,11 @@ export function useVoiceRecorder({ onLiveTranscript, onError }: VoiceRecorderOpt
     }
 
     recognition.onerror = (event) => {
-      // "no-speech" / "aborted" fire during normal use — only surface real faults.
+      // "no-speech" / "aborted" fire during normal use, only surface real faults.
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         onErrorRef.current('Microphone access was denied.')
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        onErrorRef.current('Could not hear that — please try again.')
+        onErrorRef.current('Could not hear that, please try again.')
       }
     }
 

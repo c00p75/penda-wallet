@@ -16,7 +16,7 @@ export interface GhostLeakContext {
 }
 
 /**
- * Spot compounding "ghost" leaks — SMS/transfer fees and tiny repeated P2P
+ * Spot compounding "ghost" leaks. SMS/transfer fees and tiny repeated P2P
  * sends that add up without feeling like real spending.
  */
 export function detectGhostLeaks(ctx: GhostLeakContext): CoachingInsight[] {
@@ -42,7 +42,7 @@ export function detectGhostLeaks(ctx: GhostLeakContext): CoachingInsight[] {
       kind: 'observability',
       tone: 'warm' as InsightTone,
       amountMinor: total,
-      text: `I spotted ${feeTx.length} fee-like charges totaling ${formatMoney(total, ctx.currency)} in the last 30 days — quiet leaks that add up.`,
+      text: `I spotted ${feeTx.length} fee-like charges totaling ${formatMoney(total, ctx.currency)} in the last 30 days, quiet leaks that add up.`,
     })
   }
 
@@ -71,7 +71,7 @@ export function detectGhostLeaks(ctx: GhostLeakContext): CoachingInsight[] {
       kind: 'observability',
       tone: 'default',
       amountMinor: best.total,
-      text: `${best.count} small sends to “${best.merchant}” added up to ${formatMoney(best.total, ctx.currency)} this month — a phantom leak worth watching.`,
+      text: `${best.count} small sends to “${best.merchant}” added up to ${formatMoney(best.total, ctx.currency)} this month, a phantom leak worth watching.`,
     })
   }
 

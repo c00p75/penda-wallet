@@ -53,7 +53,7 @@ export function NotificationsPage() {
       try {
         await markRead.mutateAsync([n.id])
       } catch {
-        // Navigation still proceeds — unread can be cleared later.
+        // Navigation still proceeds, unread can be cleared later.
       }
     }
     if (session?.user.id && (n.kind === 'tip' || n.kind === 'reminder')) {
@@ -117,7 +117,7 @@ export function NotificationsPage() {
       ) : filtered.length === 0 ? (
         <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           {filter === 'unread'
-            ? 'You’re all caught up — no unread alerts.'
+            ? 'You’re all caught up, no unread alerts.'
             : 'No notifications yet. Budget alerts, bill reminders, and tips will show up here.'}
         </p>
       ) : (

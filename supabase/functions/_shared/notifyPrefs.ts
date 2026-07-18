@@ -1,4 +1,4 @@
-/** Notification category prefs — kept in sync with profiles.notification_prefs. */
+/** Notification category prefs, kept in sync with profiles.notification_prefs. */
 
 export type NotificationKind = 'tip' | 'reminder' | 'insight' | 'update' | 'alert'
 

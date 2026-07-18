@@ -37,7 +37,7 @@ export function PactCard({ pact, transactions, category, currency, onDelete }: P
         <p className="text-xs text-muted-foreground">
           No {category?.name ?? 'spending'} · {style.label(result.daysLeft)}
           {result.status === 'broken' && result.breakingTransaction && (
-            <> — {formatMoney(result.breakingTransaction.amount_minor, currency)} on {result.breakingTransaction.transaction_date}</>
+            <>, {formatMoney(result.breakingTransaction.amount_minor, currency)} on {result.breakingTransaction.transaction_date}</>
           )}
         </p>
       </div>

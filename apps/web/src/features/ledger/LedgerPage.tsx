@@ -246,7 +246,7 @@ export function LedgerPage() {
     if (!wallet || !session) return
     await enqueueTransaction(wallet.id, session.user.id, input)
     await offlineQueue.refreshCount()
-    toast("Saved offline — it'll sync when you're back online.")
+    toast("Saved offline. It'll sync when you're back online.")
   }
 
   async function handleSubmit(input: TransactionInput) {
@@ -486,7 +486,7 @@ export function LedgerPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
           <p className="font-medium text-foreground">No transactions</p>
-          <p className="text-sm">Nothing in this period yet — tap + Add to log one.</p>
+          <p className="text-sm">Nothing in this period yet. Tap + Add to log one.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-5">

@@ -2,13 +2,13 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
-  /** Staged update/delete — also rendered inside the action trail. */
+  /** Staged update/delete, also rendered inside the action trail. */
   pendingActions?: PendingAction[]
   /** Durable trail of tools that ran for this turn (creates, lookups, etc.). */
   actions?: ChatAction[]
   /** Set on a failed-send error bubble; the original text a Retry button resends. */
   retryText?: string
-  /** Offline queue marker — sends when back online. */
+  /** Offline queue marker, sends when back online. */
   queued?: boolean
   /** After confirm: deep-link to the touched entity. */
   viewHref?: string

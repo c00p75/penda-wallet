@@ -3,7 +3,7 @@ import { create } from 'zustand'
 type OverlayOrigin = {
   x: number
   y: number
-  /** Epoch ms — overlays only use origins that are still fresh. */
+  /** Epoch ms, overlays only use origins that are still fresh. */
   at: number
 }
 

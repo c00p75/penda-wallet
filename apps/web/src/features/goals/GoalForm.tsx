@@ -246,7 +246,7 @@ export function GoalForm({
               placeholder="A safety net so I stop stressing about surprise bills."
             />
             <p className="text-xs text-muted-foreground">
-              I’ll remember this and nudge you toward it — the “why” is what keeps a goal alive.
+              I’ll remember this and nudge you toward it, the “why” is what keeps a goal alive.
             </p>
           </div>
 

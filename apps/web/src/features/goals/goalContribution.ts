@@ -1,7 +1,7 @@
 import type { SavingsGoal } from './types'
 
 /**
- * What a goal needs this month to stay on pace toward its target date — the
+ * What a goal needs this month to stay on pace toward its target date, the
  * bridge that lets a savings goal behave like a budget line (roadmap bet
  * #11 "goals as budget lines"): the safe-to-spend reserve treats an
  * un-met monthly contribution the same way it treats a bill still due.

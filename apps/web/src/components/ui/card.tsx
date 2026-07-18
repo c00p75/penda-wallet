@@ -1,18 +1,22 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { cardAccentClass, type CardAccent } from "@/components/ui/cardAccent"
 
 function Card({
   className,
   size = "default",
+  accent,
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & { size?: "default" | "sm"; accent?: CardAccent }) {
   return (
     <div
       data-slot="card"
       data-size={size}
+      data-accent={accent}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-[1.35rem] bg-card py-(--card-spacing) text-sm text-card-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-[1.35rem] *:[img:last-child]:rounded-b-[1.35rem]",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-[1.35rem] bg-card py-(--card-spacing) text-sm text-card-foreground shadow-[var(--shadow-soft)] [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-[1.35rem] *:[img:last-child]:rounded-b-[1.35rem]",
+        cardAccentClass(accent),
         className
       )}
       {...props}

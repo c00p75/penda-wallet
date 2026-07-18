@@ -26,7 +26,7 @@ registerRoute(
   'GET',
 )
 
-// AI Edge Functions are never cached — chat/vision/voice/insights require a live network call,
+// AI Edge Functions are never cached, chat/vision/voice/insights require a live network call,
 // and a stale or fabricated cached response would be actively misleading here.
 registerRoute(
   ({ url }) => url.pathname.startsWith('/functions/v1/'),

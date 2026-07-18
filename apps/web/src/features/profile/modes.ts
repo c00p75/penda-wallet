@@ -46,7 +46,7 @@ export const MODE_CONFIG: Record<ProfileMode, ModeConfig> = {
   business: {
     value: 'business',
     label: 'Business',
-    description: 'Side-hustle lite — revenue, expenses, runway.',
+    description: 'Side-hustle lite, revenue, expenses, runway.',
     icon: Briefcase,
     terms: { income: 'Revenue', expense: 'Expenses', balance: 'Cash on hand', plan: 'Budget' },
     aiContext:

@@ -5,7 +5,7 @@
  * finding: sequential processing puts total runtime on a collision course
  * with the function execution limit as wallets grow).
  *
- * `fn` rejections propagate — callers that want one bad item to not sink the
+ * `fn` rejections propagate, callers that want one bad item to not sink the
  * whole run should catch inside `fn`.
  */
 export async function mapLimit<T, R>(

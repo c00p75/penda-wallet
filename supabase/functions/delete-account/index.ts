@@ -12,7 +12,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 //
 // Shared-wallet policy: deleting your account never destroys resources others
 // still share. A wallet with no other members is deleted (cascading its data);
-// a wallet with any other member survives — your membership is removed and
+// a wallet with any other member survives, your membership is removed and
 // authorship (created_by) is handed to a surviving member (an existing owner
 // if there is one, otherwise the most-tenured member is promoted to owner) so
 // co-members keep everything, even if you were the only owner.
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
 
 // Every wallet-scoped table with a created_by FK to profiles that would
 // otherwise block the auth-user delete. Kept in sync with `grep 'references
-// profiles'` across migrations — miss one and deleteUser fails on its FK.
+// profiles'` across migrations, miss one and deleteUser fails on its FK.
 const AUTHORED_WALLET_TABLES = [
   'transactions',
   'recurring_transactions',
@@ -76,7 +76,7 @@ async function handleWallets(admin: SupabaseClient, userId: string) {
     .eq('user_id', userId)
 
   for (const { wallet_id: walletId } of memberships ?? []) {
-    // Every other member, owners first, then most-tenured — the heir order.
+    // Every other member, owners first, then most-tenured, the heir order.
     const { data: others } = await admin
       .from('wallet_members')
       .select('user_id, role, joined_at')
@@ -85,7 +85,7 @@ async function handleWallets(admin: SupabaseClient, userId: string) {
       .order('joined_at', { ascending: true })
 
     if (!others || others.length === 0) {
-      // Last member — delete the wallet, cascading all its data.
+      // Last member, delete the wallet, cascading all its data.
       await admin.from('wallets').delete().eq('id', walletId)
       continue
     }

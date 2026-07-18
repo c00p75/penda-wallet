@@ -14,7 +14,7 @@ const INTEREST_KEY = 'penda:premium-interest'
 interface PaywallSheetProps {
   feature: PremiumFeature | null
   onOpenChange: (open: boolean) => void
-  /** Receipt scan only — opens the camera/file picker for the one free preview. */
+  /** Receipt scan only, opens the camera/file picker for the one free preview. */
   onPreviewOnce?: () => void
 }
 
@@ -81,7 +81,7 @@ export function PaywallSheet({ feature, onOpenChange, onPreviewOnce }: PaywallSh
 
           {interested ? (
             <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              You’re on the list — thanks.
+              You’re on the list, thanks.
             </p>
           ) : (
             <Button variant="secondary" onClick={notifyMe}>

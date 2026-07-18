@@ -6,7 +6,11 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
+import { AiMark } from '@/components/AiInsight'
 import { Microphone } from '@/components/icons/product'
+import { Button } from '@/components/ui/button'
+import { cardAccentClass } from '@/components/ui/cardAccent'
+import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
@@ -23,7 +27,7 @@ import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
 import { InsightCarousel, type InsightCard } from '@/features/coaching/InsightCarousel'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
-import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder'
+import { loadNeedsYou } from '@/features/chat/pendingNeedsYou'
 import {
   useConfirmReceiptItems,
   useCreateTransaction,
@@ -47,9 +51,23 @@ import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
 import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
 import { useProfile } from '@/features/profile/hooks'
+import { PERSONALITIES, DEFAULT_COMPANION_PREFS } from '@/features/profile/types'
 import { upsertCoachingNotification } from '@/features/notifications/api'
 import { ImpulsePauseSheet } from '@/features/impulse/ImpulsePauseSheet'
 import { IMPULSE_THRESHOLD_MINOR, useImpulseStore } from '@/features/impulse/impulseStore'
+import { usePacts } from '@/features/pacts/hooks'
+import { useMemories } from '@/features/memory/hooks'
+import { buildCompanionHomeSignals } from '@/features/companion/homeCompanion'
+import { applyMoodToCoachingText } from '@/features/companion/moodCoaching'
+import { evidenceForInsight } from '@/features/companion/nudgeEvidence'
+import { WhyNudgeSheet } from '@/features/companion/WhyNudgeSheet'
+import { CheckInCard } from '@/features/companion/CheckInCard'
+import {
+  useCompanionCheckins,
+  useLatestWeeklyLetter,
+  useRespondToCheckin,
+} from '@/features/companion/hooks'
+import { projectCashflow } from '@/features/cashflow/projection'
 
 /** Split a formatted currency string into whole and decimal parts for big-number display. */
 function splitBalance(amountMinor: number, currency: string): { whole: string; decimal: string; symbol: string } {
@@ -114,35 +132,34 @@ export function HomePage() {
   const pauseImpulse = useImpulseStore((s) => s.pause)
   const isImpulseDismissed = useImpulseStore((s) => s.isDismissed)
   const dismissImpulse = useImpulseStore((s) => s.dismiss)
+  const pausedImpulses = useImpulseStore((s) => s.paused)
   const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
+  const { data: pacts = [] } = usePacts(wallet?.id)
+  const { data: memories = [] } = useMemories(session?.user.id)
+  const { data: companionCheckins = [] } = useCompanionCheckins(wallet?.id)
+  const { data: weeklyLetter } = useLatestWeeklyLetter(wallet?.id)
+  const respondCheckin = useRespondToCheckin(wallet?.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
+  const [needsYouTick, setNeedsYouTick] = useState(0)
+  const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
-
-  const voice = useVoiceRecorder({
-    onLiveTranscript: () => {},
-    onError: (message) => toast.error(message),
-  })
 
   useWalletRealtime(wallet?.id)
   const offlineQueue = useOfflinePending()
 
-  async function toggleVoiceQuickLog() {
-    if (voice.state === 'recording') {
-      const transcript = (await voice.stop()).trim()
-      if (transcript) openChat(transcript, { autoSend: true })
-      return
-    }
-    if (voice.state === 'idle') {
-      try {
-        await voice.start()
-      } catch {
-        // Mic denied — useVoiceRecorder already toasted.
-      }
-    }
+  // Re-read pending confirms when chat closes so Home "needs you" stays fresh.
+  const chatOpen = useChatStore((s) => s.open)
+  useEffect(() => {
+    if (!chatOpen) setNeedsYouTick((n) => n + 1)
+  }, [chatOpen])
+
+  function openVoiceCapture(el?: HTMLElement | null) {
+    if (el) captureOverlayOrigin(el)
+    openChat('', { mode: 'quick', startRecording: true })
   }
 
   function openAddForm() {
@@ -173,7 +190,7 @@ export function HomePage() {
     openScanReceipt()
   }, [quickActionIntent, wallet])
 
-  // Must run before any early return — otherwise React crashes after splash when
+  // Must run before any early return, otherwise React crashes after splash when
   // auth/wallet resolve and this hook appears on a later render.
   const coachingInsights = detectCoachingInsights({
     transactions,
@@ -181,7 +198,50 @@ export function HomePage() {
     goals,
     currency: wallet?.base_currency ?? 'USD',
   })
-  const suggestion = coachingInsights[0]
+  // Hooks below must stay unconditional, companion signals use the same data.
+  const companionSignals = buildCompanionHomeSignals(
+    {
+      prefs: profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS,
+      mode: profile?.mode ?? 'individual',
+      currency: wallet?.base_currency ?? 'USD',
+      personaName:
+        PERSONALITIES.find((p) => p.value === profile?.ai_personality)?.name ?? 'Amara',
+      memories,
+      pacts,
+      transactions,
+      goals,
+      recurring,
+      pausedImpulses,
+      freeBeforeNextIncomeMinor: (() => {
+        if (!wallet) return null
+        const balance = transactions.reduce((sum, tx) => {
+          const amt = tx.converted_amount_minor ?? tx.amount_minor
+          return sum + (tx.type === 'income' ? amt : -amt)
+        }, 0)
+        const avgDaily =
+          transactions
+            .filter((t) => t.type === 'expense')
+            .slice(0, 30)
+            .reduce((s, t) => s + (t.converted_amount_minor ?? t.amount_minor), 0) / 30
+        return projectCashflow({
+          startingBalanceMinor: balance,
+          recurring,
+          avgDailySpendMinor: avgDaily,
+          from: new Date(),
+          days: 45,
+        }).freeBeforeNextIncomeMinor
+      })(),
+      weeklyLetterTeaser: weeklyLetter
+        ? `${weeklyLetter.title}: ${weeklyLetter.body.slice(0, 120)}…`
+        : null,
+    },
+    {
+      openChat: (seed, opts) => openChat(seed, { autoSend: opts?.autoSend, mode: 'full' }),
+      navigate,
+      openWhy: setWhyInsightId,
+    },
+  )
+  const suggestion = companionSignals.quiet ? undefined : coachingInsights[0]
 
   useEffect(() => {
     if (!wallet?.id || !suggestion) return
@@ -196,7 +256,7 @@ export function HomePage() {
       href,
       dedupeKey: `coaching:${suggestion.kind}:${localDateStr(new Date())}`,
     }).catch(() => {
-      // Best-effort inbox sync — never block the home surface.
+      // Best-effort inbox sync, never block the home surface.
     })
   }, [wallet?.id, suggestion?.id, suggestion?.kind, suggestion?.text, suggestion?.action?.kind])
 
@@ -204,7 +264,7 @@ export function HomePage() {
     if (!wallet || !session) return
     await enqueueTransaction(wallet.id, session.user.id, input)
     await offlineQueue.refreshCount()
-    toast("Saved offline — it'll sync when you're back online.")
+    toast("Saved offline. It'll sync when you're back online.")
   }
 
   async function commitTransaction(input: TransactionInput) {
@@ -358,22 +418,24 @@ export function HomePage() {
   const buffer = suggestBufferFromIncome(transactions)
   const weekInsight =
     buffer != null
-      ? `That ${formatMoney(buffer.incomeTx.amount_minor, currency)} cash-in is large — move ${formatMoney(buffer.suggestMinor, currency)} to a buffer for next month?`
+      ? `That ${formatMoney(buffer.incomeTx.amount_minor, currency)} cash-in is large. Move ${formatMoney(buffer.suggestMinor, currency)} to a buffer for next month?`
       : last7Spent > 0
         ? `You've spent ${formatMoney(last7Spent, currency)} in the last 7 days.`
-        : "Nothing logged this week yet — tell me about a purchase and I'll take it from there."
+        : "Nothing logged this week yet. Tell me about a purchase and I'll take it from there."
 
-  function runInsightAction(action: CoachingAction) {
-    switch (action.kind) {
-      case 'create-budget':
-      case 'view-budgets':
-        navigate('/budgets')
-        break
-      case 'fund-goal':
-      case 'view-goals':
-        navigate('/goals')
-        break
-    }
+  function askAboutInsight(text: string) {
+    openChat(`${text}. Tell me more / what should I do?`, { autoSend: true, mode: 'full' })
+  }
+
+  function runInsightAction(insightText: string, action: CoachingAction) {
+    // Stay in the AI loop, open chat with the tip; ledger pages stay secondary.
+    const followUp =
+      action.kind === 'create-budget'
+        ? `${insightText} Help me create a budget for this.`
+        : action.kind === 'fund-goal'
+          ? `${insightText} Help me fund this goal.`
+          : `${insightText} What should I do next?`
+    openChat(followUp, { autoSend: true, mode: 'full' })
   }
 
   const insightCards: InsightCard[] = [
@@ -382,22 +444,45 @@ export function HomePage() {
       variant: 'read',
       tone: buffer != null ? 'warm' : 'default',
       text: weekInsight,
-      action: { label: 'Ask Penda', onTap: () => openChat() },
+      action: { label: 'Ask Penda', onTap: () => askAboutInsight(weekInsight) },
+      onWhy: () => setWhyInsightId('week-read'),
     },
-    ...coachingInsights.map((insight) => ({
-      id: insight.id,
-      variant: 'tip' as const,
-      tone: insight.tone,
-      label: 'Pro tip:',
-      text: insight.text,
-      action: insight.action
-        ? { label: insight.action.label, onTap: () => runInsightAction(insight.action!) }
-        : undefined,
+    ...companionSignals.cards.map((card) => ({
+      ...card,
+      onWhy: () => setWhyInsightId(card.id),
     })),
+    ...(companionSignals.quiet
+      ? []
+      : coachingInsights.map((insight) => ({
+          id: insight.id,
+          variant: 'tip' as const,
+          tone: insight.tone,
+          label: 'Pro tip:',
+          text: applyMoodToCoachingText(insight.text, companionSignals.moodTone),
+          action: insight.action
+            ? {
+                label: insight.action.label,
+                onTap: () => runInsightAction(insight.text, insight.action!),
+              }
+            : { label: 'Ask Penda', onTap: () => askAboutInsight(insight.text) },
+          onWhy: () => setWhyInsightId(insight.id),
+        }))),
   ]
+
+  const needsYou = loadNeedsYou(wallet.id)
+  // Touch needsYouTick so the list refreshes after chat closes.
+  void needsYouTick
 
   const auraLabel =
     balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
+
+  const briefPrimary = weekInsight
+  const briefSecondary =
+    auraLabel === 'Comfortable'
+      ? "You're in good shape. Ask me before a big buy if you want a second opinion."
+      : auraLabel === 'Tight'
+        ? 'Things are tight. I can help you pick what to pause.'
+        : "Cash is stretched. Let's find the leak together."
 
   const upcoming = (() => {
     const today = localDateStr(now)
@@ -444,7 +529,7 @@ export function HomePage() {
       <main className="flex flex-1 flex-col gap-6 px-4 pb-40">
         <InstallBanner />
 
-        {/* Greeting */}
+        {/* Greeting + capture */}
         <section className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-[2.5rem] leading-[1.05] tracking-tight text-foreground">
@@ -471,32 +556,123 @@ export function HomePage() {
           </div>
           <button
             type="button"
-            onClick={() => void toggleVoiceQuickLog()}
-            disabled={voice.state === 'transcribing'}
-            aria-label={voice.state === 'recording' ? 'Stop voice log' : 'Voice quick-log'}
-            aria-pressed={voice.state === 'recording'}
-            className="mt-1 grid size-11 shrink-0 place-items-center rounded-2xl border border-border/70 bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 disabled:opacity-50"
-            style={
-              voice.state === 'recording'
-                ? { borderColor: 'var(--rose)', color: 'var(--rose)', background: 'var(--rose-soft)' }
-                : undefined
-            }
+            onClick={(e) => openVoiceCapture(e.currentTarget)}
+            aria-label="Tell Penda with voice"
+            className="mt-1 grid size-11 shrink-0 place-items-center rounded-2xl border border-border/70 bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95"
           >
             <Microphone className="size-5" weight="fill" />
           </button>
         </section>
 
-        {/* Hero carousel — inner row keeps leading/trailing inset; flex+overflow
-            otherwise collapses padding so the first card sits on the screen edge. */}
+        {/* Daily briefing. AI speaks first */}
+        <section
+          className={cn(
+            'flex flex-col gap-3 rounded-[1.75rem] bg-card p-4 shadow-[var(--shadow-card)]',
+            cardAccentClass('iris'),
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <AiMark className="mt-0.5 size-9" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold tracking-wide text-[var(--iris)] uppercase">
+                Penda brief
+              </p>
+              <p className="mt-1 text-base font-medium leading-snug text-foreground">{briefPrimary}</p>
+              <p className="mt-1.5 text-sm text-muted-foreground">{briefSecondary}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={(e) => {
+                captureOverlayOrigin(e.currentTarget)
+                askAboutInsight(briefPrimary)
+              }}
+            >
+              What should I do?
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                captureOverlayOrigin(e.currentTarget)
+                openChat('I spent ', { mode: 'quick' })
+              }}
+            >
+              Log a purchase
+            </Button>
+          </div>
+        </section>
+
+        {/* Pending confirms. ActionTrail continuity */}
+        {needsYou.length > 0 && (
+          <section>
+            <SectionHeader title="Penda needs you" />
+            <div className="flex flex-col gap-2">
+              {needsYou.map((item) => (
+                <button
+                  key={item.action.id}
+                  type="button"
+                  onClick={(e) => {
+                    captureOverlayOrigin(e.currentTarget)
+                    openChat('', { mode: 'full' })
+                  }}
+                  className={cn(
+                    'flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+                    cardAccentClass('apricot'),
+                  )}
+                >
+                  <AiMark className="size-7" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{item.preview}</p>
+                    <p className="text-xs text-muted-foreground">Tap to confirm or cancel</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {companionCheckins.length > 0 && (
+          <section>
+            <SectionHeader title="Check-ins" />
+            <div className="flex flex-col gap-2">
+              {companionCheckins.slice(0, 3).map((c) => (
+                <CheckInCard
+                  key={c.id}
+                  checkin={c}
+                  busy={respondCheckin.isPending}
+                  onRespond={(status) => {
+                    if (status === 'answered' || status === 'kept' || status === 'slipped') {
+                      openChat(c.message, { autoSend: true, mode: 'full' })
+                    }
+                    respondCheckin.mutate({ id: c.id, status })
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Primary number, demoted carousel */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none]">
           <div className="flex w-max gap-3 px-4 snap-x snap-mandatory">
             <HeroCard
               tone="iris"
               className="snap-start"
-              label="Balance"
+              label={blindBudgeting ? 'Status' : hasBudgets ? 'Safe to spend' : 'Balance'}
               value={
                 blindBudgeting ? (
                   auraLabel
+                ) : hasBudgets ? (
+                  <HiddenAmount>
+                    <span>
+                      {formatMoney(safeToSpendPerDayMinor, currency)}
+                      <span className="text-base font-medium opacity-80"> /day</span>
+                    </span>
+                  </HiddenAmount>
                 ) : (
                   <HiddenAmount>
                     <span>
@@ -515,12 +691,16 @@ export function HomePage() {
               <HeroCard
                 tone="mint"
                 className="snap-start"
-                label="Safe to spend"
+                label="Balance"
                 value={
                   <HiddenAmount>
                     <span>
-                      {formatMoney(safeToSpendPerDayMinor, currency)}
-                      <span className="text-base font-medium opacity-80"> /day</span>
+                      {isNegative ? '−' : ''}
+                      {balanceParts.symbol}
+                      {balanceParts.whole}
+                      {balanceParts.decimal && (
+                        <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
+                      )}
                     </span>
                   </HiddenAmount>
                 }
@@ -549,7 +729,7 @@ export function HomePage() {
               label="This month"
               value={
                 blindBudgeting ? (
-                  '—'
+                  '···'
                 ) : (
                   <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
                 )
@@ -558,16 +738,26 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Upcoming */}
         {upcoming && (
           <section>
             <SectionHeader title="Upcoming" actionLabel="See all" actionTo="/cashflow" />
-            <div
-              className="flex items-center gap-3 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-card)] ring-1 ring-border/50"
+            <button
+              type="button"
+              onClick={(e) => {
+                captureOverlayOrigin(e.currentTarget)
+                openChat(
+                  `Upcoming: ${upcoming.title} (${upcoming.when}) for ${formatMoney(upcoming.amountMinor, currency)}. What should I prepare?`,
+                  { autoSend: true },
+                )
+              }}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-card)] transition-transform active:scale-[0.99]',
+                cardAccentClass('sun'),
+              )}
             >
               <span
                 className="grid size-12 place-items-center rounded-2xl text-xl"
-                style={{ background: 'var(--iris-soft)' }}
+                style={{ background: 'var(--sun-soft)' }}
               >
                 {upcoming.icon}
               </span>
@@ -583,17 +773,18 @@ export function HomePage() {
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           </section>
         )}
 
-        {/* Penda insights */}
-        <section>
-          <SectionHeader title="Penda says" />
-          <InsightCarousel cards={insightCards} />
-        </section>
+        {insightCards.length > 1 && (
+          <section>
+            <SectionHeader title="More from Penda" />
+            <InsightCarousel cards={insightCards.slice(1)} />
+          </section>
+        )}
 
-        {/* Recent activity */}
+        {/* Recent activity, capture via Penda, form for edit */}
         <section>
           <SectionHeader
             title="Recent activity"
@@ -604,18 +795,31 @@ export function HomePage() {
                 type="button"
                 onClick={(e) => {
                   captureOverlayOrigin(e.currentTarget)
-                  openAddForm()
+                  openChat('I spent ', { mode: 'quick' })
                 }}
                 className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
               >
-                + Add
+                Tell Penda
               </button>
             }
           />
           {recent.length === 0 ? (
-            <p className="px-1 text-sm text-muted-foreground">
-              No transactions yet — tap + Add to log one.
-            </p>
+            <div className="flex flex-col items-start gap-2 px-1">
+              <p className="text-sm text-muted-foreground">
+                Nothing logged yet. Tell Penda about a purchase or hold the mic.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  captureOverlayOrigin(e.currentTarget)
+                  openChat('I spent ', { mode: 'quick' })
+                }}
+              >
+                Log with Penda
+              </Button>
+            </div>
           ) : (
             <div className="flex flex-col gap-2.5">
               {recent.map((tx) => {
@@ -623,6 +827,9 @@ export function HomePage() {
                 return (
                   <ActivityRow
                     key={tx.id}
+                    accent={
+                      tx.type === 'income' ? 'mint' : tx.type === 'expense' ? 'rose' : 'iris'
+                    }
                     onClick={() => {
                       setEditing(tx)
                       setFormOpen(true)
@@ -705,7 +912,7 @@ export function HomePage() {
             merchant: pendingImpulse.merchant,
             description: pendingImpulse.description,
           })
-          toast('Paused for 24h — come back tomorrow if you still want it.')
+          toast('Paused for 24h. Come back tomorrow if you still want it.')
           setPendingImpulse(null)
           setFormOpen(false)
         }}
@@ -717,6 +924,12 @@ export function HomePage() {
           setPendingImpulse(null)
           void commitTransaction(input)
         }}
+      />
+
+      <WhyNudgeSheet
+        open={!!whyInsightId}
+        onOpenChange={(open) => !open && setWhyInsightId(null)}
+        evidence={whyInsightId ? evidenceForInsight(whyInsightId) : null}
       />
 
       <BottomNav />

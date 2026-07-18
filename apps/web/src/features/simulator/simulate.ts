@@ -65,7 +65,7 @@ export interface DebtPayoffResult {
 
 /**
  * Model "what if I paid extra toward this debt?" (roadmap bet #6's debt-payoff
- * scenario slider) — standard amortization: how many months to zero the
+ * scenario slider), standard amortization: how many months to zero the
  * balance, and the total interest paid along the way, at a given extra
  * monthly payment.
  */

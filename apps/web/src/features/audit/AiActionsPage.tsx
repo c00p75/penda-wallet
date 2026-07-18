@@ -52,7 +52,7 @@ export function AiActionsPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
-      <PageHeader title="AI actions" subtitle="What Penda proposed — and how it resolved" />
+      <PageHeader title="AI actions" subtitle="What Penda proposed, and how it resolved" />
 
       {isLoading ? null : actions.length === 0 ? (
         <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">

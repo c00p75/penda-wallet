@@ -23,7 +23,7 @@ describe('installStore', () => {
     localStorage.clear()
   })
 
-  it('captures a beforeinstallprompt fired after init — even with no component mounted', async () => {
+  it('captures a beforeinstallprompt fired after init, even with no component mounted', async () => {
     const store = await freshStore()
     store.initInstallCapture()
     expect(store.getInstallSnapshot().canPrompt).toBe(false)
@@ -85,7 +85,7 @@ describe('installStore', () => {
     expect(store.getInstallSnapshot().dismissed).toBe(true)
   })
 
-  it('is idempotent — repeated init does not double-register', async () => {
+  it('is idempotent, repeated init does not double-register', async () => {
     const store = await freshStore()
     store.initInstallCapture()
     store.initInstallCapture()

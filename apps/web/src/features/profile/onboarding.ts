@@ -18,7 +18,7 @@ export interface OnboardingAnswers {
   gender: Gender
 }
 
-/** Third-person phrasing for memory content — deliberately independent of the
+/** Third-person phrasing for memory content, deliberately independent of the
  * first-person UI labels in onboardingOptions.ts (which read as "your goal"). */
 const GOAL_MEMORY_PHRASE: Record<PrimaryGoal, string> = {
   build_emergency_fund: 'build an emergency fund',
@@ -70,7 +70,7 @@ export function buildOnboardingMemories(answers: OnboardingAnswers, walletId: st
     memories.push({
       wallet_id: walletId,
       kind: 'preference',
-      content: `They identify as ${genderLabel(answers.gender)}. Use this only to keep tone natural and relatable — never to shape financial advice or logic.`,
+      content: `They identify as ${genderLabel(answers.gender)}. Use this only to keep tone natural and relatable, never to shape financial advice or logic.`,
       mood: null,
     })
   }

@@ -13,7 +13,7 @@ interface ReconcilePromptProps {
   computedBalanceMinor: number
   /** When set (e.g. from a MoMo SMS balance), open in Fix mode with this value pre-filled. */
   suggestedActualMinor?: number | null
-  /** Called after the user resolves the prompt (confirmed or adjusted) — dismiss the card. */
+  /** Called after the user resolves the prompt (confirmed or adjusted), dismiss the card. */
   onResolved: () => void
   /** Create a balancing transaction for the difference when the user reports a different actual balance. */
   onAdjust: (deltaMinor: number) => Promise<void>
@@ -99,7 +99,7 @@ export function ReconcilePrompt({
   return (
     <div className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-border/60 bg-[var(--mint-soft)]/40 p-4 shadow-[var(--shadow-soft)] ring-1 ring-[var(--mint)]/20 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
       <p className="min-w-0 flex-1 text-sm">
-        Penda has <span className="font-semibold">{formatMoney(computedBalanceMinor, currency)}</span> — does that
+        Penda has <span className="font-semibold">{formatMoney(computedBalanceMinor, currency)}</span>, does that
         match your MoMo?
       </p>
       <div className="flex shrink-0 gap-1.5">

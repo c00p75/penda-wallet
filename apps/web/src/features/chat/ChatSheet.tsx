@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Send, X } from 'lucide-react'
+import { Maximize2, Send, X } from 'lucide-react'
 import { Camera, Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { undoSoftDeletedTransaction } from '@/features/audit/api'
@@ -39,10 +39,23 @@ import {
   viewHrefFor,
   withViewHrefs,
 } from './actionMeta'
+import type { ChatMode } from './chatStore'
 import { invalidateAfterChatResponse, useConfirmAiAction, useSendChatMessage } from './hooks'
+import { suggestedPromptsFor } from './suggestedPrompts'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
 import type { ChatAction, ChatMessage, PendingAction } from './types'
+import { useMemories } from '@/features/memory/hooks'
+import { usePacts } from '@/features/pacts/hooks'
+import { buildContinuityOpener } from '@/features/companion/continuity'
+import { dueDeferredQuestions, parseBusySignal } from '@/features/companion/deferredQuestions'
+import { EMPTY_DEFERRED, useDeferredStore } from '@/features/companion/deferredStore'
+import { DeferredQuestionBanner } from '@/features/companion/DeferredQuestionBanner'
+import {
+  assistantAskedQuestion,
+  shouldContinueListening,
+} from '@/features/companion/voiceConversation'
+import { DEFAULT_COMPANION_PREFS } from '@/features/companion/companionPrefs'
 
 interface ChatSheetProps {
   open: boolean
@@ -53,6 +66,14 @@ interface ChatSheetProps {
   autoSend?: boolean
   /** Called once the auto-send has fired, so the caller can clear the flag. */
   onAutoSendConsumed?: () => void
+  mode?: ChatMode
+  onModeChange?: (mode: ChatMode) => void
+  /** Begin hold-style listening when the sheet opens (home mic → chat). */
+  startRecording?: boolean
+  onStartRecordingConsumed?: () => void
+  /** When bumped, clear the local thread and start a fresh conversation id. */
+  newTopicNonce?: number
+  onNewTopic?: () => void
   currency?: string
   pageContext?: PageContext
 }
@@ -97,12 +118,6 @@ function loadStoredChat(walletId: string | undefined): StoredChat {
   }
 }
 
-const SUGGESTED_PROMPTS = [
-  'What did I spend this week?',
-  'How are my budgets doing?',
-  'Always categorize Uber as Transport',
-]
-
 export function ChatSheet({
   open,
   onOpenChange,
@@ -110,6 +125,12 @@ export function ChatSheet({
   initialInput,
   autoSend = false,
   onAutoSendConsumed,
+  mode = 'full',
+  onModeChange,
+  startRecording = false,
+  onStartRecordingConsumed,
+  newTopicNonce = 0,
+  onNewTopic,
   currency = 'USD',
   pageContext,
 }: ChatSheetProps) {
@@ -146,7 +167,7 @@ export function ChatSheet({
     el.style.height = `${Math.min(el.scrollHeight, 144)}px`
   }, [input])
 
-  // Persist across app reloads — restored above via loadStoredChat's lazy init.
+  // Persist across app reloads, restored above via loadStoredChat's lazy init.
   useEffect(() => {
     const key = storageKeyFor(walletId)
     if (!key) return
@@ -160,7 +181,7 @@ export function ChatSheet({
         } satisfies StoredChat),
       )
     } catch {
-      // Storage full or unavailable (e.g. private browsing) — history just won't persist.
+      // Storage full or unavailable (e.g. private browsing), history just won't persist.
     }
   }, [walletId, messages, conversationId, actionStatus])
   const sendMessage = useSendChatMessage(walletId)
@@ -169,9 +190,20 @@ export function ChatSheet({
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
   const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
+  const { data: memories = [] } = useMemories(session?.user.id)
+  const { data: pacts = [] } = usePacts(walletId)
+  const deferredList = useDeferredStore((s) =>
+    walletId ? (s.byWallet[walletId] ?? EMPTY_DEFERRED) : EMPTY_DEFERRED,
+  )
+  const enqueueDeferred = useDeferredStore((s) => s.enqueue)
+  const markDeferredAsked = useDeferredStore((s) => s.markAsked)
+  const markDeferredDismissed = useDeferredStore((s) => s.markDismissed)
+  const dueDeferred = dueDeferredQuestions(deferredList)
   const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
   const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
   const { data: categories = [] } = useCategories(walletId)
+  const voiceTurnRef = useRef(false)
+  const continuityInjectedRef = useRef(false)
   const uploadReceipt = useUploadReceipt(walletId)
   const updateTransaction = useUpdateTransaction(walletId)
   const deleteTransaction = useDeleteTransaction(walletId)
@@ -197,6 +229,7 @@ export function ChatSheet({
   useEffect(() => {
     if (!open) {
       autoSentRef.current = false
+      continuityInjectedRef.current = false
       return
     }
     if (!initialInput) return
@@ -222,6 +255,88 @@ export function ChatSheet({
     },
   })
 
+  // Home mic (and similar) open chat already listening, tap mic again to stop.
+  useEffect(() => {
+    if (!open || !startRecording) return
+    onStartRecordingConsumed?.()
+    baseInputRef.current = input
+    setRecordMode('locked')
+    voiceTurnRef.current = true
+    void voice.start().catch(() => setRecordMode('idle'))
+    // Only react to the startRecording flag when the sheet opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, startRecording])
+
+  // Cross-session continuity: when the sheet opens empty after a gap, seed a
+  // local assistant opener grounded in memory / active pacts.
+  useEffect(() => {
+    if (!open || continuityInjectedRef.current || messages.length > 0 || autoSend || initialInput) {
+      return
+    }
+    const prefs = profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS
+    if (!prefs.continuity_openers) {
+      continuityInjectedRef.current = true
+      return
+    }
+
+    const lastKey = walletId ? `penda:chat-last-open:${walletId}` : null
+    let daysSince: number | null = null
+    if (lastKey) {
+      const raw = localStorage.getItem(lastKey)
+      if (raw) {
+        const prev = Date.parse(raw)
+        if (Number.isFinite(prev)) {
+          daysSince = Math.floor((Date.now() - prev) / 86_400_000)
+        }
+      }
+      localStorage.setItem(lastKey, new Date().toISOString())
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const opener = buildContinuityOpener({
+      memories,
+      activePacts: pacts
+        .filter((p) => p.end_date >= today)
+        .map((p) => ({ description: p.description, end_date: p.end_date })),
+      personaName: persona.name,
+      daysSinceLastOpen: daysSince,
+      enabled: true,
+    })
+    continuityInjectedRef.current = true
+    if (!opener) return
+    setMessages((prev) =>
+      prev.length > 0 ? prev : [...prev, { id: nextId(), role: 'assistant', text: opener }],
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoSend, initialInput, walletId])
+
+  // "New topic" clears the local thread so the relationship can reset without
+  // losing the ambient sheet mount.
+  const lastTopicNonce = useRef(newTopicNonce)
+  useEffect(() => {
+    if (newTopicNonce === lastTopicNonce.current) return
+    lastTopicNonce.current = newTopicNonce
+    streamAbortRef.current?.abort()
+    setMessages([])
+    setConversationId(undefined)
+    sentConversationIdRef.current = undefined
+    setActionStatus({})
+    setLiveActions([])
+    setStreamingId(null)
+    setInput('')
+  }, [newTopicNonce])
+
+  // Multi-step tool work needs the full surface, promote quick → full.
+  useEffect(() => {
+    if (mode !== 'quick') return
+    const hasPending = messages.some((m) =>
+      (m.pendingActions ?? []).some((a) => !actionStatus[a.id]),
+    )
+    if (hasPending || liveActions.length > 0) onModeChange?.('full')
+  }, [mode, messages, actionStatus, liveActions, onModeChange])
+
+  const emptyPrompts = suggestedPromptsFor(pageContext, currency)
+
   // Appends a message, keeping the list capped to what we're willing to persist.
   function pushMessage(message: ChatMessage) {
     setMessages((prev) => [...prev, message].slice(-MAX_STORED_MESSAGES))
@@ -236,7 +351,7 @@ export function ChatSheet({
 
   // Keep the tool-progress channel subscribed while the sheet is open, not
   // just while a send is in flight: joining only on isPending raced the
-  // server — the WS join often hadn't completed when the first tool
+  // server, the WS join often hadn't completed when the first tool
   // broadcast fired, so early cues were silently missed.
   useEffect(() => {
     if (!open || !conversationId) return
@@ -310,7 +425,7 @@ export function ChatSheet({
     }
   }, [])
 
-  function applyChatResult(result: import('./types').ChatResponse, bubbleId: string, replaceId?: string) {
+  function applyChatResult(result: import('./types').ChatResponse, bubbleId: string) {
     const rotated =
       !!sentConversationIdRef.current && sentConversationIdRef.current !== result.conversationId
     setConversationId(result.conversationId)
@@ -318,7 +433,7 @@ export function ChatSheet({
       pushMessage({
         id: nextId(),
         role: 'assistant',
-        text: '— new session —',
+        text: '(new session)',
       })
     }
     const actions =
@@ -334,13 +449,33 @@ export function ChatSheet({
       autoApplied: result.autoApplied || undefined,
     }
     replaceMessage(bubbleId, reply)
-    // If we were retrying a different error bubble id, drop it.
-    if (replaceId && replaceId !== bubbleId) {
-      setMessages((prev) => prev.filter((m) => m.id !== replaceId))
-    }
     invalidateAfterChatResponse(queryClient, walletId, result)
-    if (result.autoApplied) {
-      toast('Applied without asking — undo anytime in AI actions.')
+    // Completion lives in the ActionTrail (Undo / AI actions), no toast divert.
+
+    // Multi-turn voice: keep listening after a voice turn so conversation continues.
+    const hasPending = (result.pendingActions ?? []).some((a) => !actionStatus[a.id])
+    if (
+      shouldContinueListening({
+        voiceConversationEnabled: true,
+        wasVoiceTurn: voiceTurnRef.current,
+        hasPendingConfirm: hasPending,
+        assistantAskedQuestion: assistantAskedQuestion(result.reply),
+      })
+    ) {
+      window.setTimeout(() => {
+        if (!open) return
+        baseInputRef.current = ''
+        setRecordMode('locked')
+        void voice.start().catch(() => setRecordMode('idle'))
+      }, 400)
+    } else {
+      voiceTurnRef.current = false
+    }
+
+    // Stash clarifying questions the model deferred ("I'll ask later: …").
+    const deferMatch = /I'll ask later:\s*(.+)$/im.exec(result.reply)
+    if (deferMatch?.[1] && walletId) {
+      enqueueDeferred(walletId, deferMatch[1].trim(), { askAfterMs: 2 * 60_000 })
     }
   }
 
@@ -374,7 +509,7 @@ export function ChatSheet({
           replaceMessage(bubbleId, {
             id: bubbleId,
             role: 'assistant',
-            text: 'Queued — sends when you’re back online.',
+            text: "Queued. Sends when you're back online.",
             queued: true,
           })
           return
@@ -382,10 +517,10 @@ export function ChatSheet({
           /* fall through */
         }
       }
-      // Stream failed — try classic JSON once.
+      // Stream failed, try classic JSON once.
       try {
         const result = await sendMessage.mutateAsync({ message: text, conversationId, pageContext })
-        applyChatResult(result, bubbleId, replaceId)
+        applyChatResult(result, bubbleId)
       } catch (fallbackError) {
         replaceMessage(bubbleId, {
           id: bubbleId,
@@ -416,7 +551,7 @@ export function ChatSheet({
         },
         onDone: (result) => {
           finished = true
-          applyChatResult(result, bubbleId, replaceId)
+          applyChatResult(result, bubbleId)
         },
       },
       abort.signal,
@@ -431,9 +566,17 @@ export function ChatSheet({
       })
   }
 
-  function submitText(text: string) {
+  function submitText(text: string, opts?: { fromVoice?: boolean }) {
     const trimmed = text.trim()
     if (!trimmed || busy) return
+
+    if (opts?.fromVoice) voiceTurnRef.current = true
+
+    // If the user signals they're busy, stash any pending deferred asks further out.
+    if (parseBusySignal(trimmed) && walletId && dueDeferred[0]) {
+      enqueueDeferred(walletId, dueDeferred[0].question, { askAfterMs: 30 * 60_000 })
+      markDeferredDismissed(walletId, dueDeferred[0].id)
+    }
 
     pushMessage({ id: nextId(), role: 'user', text: trimmed })
     setInput('')
@@ -443,7 +586,7 @@ export function ChatSheet({
           pushMessage({
             id: nextId(),
             role: 'assistant',
-            text: 'Queued — sends when you’re back online.',
+            text: "Queued. Sends when you're back online.",
             queued: true,
           })
         })
@@ -464,7 +607,7 @@ export function ChatSheet({
   }
 
   // Yes/Cancel on a staged edit or deletion. The change is applied server-side
-  // only here — the model never had the power to do it itself.
+  // only here, the model never had the power to do it itself.
   async function resolveAction(action: PendingAction, decision: 'confirm' | 'cancel') {
     if (actionStatus[action.id] || resolvingId) return
     setResolvingId(action.id)
@@ -477,8 +620,8 @@ export function ChatSheet({
         role: 'assistant',
         text:
           decision === 'confirm'
-            ? 'Queued — I’ll apply that when you’re back online.'
-            : 'Queued cancel — I’ll drop that when you’re back online.',
+            ? "Queued. I'll apply that when you're back online."
+            : "Queued cancel. I'll drop that when you're back online.",
         queued: true,
       })
     }
@@ -512,8 +655,8 @@ export function ChatSheet({
         role: 'assistant',
         text:
           decision === 'confirm'
-            ? `Done — ${res.summary.replace(/\.$/, '')}.`
-            : 'No worries — I left it as it was.',
+            ? `Done. ${res.summary.replace(/\.$/, '')}.`
+            : 'No worries. I left it as it was.',
         viewHref:
           decision === 'confirm' ? viewHrefFor(res.domain, targetId) : undefined,
         undoTransactionId: canUndoDelete ? targetId : undefined,
@@ -588,7 +731,7 @@ export function ChatSheet({
     const finalText = await voice.stop()
     setRecordMode('idle')
     const combined = mergedTranscript(finalText)
-    if (submit) submitText(combined)
+    if (submit) submitText(combined, { fromVoice: true })
     else setInput(combined)
   }
 
@@ -741,23 +884,25 @@ export function ChatSheet({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
-  }, [messages, sendMessage.isPending])
+  }, [messages, busy])
 
   const isRecording = recordMode !== 'idle'
   const statusText =
     voice.state === 'transcribing'
       ? 'Transcribing…'
       : recordMode === 'holding'
-        ? 'Listening — release to send'
+        ? 'Listening. Release to send'
         : recordMode === 'locked'
-          ? 'Listening — tap the mic to stop'
+          ? 'Listening. Tap the mic to stop'
           : null
+
+  const isQuick = mode === 'quick'
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        size="page"
+        size={isQuick ? 'half' : 'page'}
         showCloseButton={false}
         className="gap-0 overflow-hidden p-0"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
@@ -772,7 +917,10 @@ export function ChatSheet({
           }}
         >
           <div
-            className="flex shrink-0 touch-none justify-center pt-[max(0.75rem,env(safe-area-inset-top))] pb-1"
+            className={cn(
+              'flex shrink-0 touch-none justify-center pb-1',
+              isQuick ? 'pt-3' : 'pt-[max(0.75rem,env(safe-area-inset-top))]',
+            )}
             onPointerDown={onHandlePointerDown}
             onPointerMove={onHandlePointerMove}
             onPointerUp={onHandlePointerEnd}
@@ -781,35 +929,95 @@ export function ChatSheet({
             <div className="h-1 w-10 rounded-full bg-border/70" />
           </div>
 
-          <SheetHeader className="flex-row items-center justify-between px-5 pt-2 pb-1">
-            <SheetTitle className="flex items-center gap-2">
+          <SheetHeader className="flex-row items-center justify-between gap-2 px-5 pt-2 pb-1">
+            <SheetTitle className="flex min-w-0 items-center gap-2">
               <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
-              Chat with {persona.name}
+              <span className="truncate">{isQuick ? 'Quick log' : `Chat with ${persona.name}`}</span>
             </SheetTitle>
-            <SheetClose asChild>
-              <Button variant="ghost" size="icon-sm">
-                <X className="size-4" />
-                <span className="sr-only">Close</span>
-              </Button>
-            </SheetClose>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {!isQuick && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs text-muted-foreground"
+                  onClick={() => {
+                    onOpenChange(false)
+                    navigate('/journal')
+                  }}
+                >
+                  Memory
+                </Button>
+              )}
+              {messages.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs text-muted-foreground"
+                  onClick={() => onNewTopic?.()}
+                >
+                  New topic
+                </Button>
+              )}
+              {isQuick && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onModeChange?.('full')}
+                  aria-label="Expand chat"
+                >
+                  <Maximize2 className="size-4" />
+                </Button>
+              )}
+              <SheetClose asChild>
+                <Button variant="ghost" size="icon-sm">
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </SheetClose>
+            </div>
           </SheetHeader>
+
+          {dueDeferred[0] && walletId && !busy && (
+            <DeferredQuestionBanner
+              question={dueDeferred[0]}
+              onAsk={() => {
+                const q = dueDeferred[0]!
+                markDeferredAsked(walletId, q.id)
+                submitText(q.question)
+              }}
+              onDismiss={() => markDeferredDismissed(walletId, dueDeferred[0]!.id)}
+            />
+          )}
 
           <div className="flex-1 overflow-y-auto px-5">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Tell me about a purchase or payment — "spent {sym}12 on coffee at Blue Bottle", or
-                  hold the mic to say it and release to send.
+                  {isQuick
+                    ? `Say or type a purchase like "spent ${sym}12 on coffee" and I'll log it.`
+                    : pageContext?.page && pageContext.page !== 'home'
+                      ? `Ask me anything about this screen, or hold the mic to talk.`
+                      : `Tell me about a purchase or payment like "spent ${sym}12 on coffee", or hold the mic to say it.`}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {SUGGESTED_PROMPTS.map((prompt) => (
+                  {emptyPrompts.map((prompt) => (
                     <button
-                      key={prompt}
+                      key={prompt.label}
                       type="button"
-                      onClick={() => submitText(prompt)}
+                      onClick={() => {
+                        if (prompt.autoSend === false) {
+                          setInput(prompt.label)
+                          inputRef.current?.focus()
+                          return
+                        }
+                        submitText(prompt.label)
+                      }}
                       className="rounded-full border border-border/60 bg-card px-3.5 py-2 text-xs font-medium text-foreground/80 shadow-[var(--shadow-soft)] transition-all hover:bg-[var(--iris-soft)]/60 active:scale-[0.98]"
                     >
-                      {prompt}
+                      {prompt.label}
                     </button>
                   ))}
                 </div>
@@ -832,7 +1040,7 @@ export function ChatSheet({
                         size="sm"
                         variant="outline"
                         className="mt-2"
-                        disabled={sendMessage.isPending}
+                        disabled={busy}
                         onClick={() => retry(m)}
                       >
                         Retry
@@ -899,22 +1107,22 @@ export function ChatSheet({
                   })()}
                 </div>
               ))}
-              {sendMessage.isPending &&
-                (liveActions.length > 0 ? (
-                  <ActionTrail
-                    actions={liveActions}
-                    className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
-                  />
-                ) : (
-                  <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                    <span className="sr-only">Thinking</span>
-                    <span className="flex items-center gap-1" aria-hidden>
-                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                    </span>
-                  </div>
-                ))}
+              {busy && liveActions.length > 0 && (
+                <ActionTrail
+                  actions={liveActions}
+                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+                />
+              )}
+              {busy && !streamingId && liveActions.length === 0 && (
+                <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                  <span className="sr-only">Thinking</span>
+                  <span className="flex items-center gap-1" aria-hidden>
+                    <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                    <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                    <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                  </span>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -940,7 +1148,7 @@ export function ChatSheet({
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   e.preventDefault()
-                  if (sendMessage.isPending || !input.trim()) return
+                  if (busy || !input.trim()) return
                   submitText(input)
                 }}
                 placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
@@ -978,7 +1186,7 @@ export function ChatSheet({
               <Button
                 type="submit"
                 size="icon"
-                disabled={sendMessage.isPending || !input.trim() || uploadReceipt.isPending}
+                disabled={busy || !input.trim() || uploadReceipt.isPending}
                 className="size-10 shrink-0 self-end rounded-xl"
                 aria-label="Send"
               >
@@ -1036,8 +1244,8 @@ function renderInline(text: string, keyPrefix: string) {
   )
 }
 
-// Minimal markdown for the AI's replies — **bold** spans and "- "/"* " bullet
-// lists — just enough to read naturally without pulling in a markdown library.
+// Minimal markdown for the AI's replies, **bold** spans and "- "/"* " bullet
+// lists, just enough to read naturally without pulling in a markdown library.
 function MessageBody({ text }: { text: string }) {
   const blocks: React.ReactNode[] = []
   let listBuffer: string[] = []

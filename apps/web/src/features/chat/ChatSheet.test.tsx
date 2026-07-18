@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { ChatSheet } from './ChatSheet'
 import type { ChatResponse, ConfirmActionResponse } from './types'
 
-const { sendMock, confirmMock } = vi.hoisted(() => ({
+const { sendMock, confirmMock, streamMock } = vi.hoisted(() => ({
   sendMock: vi.fn(),
   confirmMock: vi.fn(),
+  streamMock: vi.fn(),
 }))
 
 // ChatSheet reaches for network/media-backed hooks; stub them so we can render
@@ -14,12 +16,26 @@ const { sendMock, confirmMock } = vi.hoisted(() => ({
 vi.mock('./hooks', () => ({
   useSendChatMessage: () => ({ mutateAsync: sendMock, isPending: false }),
   useConfirmAiAction: () => ({ mutateAsync: confirmMock, isPending: false }),
+  invalidateAfterChatResponse: vi.fn(),
 }))
+vi.mock('./api', async () => {
+  const actual = await vi.importActual<typeof import('./api')>('./api')
+  return {
+    ...actual,
+    sendChatMessageStream: streamMock,
+  }
+})
 vi.mock('./useVoiceRecorder', () => ({
   useVoiceRecorder: () => ({ state: 'idle', supportsLive: false, start: vi.fn(), stop: vi.fn() }),
 }))
 vi.mock('@/features/profile/hooks', () => ({
   useProfile: () => ({ data: undefined }),
+}))
+vi.mock('@/features/memory/hooks', () => ({
+  useMemories: () => ({ data: [] }),
+}))
+vi.mock('@/features/pacts/hooks', () => ({
+  usePacts: () => ({ data: [] }),
 }))
 vi.mock('@/features/entitlements/hooks', () => ({
   useEntitlement: () => ({ isPremium: true, data: { receipt_scan_preview_used: false } }),
@@ -56,10 +72,13 @@ vi.mock('@/store/authStore', () => ({
 }))
 
 function renderSheet(currency: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter>
-      <ChatSheet open onOpenChange={() => {}} walletId="w1" currency={currency} />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ChatSheet open onOpenChange={() => {}} walletId="w1" currency={currency} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
@@ -75,6 +94,20 @@ async function send(text: string) {
 beforeEach(() => {
   sendMock.mockReset()
   confirmMock.mockReset()
+  streamMock.mockReset()
+  // Default stream path: deliver whatever sendMock is configured to resolve.
+  streamMock.mockImplementation(
+    async (
+      _walletId: string,
+      _message: string,
+      _conversationId: string | undefined,
+      _pageContext: unknown,
+      handlers: { onDone: (r: ChatResponse) => void },
+    ) => {
+      const result = await sendMock()
+      handlers.onDone(result)
+    },
+  )
   localStorage.clear()
 })
 
@@ -100,48 +133,58 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
   it('sends the seed immediately when autoSend is set, and reports it consumed', async () => {
     sendMock.mockResolvedValue(reply({ reply: 'Here are a few ideas…' }))
     const onConsumed = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
-        <ChatSheet
-          open
-          onOpenChange={() => {}}
-          walletId="w1"
-          currency="ZMW"
-          initialInput="Help me plan my budget"
-          autoSend
-          onAutoSendConsumed={onConsumed}
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w1"
+            currency="ZMW"
+            initialInput="Help me plan my budget"
+            autoSend
+            onAutoSendConsumed={onConsumed}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
 
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Help me plan my budget' }),
-      ),
+    await waitFor(() => expect(streamMock).toHaveBeenCalled())
+    expect(streamMock).toHaveBeenCalledWith(
+      'w1',
+      'Help me plan my budget',
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
     )
     // The seed shows as the user's turn and Penda replies first.
     expect(screen.getByText('Help me plan my budget')).toBeInTheDocument()
     expect(await screen.findByText('Here are a few ideas…')).toBeInTheDocument()
     expect(onConsumed).toHaveBeenCalledTimes(1)
-    // Fires once — not on every re-render while the sheet is open.
-    expect(sendMock).toHaveBeenCalledTimes(1)
+    // Fires once, not on every re-render while the sheet is open.
+    expect(streamMock).toHaveBeenCalledTimes(1)
   })
 
   it('only prefills the input (no send) when autoSend is not set', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
-        <ChatSheet
-          open
-          onOpenChange={() => {}}
-          walletId="w1"
-          currency="ZMW"
-          initialInput="I spent K12 on coffee"
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w1"
+            currency="ZMW"
+            initialInput="I spent K12 on coffee"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
 
     expect(screen.getByRole('textbox')).toHaveValue('I spent K12 on coffee')
-    expect(sendMock).not.toHaveBeenCalled()
+    expect(streamMock).not.toHaveBeenCalled()
   })
 })
 
@@ -183,7 +226,7 @@ describe('ChatSheet staged edit/delete confirmation', () => {
     id: 'a1',
     kind: 'update' as const,
     domain: 'transaction',
-    summary: 'Update the expense of K10.00 — amount: K10.00 → K15.00.',
+    summary: 'Update the expense of K10.00, amount: K10.00 → K15.00.',
   }
 
   it('shows a confirm card when the reply stages an update, and does not claim it is done', async () => {
@@ -217,7 +260,7 @@ describe('ChatSheet staged edit/delete confirmation', () => {
       expect(confirmMock).toHaveBeenCalledWith({ actionId: 'a1', decision: 'confirm' }),
     )
     expect(await screen.findByText('Applied')).toBeInTheDocument()
-    expect(screen.getByText(/^Done —/)).toBeInTheDocument()
+    expect(screen.getByText(/^Done\. /)).toBeInTheDocument()
   })
 
   it('does not apply the change when the user cancels', async () => {
@@ -244,6 +287,8 @@ describe('ChatSheet staged edit/delete confirmation', () => {
 describe('ChatSheet failed sends', () => {
   it('shows a Retry action on failure, and retrying resends the same text', async () => {
     // Non-network error so we hit the retry bubble (network errors queue offline).
+    // Stream fails, then JSON fallback also fails.
+    streamMock.mockRejectedValueOnce(new Error('server busy'))
     sendMock.mockRejectedValueOnce(new Error('server busy'))
     renderSheet('ZMW')
 
@@ -255,8 +300,13 @@ describe('ChatSheet failed sends', () => {
 
     expect(await screen.findByText('Logged it.')).toBeInTheDocument()
     expect(screen.queryByText(/Something went wrong/)).toBeNull()
-    expect(sendMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ message: 'spent K12 on coffee' }),
+    expect(streamMock).toHaveBeenLastCalledWith(
+      'w1',
+      'spent K12 on coffee',
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
     )
   })
 })
@@ -269,8 +319,13 @@ describe('ChatSheet suggested prompts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'What did I spend this week?' }))
 
     await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'What did I spend this week?' }),
+      expect(streamMock).toHaveBeenCalledWith(
+        'w1',
+        'What did I spend this week?',
+        undefined,
+        undefined,
+        expect.any(Object),
+        expect.any(AbortSignal),
       ),
     )
     expect(await screen.findByText('Here you go.')).toBeInTheDocument()

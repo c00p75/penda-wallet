@@ -1,5 +1,5 @@
 // Every function requires a valid user JWT regardless of origin, so a
-// wildcard here was never an auth bypass — but locking it to known app
+// wildcard here was never an auth bypass, but locking it to known app
 // origins is still best practice. Configure via ALLOWED_ORIGINS (comma-
 // separated) once the production domain(s) are known; unset falls back to
 // '*' so this ships with zero risk of breaking the currently-live app on a
@@ -15,7 +15,7 @@ const BASE_CORS_HEADERS = {
   Vary: 'Origin',
 }
 
-/** Backward-compatible static headers (wildcard) — used only where ALLOWED_ORIGINS is unset. */
+/** Backward-compatible static headers (wildcard), used only where ALLOWED_ORIGINS is unset. */
 export const corsHeaders = {
   ...BASE_CORS_HEADERS,
   'Access-Control-Allow-Origin': '*',

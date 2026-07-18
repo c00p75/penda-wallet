@@ -158,7 +158,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             {walletSettingsDirty && (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Changing currency only affects how amounts are labeled going forward — it
+                  Changing currency only affects how amounts are labeled going forward, it
                   won't convert past entries.
                 </p>
                 <Button size="sm" onClick={handleSaveWalletSettings} disabled={updateWallet.isPending}>

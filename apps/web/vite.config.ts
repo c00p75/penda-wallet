@@ -31,7 +31,7 @@ export default defineConfig({
       },
       manifest: {
         id: '/',
-        name: 'Penda — AI Money Tracker',
+        name: 'Penda: AI Money Tracker',
         short_name: 'Penda',
         description: 'AI-first money tracking and budgeting.',
         start_url: '/',

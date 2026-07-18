@@ -8,7 +8,7 @@ const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 
 const GROQ_WHISPER_MODEL = 'whisper-large-v3-turbo'
 
-// Voice is free/ungated (below), so this is the only cost guard on it —
+// Voice is free/ungated (below), so this is the only cost guard on it , 
 // looser than chat's since a single utterance is cheap, but still bounded.
 const VOICE_RATE_LIMITS = {
   burst: { maxRequests: 30, windowMinutes: 5 },
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
     // Voice is the free hero (roadmap bet 9): the most demo-able interaction is
     // ungated. Depth (insights history, unlimited members, receipts) monetises
-    // instead — so no entitlement check here. Rate limiting is the cost guard
+    // instead, so no entitlement check here. Rate limiting is the cost guard
     // an entitlement gate would otherwise have provided (audit finding).
     const limitMessage = await checkRateLimits(supabase, user.id, 'transcribe-voice', VOICE_RATE_LIMITS)
     if (limitMessage) {
@@ -67,17 +67,17 @@ Deno.serve(async (req) => {
     })
 
     if (!res.ok) {
-      // Log the upstream detail, return a generic message — provider error
+      // Log the upstream detail, return a generic message, provider error
       // bodies aren't for end users.
       console.error(`Groq transcription error ${res.status}:`, await res.text())
-      return respond({ error: 'Transcription failed — please try again.' }, 502)
+      return respond({ error: 'Transcription failed, please try again.' }, 502)
     }
 
     const data = await res.json()
     return respond({ transcript: data.text ?? '' })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
+    return respond({ error: 'Something went wrong on our side. Please try again.' }, 500)
   }
 })
 

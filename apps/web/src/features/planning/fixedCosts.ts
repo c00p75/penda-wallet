@@ -3,16 +3,16 @@ import type { Transaction } from '@/features/transactions/types'
 
 export interface ActualSpendSplit {
   totalMinor: number
-  /** Spend Penda auto-posted from a recurring rule — rent, subs, utilities. */
+  /** Spend Penda auto-posted from a recurring rule, rent, subs, utilities. */
   fixedMinor: number
-  /** Everything else — the discretionary spend a plan can actually flex. */
+  /** Everything else, the discretionary spend a plan can actually flex. */
   flexibleMinor: number
 }
 
 /**
  * Split money already spent this period into fixed vs flexible. Fixed spend is
  * anything that landed via a recurring rule (`source === 'recurring'`) or
- * matches a detected recurring pattern (see `detectRecurringSpend`) — the
+ * matches a detected recurring pattern (see `detectRecurringSpend`), the
  * commitments you don't re-decide each day. Everything else is flexible, which
  * is where a plan and the safe-to-spend number have room to work.
  */
@@ -58,8 +58,8 @@ function recurrenceKey(tx: Transaction): string | null {
 }
 
 /**
- * Detect recurring spend Penda hasn't been told about yet — same merchant,
- * stable amount, roughly periodic — so the budget assist flow can pre-fill it
+ * Detect recurring spend Penda hasn't been told about yet, same merchant,
+ * stable amount, roughly periodic, so the budget assist flow can pre-fill it
  * as a fixed line and only ask the user about the genuinely flexible
  * remainder. Complements `source === 'recurring'` (rules the user already
  * registered) rather than replacing it: it looks at raw transaction history
@@ -171,7 +171,7 @@ function step(date: Date, freq: RecurringFrequency): Date {
 /**
  * Recurring expense commitments due between `fromStr` and `toStr` (both
  * inclusive), expanded from active recurring rules. These are the fixed bills a
- * plan must still reserve for before the period ends — the reserve the
+ * plan must still reserve for before the period ends, the reserve the
  * safe-to-spend number sets aside so "free money" isn't quietly spoken for.
  */
 export function upcomingFixedCosts(

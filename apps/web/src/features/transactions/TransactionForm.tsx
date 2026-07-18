@@ -260,7 +260,7 @@ export function TransactionForm({
           category_id: categoryId,
         })
       } catch {
-        // Rule save is best-effort — the transaction already landed.
+        // Rule save is best-effort, the transaction already landed.
       }
     }
     onOpenChange(false)
@@ -463,7 +463,7 @@ export function TransactionForm({
                   <SelectContent>
                     {CURRENCIES.map((c) => (
                       <SelectItem key={c.code} value={c.code}>
-                        {c.code} — {c.name}
+                        {c.code}, {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -537,7 +537,7 @@ export function TransactionForm({
                 onChange={(e) => setTeachPenda(e.target.checked)}
               />
               <span>
-                Teach Penda — next time I see <span className="font-medium">{merchant.trim()}</span>, use this
+                Teach Penda, next time I see <span className="font-medium">{merchant.trim()}</span>, use this
                 category
               </span>
             </label>

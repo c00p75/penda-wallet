@@ -1,5 +1,5 @@
 /**
- * A warm, human relative-time label for the memory timeline — "Today",
+ * A warm, human relative-time label for the memory timeline, "Today",
  * "Yesterday", "3 weeks ago", "One year ago".
  */
 export function relativeTimeLabel(dateStr: string, now: Date = new Date()): string {

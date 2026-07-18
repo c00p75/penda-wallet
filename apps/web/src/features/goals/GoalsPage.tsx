@@ -140,7 +140,7 @@ export function GoalsPage() {
               (g) => g.target_amount_minor > 0 && g.current_amount_minor >= g.target_amount_minor,
             )
             if (reached)
-              return { tone: 'warm', text: `You hit ${reached.name} 🎉 — ready to set the next one?` }
+              return { tone: 'warm', text: `You hit ${reached.name} 🎉, ready to set the next one?` }
             const nearest = goals
               .filter((g) => g.target_amount_minor > 0)
               .map((g) => ({ name: g.name, pct: g.current_amount_minor / g.target_amount_minor }))
@@ -167,7 +167,7 @@ export function GoalsPage() {
               }
             return {
               tone: 'default',
-              text: `${formatMoney(owed, wallet.base_currency)} is owed to you — I’ll help you keep track.`,
+              text: `${formatMoney(owed, wallet.base_currency)} is owed to you. I’ll help you keep track.`,
             }
           })()
 
@@ -196,7 +196,7 @@ export function GoalsPage() {
             <button
               key={q}
               type="button"
-              onClick={() => openChat(q)}
+              onClick={() => openChat(q, { autoSend: true })}
               className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
             >
               {q}

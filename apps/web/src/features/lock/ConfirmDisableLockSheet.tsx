@@ -14,7 +14,7 @@ import { verifyPin } from '@/lib/lockCrypto'
 import { verifyBiometric } from './webauthn'
 
 /**
- * Require PIN/biometric before turning balance privacy off — otherwise anyone
+ * Require PIN/biometric before turning balance privacy off, otherwise anyone
  * with the unlocked device can disable the gate from Settings.
  */
 export function ConfirmDisableLockSheet({
@@ -55,7 +55,7 @@ export function ConfirmDisableLockSheet({
       disable()
       onOpenChange(false)
     } else {
-      setError('Biometric didn’t work — enter your PIN.')
+      setError('Biometric didn’t work, enter your PIN.')
     }
   }
 

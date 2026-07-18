@@ -20,7 +20,7 @@ describe('starterBudgetsForPersona', () => {
     expect(result.length).toBeGreaterThan(0)
     expect(result.every((s) => s.source === 'persona')).toBe(true)
     expect(result.every((s) => s.suggestedAmountMinor > 0)).toBe(true)
-    // Weights never sum to 1 — some of the plan stays unbudgeted.
+    // Weights never sum to 1, some of the plan stays unbudgeted.
     const total = result.reduce((sum, s) => sum + s.suggestedAmountMinor, 0)
     expect(total).toBeLessThan(1_200_000)
   })

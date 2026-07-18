@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     const newStatus = body.decision === 'cancel' ? 'cancelled' : 'confirmed'
     const claimed = await claim(supabase, pending.id, newStatus)
     if (!claimed) {
-      return respond({ error: 'That action was already resolved — please refresh.' }, 409)
+      return respond({ error: 'That action was already resolved, please refresh.' }, 409)
     }
 
     if (body.decision === 'cancel') {
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: "Couldn't apply that change — please try again." }, 500)
+    return respond({ error: "Couldn't apply that change, please try again." }, 500)
   }
 })
 

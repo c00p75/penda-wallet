@@ -31,7 +31,7 @@ function labelFor(score: number): ConfidenceLabel {
 
 /**
  * Holistic financial confidence 0–100 from cash position, cashflow,
- * goal progress, and budget adherence — not a credit score.
+ * goal progress, and budget adherence, not a credit score.
  */
 export function computeConfidenceScore(input: ConfidenceInputs): ConfidenceResult {
   const { balanceMinor, monthIncomeMinor, monthExpenseMinor, goalProgressAvg, budgetAdherence } = input

@@ -17,7 +17,7 @@ interface EmojiPickerProps {
 }
 
 /**
- * A curated tappable grid plus a free-text fallback — phones already have a
+ * A curated tappable grid plus a free-text fallback, phones already have a
  * full emoji keyboard, so typing/pasting into the input covers anything the
  * grid doesn't. Pass `groups` for a large, categorized set (scrolls); pass
  * `emojis` for a short flat set.

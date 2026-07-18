@@ -18,7 +18,7 @@ interface BudgetSuggestionsSheetProps {
 
 /**
  * Presents budgets Penda derived from recent spending. Everything starts
- * selected — the user deselects what they don't want and confirms in one tap.
+ * selected, the user deselects what they don't want and confirms in one tap.
  */
 export function BudgetSuggestionsSheet({
   open,
@@ -57,8 +57,8 @@ export function BudgetSuggestionsSheet({
           </SheetTitle>
           <SheetDescription>
             {isStarter
-              ? "No spending history yet, so here's a sensible starting split for your plan — tweak any later."
-              : 'Based on your last few months. I rounded each one just above what you usually spend — tweak any later.'}
+              ? "No spending history yet, so here's a sensible starting split for your plan. Tweak any later."
+              : 'Based on your last few months. I rounded each one just above what you usually spend, tweak any later.'}
           </SheetDescription>
         </SheetHeader>
 

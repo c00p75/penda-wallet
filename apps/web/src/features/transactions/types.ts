@@ -74,6 +74,6 @@ export interface TransactionDraft {
   description: string | null
   transaction_date: string
   source?: TransactionSource
-  /** MoMo SMS reported balance — used to seed a reconcile prompt after save. */
+  /** MoMo SMS reported balance, used to seed a reconcile prompt after save. */
   reported_balance_minor?: number | null
 }

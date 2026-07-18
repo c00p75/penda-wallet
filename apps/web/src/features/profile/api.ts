@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { normalizeNotificationPrefs } from '@/features/notifications/prefs'
+import { normalizeCompanionPrefs } from '@/features/companion/companionPrefs'
 import {
   DEFAULT_AI_CONSENT,
   DEFAULT_AI_TRUST,
@@ -28,6 +29,7 @@ function normalizeProfile(row: Record<string, unknown>): Profile {
         : DEFAULT_AI_CONSENT,
     ai_trust: normalizeAiTrust(row.ai_trust),
     notification_prefs: normalizeNotificationPrefs(row.notification_prefs),
+    companion_prefs: normalizeCompanionPrefs(row.companion_prefs),
     blind_budgeting: Boolean(row.blind_budgeting),
     tax_reserve_pct: Number(row.tax_reserve_pct ?? 0),
     round_up_enabled: Boolean(row.round_up_enabled),

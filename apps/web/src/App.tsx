@@ -5,7 +5,7 @@ import { AmbientChat } from '@/features/chat/AmbientChat'
 import { LockPrompt } from '@/features/lock/UnlockSheet'
 import { useOfflineQueueSync } from '@/pwa/useOfflineQueue'
 
-// Every other route is code-split — the home dashboard is the only page that
+// Every other route is code-split, the home dashboard is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
 const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
 const LedgerPage = lazy(() => import('@/features/ledger/LedgerPage').then((m) => ({ default: m.LedgerPage })))

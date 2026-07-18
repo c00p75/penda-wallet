@@ -6,7 +6,7 @@ import {
   MagicWand,
   Notebook,
   Path,
-  Plus,
+  Target,
   Trophy,
 } from '@/components/icons/product'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -37,18 +37,29 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
     if (location.pathname !== '/') navigate('/')
   }
 
-  const quickActions = [
+  // Capture = talk to Penda. Explore = depth pages. No parallel "Add txn" form , 
+  // manual edit stays on the ledger / activity rows.
+  const captureActions = [
     {
       icon: ChatCircle,
       label: 'Log expense',
       tone: 'iris' as const,
-      onTap: () => runAndClose(() => openChat('I spent ')),
+      onTap: () => runAndClose(() => openChat('I spent ', { mode: 'quick' })),
     },
     {
       icon: Camera,
       label: 'Scan receipt',
       tone: 'sun' as const,
       onTap: () => requestHomeIntent('scan-receipt'),
+    },
+  ]
+
+  const planActions = [
+    {
+      icon: Target,
+      label: 'Goals',
+      tone: 'apricot' as const,
+      onTap: () => runAndClose(() => navigate('/goals')),
     },
     {
       icon: CalendarBlank,
@@ -62,6 +73,9 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
       tone: 'rose' as const,
       onTap: () => runAndClose(() => navigate('/journal')),
     },
+  ]
+
+  const suiteActions = [
     {
       icon: MagicWand,
       label: 'What if…',
@@ -80,12 +94,6 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
       tone: 'sun' as const,
       onTap: () => runAndClose(() => navigate('/challenges')),
     },
-    {
-      icon: Plus,
-      label: 'Add txn',
-      tone: 'mint' as const,
-      onTap: () => requestHomeIntent('add-txn'),
-    },
   ]
 
   return (
@@ -97,9 +105,27 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
 
         <div className="flex flex-col gap-5 px-5 pb-6">
           <section>
-            <SectionHeader title="Quick actions" />
+            <SectionHeader title="Capture" />
             <div className="grid grid-cols-3 gap-2.5">
-              {quickActions.map(({ icon, label, tone, onTap }) => (
+              {captureActions.map(({ icon, label, tone, onTap }) => (
+                <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionHeader title="Plan" />
+            <div className="grid grid-cols-3 gap-2.5">
+              {planActions.map(({ icon, label, tone, onTap }) => (
+                <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionHeader title="More" />
+            <div className="grid grid-cols-3 gap-2.5">
+              {suiteActions.map(({ icon, label, tone, onTap }) => (
                 <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
               ))}
             </div>

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase/client'
 import type { Transaction } from '@/features/transactions/types'
 
 // supabase.functions.invoke surfaces every non-2xx as a FunctionsHttpError
-// whose .message is just "Edge Function returned a non-2xx status code" — the
+// whose .message is just "Edge Function returned a non-2xx status code", the
 // server's actual user-facing copy (premium 402s, rate-limit 429s, validation
 // 400s) sits unread in the response body. Unwrap it so the UI shows what the
 // server said instead of the generic wrapper line.
@@ -19,7 +19,7 @@ async function unwrapFunctionError(error: unknown): Promise<Error> {
         return new Error(message)
       }
     } catch {
-      /* body wasn't JSON — fall through to the original error */
+      /* body wasn't JSON, fall through to the original error */
     }
   }
   return error instanceof Error ? error : new Error(String(error))

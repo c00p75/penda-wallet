@@ -47,7 +47,7 @@ export function ImpulsePauseSheet({
               onOpenChange(false)
             }}
           >
-            Yes — remind me tomorrow
+            Yes, remind me tomorrow
           </Button>
           <Button
             variant="outline"

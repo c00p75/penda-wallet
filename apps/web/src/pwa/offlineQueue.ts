@@ -98,7 +98,7 @@ export async function flushPendingTransactions(
       await removePendingTransaction(item.id)
       synced++
     } catch {
-      // Still offline or rejected — keep queued.
+      // Still offline or rejected, keep queued.
     }
   }
   return synced
@@ -108,7 +108,7 @@ export async function enqueueChatMessage(walletId: string, text: string): Promis
   const db = await getDb()
   const existing = await db.getAll('pending-chat-messages')
   if (existing.length >= MAX_PENDING_CHAT) {
-    throw new Error('Too many queued chat messages — reconnect and try again.')
+    throw new Error('Too many queued chat messages, reconnect and try again.')
   }
   const pending: PendingChatMessage = {
     id: crypto.randomUUID(),
@@ -154,7 +154,7 @@ export async function enqueueAiConfirm(
   const db = await getDb()
   const existing = await db.getAll('pending-ai-confirms')
   if (existing.length >= MAX_PENDING_AI_CONFIRMS) {
-    throw new Error('Too many queued AI confirms — reconnect and try again.')
+    throw new Error('Too many queued AI confirms, reconnect and try again.')
   }
   // Replace any prior queued decision for the same action.
   for (const item of existing) {

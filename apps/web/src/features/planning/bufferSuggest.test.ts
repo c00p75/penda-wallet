@@ -39,7 +39,7 @@ describe('suggestBufferFromIncome', () => {
 
   it('returns null when no single cash-in dominates', () => {
     const now = new Date(2026, 6, 18)
-    // Equal thirds — largest is ~33% of the month, below the 35% bar.
+    // Equal thirds, largest is ~33% of the month, below the 35% bar.
     expect(
       suggestBufferFromIncome(
         [

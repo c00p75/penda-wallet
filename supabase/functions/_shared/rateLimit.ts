@@ -7,8 +7,8 @@ export interface RateLimitWindow {
 
 /**
  * Checks a fixed-window quota via the check_rate_limit() DB function (see
- * migration 0029). Fails OPEN on a DB error — a broken rate limiter should
- * never take down the feature it's protecting — but logs so it's visible.
+ * migration 0029). Fails OPEN on a DB error, a broken rate limiter should
+ * never take down the feature it's protecting, but logs so it's visible.
  */
 async function underLimit(
   supabase: SupabaseClient,
@@ -31,7 +31,7 @@ async function underLimit(
 
 /**
  * Enforce one or more windows for an endpoint (e.g. a tight burst window plus
- * a loose daily cap) — every window must pass. Returns null if allowed, or a
+ * a loose daily cap), every window must pass. Returns null if allowed, or a
  * user-facing message to return as a 429 if any window is exceeded.
  */
 export async function checkRateLimits(
@@ -43,7 +43,7 @@ export async function checkRateLimits(
   for (const [label, window] of Object.entries(windows)) {
     const ok = await underLimit(supabase, userId, `${endpoint}:${label}`, window)
     if (!ok) {
-      return "You're sending messages faster than I can keep up — give it a moment and try again."
+      return "You're sending messages faster than I can keep up, give it a moment and try again."
     }
   }
   return null

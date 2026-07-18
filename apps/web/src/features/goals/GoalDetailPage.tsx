@@ -92,7 +92,7 @@ export function GoalDetailPage() {
   async function handlePactSubmit(input: CommitmentPactInput) {
     try {
       await createPact.mutateAsync(input)
-      toast('Pact set — I\'ll hold you to it.')
+      toast('Pact set. I\'ll hold you to it.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -191,7 +191,7 @@ export function GoalDetailPage() {
           <span className="font-semibold text-foreground">{formatMoney(goal.target_amount_minor, currency)}</span>{' '}
           is {ringPct}% funded.{' '}
           {reached ? (
-            'You\'ve already hit it — nice work.'
+            'You\'ve already hit it, nice work.'
           ) : perMonth !== null && perMonth > 0 ? (
             <>
               To reach it by {formatDate(goal.target_date!)}, Penda suggests saving{' '}
@@ -200,7 +200,7 @@ export function GoalDetailPage() {
           ) : forecast.kind === 'projected' ? (
             <>At your current pace, you're on track to finish by {formatDate(forecast.projectedDate!)}.</>
           ) : forecast.kind === 'not-saving' ? (
-            'You haven\'t added to it recently — a small monthly amount would get it moving.'
+            'You haven\'t added to it recently, a small monthly amount would get it moving.'
           ) : (
             'Add a few contributions and I\'ll start projecting your pace.'
           )}

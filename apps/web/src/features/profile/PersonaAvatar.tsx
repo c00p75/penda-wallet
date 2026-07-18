@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import type { AiPersonality } from './types'
 
 /**
- * A cast of hand-drawn portrait avatars for the AI personas — one flat-vector
+ * A cast of hand-drawn portrait avatars for the AI personas, one flat-vector
  * face per personality, built from a shared kit of features (skin, hair, brows,
  * eyes, mouth, accessories) so the ten read as one family. The tinted circle
  * behind each face reuses the persona's `accent`, matching the rest of the profile UI.

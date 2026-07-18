@@ -4,9 +4,13 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
   type NotificationPrefs,
 } from '@/features/notifications/prefs'
+import {
+  DEFAULT_COMPANION_PREFS,
+  type CompanionPrefs,
+} from '@/features/companion/companionPrefs'
 
-export type { NotificationPrefs }
-export { DEFAULT_NOTIFICATION_PREFS }
+export type { NotificationPrefs, CompanionPrefs }
+export { DEFAULT_NOTIFICATION_PREFS, DEFAULT_COMPANION_PREFS }
 
 export type AiPersonality =
   | 'balanced_coach'
@@ -59,6 +63,7 @@ export interface Profile {
   gender: Gender
   notification_opt_in: boolean
   notification_prefs: NotificationPrefs
+  companion_prefs: CompanionPrefs
   ai_consent: AiConsent
   ai_trust: AiTrust
   blind_budgeting: boolean
@@ -79,6 +84,7 @@ export interface ProfileInput {
   gender?: Gender
   notification_opt_in?: boolean
   notification_prefs?: NotificationPrefs
+  companion_prefs?: CompanionPrefs
   ai_consent?: AiConsent
   ai_trust?: AiTrust
   blind_budgeting?: boolean
@@ -90,14 +96,14 @@ export interface ProfileInput {
 
 export interface PersonalityMeta {
   value: AiPersonality
-  /** The character's given name — the headline shown to the user. */
+  /** The character's given name, the headline shown to the user. */
   name: string
   /** The archetype, shown as a subtitle under the name. */
   label: string
   description: string
   /** A line in this persona's own voice, shown as a live preview when picked. */
   preview: string
-  /** Character tint — a CSS color expression, used for the face and card accent. */
+  /** Character tint, a CSS color expression, used for the face and card accent. */
   accent: string
 }
 
@@ -107,14 +113,14 @@ export const PERSONALITIES: PersonalityMeta[] = [
     name: 'Amara',
     label: 'Balanced coach',
     description: 'Warm, encouraging, and balanced.',
-    preview: 'You’re K600 ahead of last month — steady wins like this add up.',
+    preview: "You're K600 ahead of last month. Steady wins like this add up.",
     accent: 'var(--iris)',
   },
   {
     value: 'angry_mom',
     name: 'Mama Rose',
     label: 'Angry mom',
-    description: 'Exasperated but loving — tired of the takeout.',
+    description: 'Exasperated but loving, tired of the takeout.',
     preview: 'Takeout again? Ay. There’s rice at home, you know.',
     accent: 'var(--rose)',
   },
@@ -123,7 +129,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     name: 'Sena',
     label: 'Wise mentor',
     description: 'Calm perspective, never judgment.',
-    preview: 'Spending is just choices made visible. You’re seeing them now — that’s the work.',
+    preview: "Spending is just choices made visible. You're seeing them now. That's the work.",
     accent: 'var(--mint)',
   },
   {
@@ -131,7 +137,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     name: 'Kabwe',
     label: 'Chill friend',
     description: 'Casual, easygoing, keeps you honest.',
-    preview: 'No stress — you’ve still got K600 for the weekend. Enjoy it.',
+    preview: "No stress. You've still got K600 for the weekend. Enjoy it.",
     accent: 'var(--apricot)',
   },
   {
@@ -162,7 +168,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     value: 'hustler',
     name: 'Musa',
     label: 'The hustler',
-    description: 'Growth mindset — earn more, not just spend less.',
+    description: 'Growth mindset, earn more, not just spend less.',
     preview: 'K600 left is fine. Real question: what’s bringing more in? What did you sell this week?',
     accent: 'oklch(0.64 0.15 155)',
   },
@@ -178,7 +184,7 @@ export const PERSONALITIES: PersonalityMeta[] = [
     value: 'analyst',
     name: 'Nomsa',
     label: 'The analyst',
-    description: 'Just the numbers — precise, no fluff.',
+    description: 'Just the numbers, precise, no fluff.',
     preview: 'K600 remaining, 5 days to payday: K120/day. Current average: K185/day. Overshoot risk ~K325.',
     accent: 'oklch(0.58 0.03 250)',
   },

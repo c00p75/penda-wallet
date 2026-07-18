@@ -23,6 +23,9 @@ import { useCreateSavingsGoal, useSavingsGoals, useUpdateSavingsGoal } from '@/f
 import { localMonthStart } from '@/lib/dates'
 import { useProfile } from '@/features/profile/hooks'
 import { termFor } from '@/features/profile/modes'
+import { detectFamilyCompanionTips } from '@/features/companion/familyCompanion'
+import { useChatStore } from '@/features/chat/chatStore'
+import { DEFAULT_COMPANION_PREFS } from '@/features/companion/companionPrefs'
 
 /** Family-mode hub: household plan snapshot + pocket-money (allowance) goals. */
 export function FamilyHubPage() {
@@ -37,6 +40,7 @@ export function FamilyHubPage() {
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const createGoal = useCreateSavingsGoal(wallet?.id)
   const updateGoal = useUpdateSavingsGoal(wallet?.id)
+  const openChat = useChatStore((s) => s.openChat)
 
   const { data: shares = [] } = useQuery({
     queryKey: ['plan-shares', plan?.id],
@@ -65,6 +69,12 @@ export function FamilyHubPage() {
   const mode = profile?.mode ?? 'individual'
   const allowances = goals.filter((g) => /allowance|pocket|kids?/i.test(g.name))
   const currency = wallet.base_currency
+  const familyTips = detectFamilyCompanionTips({
+    mode,
+    currency,
+    allowances,
+    enabled: (profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS).family_nudges,
+  })
 
   const labelFor = (userId: string) =>
     members.find((m) => m.user_id === userId)?.display_name?.trim() ||
@@ -143,10 +153,25 @@ export function FamilyHubPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
       <PageHeader title="Family hub" subtitle="Household plan & allowances" />
 
-      <AiInsight askText="Help us stay on track as a household this month">
-        Your {termFor(mode, 'plan').toLowerCase()} is the shared intention — invite members so everyone
-        sees the same numbers and allocations.
+      <AiInsight
+        askText={
+          familyTips[0]?.chatSeed ?? 'Help us stay on track as a household this month'
+        }
+      >
+        {familyTips[0]?.text ??
+          `Your ${termFor(mode, 'plan').toLowerCase()} is the shared intention, invite members so everyone sees the same numbers and allocations.`}
       </AiInsight>
+      {familyTips[0] && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => openChat(familyTips[0]!.chatSeed, { autoSend: true })}
+        >
+          Talk with Penda
+        </Button>
+      )}
 
       <HeroCard tone="iris" className="w-full min-h-[8rem]">
         <div className="flex items-center gap-3">
@@ -163,7 +188,7 @@ export function FamilyHubPage() {
                 <span className="ml-2 text-base font-medium text-white/80">this month</span>
               </p>
             ) : (
-              <p className="mt-1 text-sm text-white/85">No plan yet — set one on Budgets.</p>
+              <p className="mt-1 text-sm text-white/85">No plan yet. Set one on Budgets.</p>
             )}
           </div>
         </div>
@@ -242,7 +267,7 @@ export function FamilyHubPage() {
         <SectionHeader title="Allowances" actionLabel="+ New" onAction={() => addAllowance()} />
         {allowances.length === 0 ? (
           <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            Track pocket money as named savings goals — one per kid.
+            Track pocket money as named savings goals, one per kid.
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">

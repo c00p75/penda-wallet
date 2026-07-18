@@ -1,5 +1,5 @@
 // Local PIN hashing for the balance lock. The PIN never leaves the device and
-// is never sent to the server — it's a local reveal gate, so we hash it with
+// is never sent to the server, it's a local reveal gate, so we hash it with
 // PBKDF2 (Web Crypto) and keep only salt + hash in local storage.
 
 const ITERATIONS = 100_000

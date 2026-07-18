@@ -5,7 +5,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const CRON_SECRET = Deno.env.get('CRON_SECRET')!
 
-// open.er-api.com — free, no key, includes GHS/NGN/KES/ZAR (Frankfurter/ECB lacks these).
+// open.er-api.com, free, no key, includes GHS/NGN/KES/ZAR (Frankfurter/ECB lacks these).
 const RATES_URL = 'https://open.er-api.com/v6/latest/USD'
 
 Deno.serve(async (req) => {

@@ -34,7 +34,7 @@ export function CurrencyCombobox({ value, onChange, id }: CurrencyComboboxProps)
           aria-expanded={open}
           className="w-full justify-between font-normal"
         >
-          {selected ? `${selected.symbol} ${selected.code} — ${selected.name}` : 'Select currency'}
+          {selected ? `${selected.symbol} ${selected.code}, ${selected.name}` : 'Select currency'}
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -54,7 +54,7 @@ export function CurrencyCombobox({ value, onChange, id }: CurrencyComboboxProps)
                   }}
                 >
                   <Check className={cn('size-4', value === c.code ? 'opacity-100' : 'opacity-0')} />
-                  {c.symbol} {c.code} — {c.name}
+                  {c.symbol} {c.code}, {c.name}
                 </CommandItem>
               ))}
             </CommandGroup>

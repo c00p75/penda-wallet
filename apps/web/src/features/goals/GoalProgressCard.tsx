@@ -53,7 +53,7 @@ export function GoalProgressCard({
       : forecast.kind === 'projected'
         ? `On pace · done by ${formatDate(forecast.projectedDate!)}`
         : forecast.kind === 'not-saving'
-          ? 'Paused — add funds to get moving'
+          ? 'Paused, add funds to get moving'
           : 'Add funds to start tracking your pace'
 
   return (

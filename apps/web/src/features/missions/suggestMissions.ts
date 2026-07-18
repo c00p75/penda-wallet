@@ -9,7 +9,7 @@ export interface SuggestedMission {
 }
 
 /**
- * Client-side mission ideas from recent spending — e.g. no-spend days in the
+ * Client-side mission ideas from recent spending, e.g. no-spend days in the
  * top category. Pure so "Suggest a mission" doesn't need a model call.
  */
 export function suggestMissions(transactions: Transaction[], now: Date = new Date()): SuggestedMission[] {
@@ -35,8 +35,8 @@ export function suggestMissions(transactions: Transaction[], now: Date = new Dat
 
   if (top) {
     suggestions.push({
-      title: `5 no-spend days — ${top.name}`,
-      description: `Skip ${top.name} for five days. You’ve already spent on it this month — a short pause resets the habit.`,
+      title: `5 no-spend days, ${top.name}`,
+      description: `Skip ${top.name} for five days. You’ve already spent on it this month, a short pause resets the habit.`,
       start_date: start,
       end_date: end5,
     })
@@ -44,7 +44,7 @@ export function suggestMissions(transactions: Transaction[], now: Date = new Dat
 
   suggestions.push({
     title: 'Cash-only weekend',
-    description: 'No card or MoMo impulse buys from Friday evening through Sunday — cash only for fun money.',
+    description: 'No card or MoMo impulse buys from Friday evening through Sunday, cash only for fun money.',
     start_date: start,
     end_date: end7,
   })

@@ -5,12 +5,12 @@ import { useOfflinePending } from '@/pwa/useOfflineQueue'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
-import { BellIcon, SquaresFourIcon, TrophyIcon } from '@/components/icons/product'
+import { BellIcon, SquaresFourIcon } from '@/components/icons/product'
 import { useUnreadNotificationCount } from '@/features/notifications/hooks'
 
 /**
- * Primary-tab chrome (Home / Budgets / Goals / Analytics): menu, compete,
- * notifications, and profile. Secondary pages use PageHeader instead.
+ * Primary-tab chrome: menu, notifications, and profile. Suite destinations
+ * (Compete, Missions, …) live in the menu so the header stays calm.
  */
 export function AppHeader() {
   const session = useAuthStore((s) => s.session)
@@ -51,13 +51,6 @@ export function AppHeader() {
         </button>
 
         <div className="flex items-center gap-2">
-          <Link
-            to="/challenges"
-            aria-label="Compete"
-            className="grid size-10 place-items-center rounded-full text-muted-foreground transition-transform active:scale-95"
-          >
-            <TrophyIcon className="size-5" weight="regular" />
-          </Link>
           <Link
             to="/notifications"
             aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}

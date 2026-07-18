@@ -110,7 +110,7 @@ export function LoginPage() {
           animationDuration: '600ms',
         }}
       >
-        {/* Corner sparkles — kept clear of the headline */}
+        {/* Corner sparkles, kept clear of the headline */}
         <Sparkle twinkle={false} color="rgba(255,255,255,0.9)" rotate={10} className="absolute right-7 top-10 size-12" />
         <Sparkle twinkle={false} color="rgba(255,255,255,0.85)" className="absolute bottom-10 right-10 size-7" />
         <Sparkle color="var(--iris)" durationMs={3600} className="absolute right-6 top-28 size-4 opacity-80" />
@@ -129,10 +129,10 @@ export function LoginPage() {
           understood.
         </h1>
         <p className="relative z-10 mt-3.5 max-w-[16rem] text-[15px] font-medium leading-relaxed text-foreground/55">
-          Meet Penda — your private AI money companion.
+          Meet Penda, your private AI money companion.
         </p>
 
-        {/* Big graphic star — flows below the copy (never behind the headline) and bleeds off the panel edge */}
+        {/* Big graphic star, flows below the copy (never behind the headline) and bleeds off the panel edge */}
         <div className="relative z-0 mt-auto -mb-3 -ml-1 pt-6">
           <Sparkle twinkle={false} color="var(--foreground)" rotate={-8} className="size-24 opacity-90" />
         </div>

@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react'
 import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
+import { accentFromInsightTone, cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 
 export interface InsightCard {
@@ -14,11 +15,22 @@ export interface InsightCard {
   label?: string
   text: string
   action?: { label: string; onTap: () => void }
+  /** Trust affordance, explain what triggered this nudge. */
+  onWhy?: () => void
 }
 
 function InsightCardView({ card }: { card: InsightCard }) {
   return (
-    <div className="flex h-full items-start gap-3 rounded-2xl border bg-background/60 p-3.5 shadow-sm backdrop-blur-md">
+    <div
+      className={cn(
+        'flex h-full items-start gap-3 rounded-2xl bg-card p-3.5 shadow-[var(--shadow-soft)]',
+        cardAccentClass(
+          card.variant === 'tip' && card.tone === 'default'
+            ? 'apricot'
+            : accentFromInsightTone(card.tone),
+        ),
+      )}
+    >
       {card.variant === 'tip' ? (
         <span
           aria-hidden
@@ -35,17 +47,29 @@ function InsightCardView({ card }: { card: InsightCard }) {
           {card.label && <span className="font-semibold">{card.label} </span>}
           {card.text}
         </p>
-        {card.action && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={card.action.onTap}
-            className="-mb-1 self-start px-0 text-primary hover:bg-transparent"
-          >
-            {card.action.label}
-            <ArrowRight className="size-4" />
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {card.action && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={card.action.onTap}
+              className="-mb-1 self-start px-0 text-primary hover:bg-transparent"
+            >
+              {card.action.label}
+              <ArrowRight className="size-4" />
+            </Button>
+          )}
+          {card.onWhy && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={card.onWhy}
+              className="-mb-1 self-start px-0 text-xs text-muted-foreground hover:bg-transparent"
+            >
+              Why this?
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )

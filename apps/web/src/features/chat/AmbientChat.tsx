@@ -7,8 +7,8 @@ import { pageContextFromPathname } from './pageContext'
 
 /**
  * The conversation as an ambient layer: one ChatSheet mounted for the whole
- * app so Penda is reachable from any page. Opens as a full-screen surface from
- * the AI button in the bottom nav (see BottomNav).
+ * app so Penda is reachable from any page. Opens as a full-screen or quick
+ * half-sheet from Ask Penda / insights / voice capture.
  */
 export function AmbientChat() {
   const session = useAuthStore((s) => s.session)
@@ -18,8 +18,14 @@ export function AmbientChat() {
   const open = useChatStore((s) => s.open)
   const prefill = useChatStore((s) => s.prefill)
   const autoSend = useChatStore((s) => s.autoSend)
+  const mode = useChatStore((s) => s.mode)
+  const startRecording = useChatStore((s) => s.startRecording)
+  const newTopicNonce = useChatStore((s) => s.newTopicNonce)
   const setOpen = useChatStore((s) => s.setOpen)
+  const setMode = useChatStore((s) => s.setMode)
   const consumeAutoSend = useChatStore((s) => s.consumeAutoSend)
+  const consumeStartRecording = useChatStore((s) => s.consumeStartRecording)
+  const startNewTopic = useChatStore((s) => s.startNewTopic)
 
   if (!session || !wallet || location.pathname === '/login') return null
 
@@ -35,6 +41,12 @@ export function AmbientChat() {
       initialInput={prefill}
       autoSend={autoSend}
       onAutoSendConsumed={consumeAutoSend}
+      mode={mode}
+      onModeChange={setMode}
+      startRecording={startRecording}
+      onStartRecordingConsumed={consumeStartRecording}
+      newTopicNonce={newTopicNonce}
+      onNewTopic={startNewTopic}
       currency={wallet.base_currency}
       pageContext={pageContext}
     />

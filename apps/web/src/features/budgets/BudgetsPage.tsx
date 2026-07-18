@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Lightbulb } from '@/components/icons/product'
 import { toast } from 'sonner'
@@ -102,7 +102,7 @@ export function BudgetsPage() {
     [transactions, existingBudgetCategoryIds],
   )
 
-  // Cold start: no spending pattern to learn from yet, but a plan is set —
+  // Cold start: no spending pattern to learn from yet, but a plan is set , 
   // offer a sensible persona-flavored split instead of leaving budgets at zero.
   const starterSuggestions = useMemo(
     () =>
@@ -167,7 +167,7 @@ export function BudgetsPage() {
   async function handlePactSubmit(input: CommitmentPactInput) {
     try {
       await createPact.mutateAsync(input)
-      toast('Pact set — I\'ll hold you to it.')
+      toast('Pact set. I\'ll hold you to it.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -228,7 +228,7 @@ export function BudgetsPage() {
     if (safe.discretionaryRemainingMinor < 0)
       return {
         tone: 'attention',
-        text: `Your ${monthLabel} plan is already spoken for once bills are covered — want to rebalance?`,
+        text: `Your ${monthLabel} plan is already spoken for once bills are covered, want to rebalance?`,
       }
     return {
       tone: 'default',
@@ -252,11 +252,11 @@ export function BudgetsPage() {
               }))
               .sort((a, b) => b.pct - a.pct)[0]
             if (worst.pct >= 1)
-              return { tone: 'attention', text: `${worst.name} is over budget — want me to help you rebalance?` }
+              return { tone: 'attention', text: `${worst.name} is over budget, want me to help you rebalance?` }
             if (worst.pct >= 0.8)
               return {
                 tone: 'warm',
-                text: `${worst.name} is running warm — ${formatMoney(worst.remaining, wallet.base_currency)} left.`,
+                text: `${worst.name} is running warm, ${formatMoney(worst.remaining, wallet.base_currency)} left.`,
               }
             return {
               tone: 'default',
@@ -267,7 +267,7 @@ export function BudgetsPage() {
         ? null
         : {
             tone: 'default',
-            text: `${recurring.length} recurring ${recurring.length === 1 ? 'transaction posts' : 'transactions post'} automatically — that’s ${recurring.length === 1 ? 'one bill' : 'that many bills'} you’ll never forget.`,
+            text: `${recurring.length} recurring ${recurring.length === 1 ? 'transaction posts' : 'transactions post'} automatically, that’s ${recurring.length === 1 ? 'one bill' : 'that many bills'} you’ll never forget.`,
           }
 
   const monthlyProgress = progress.filter((p) => p.period === 'monthly')
@@ -280,9 +280,17 @@ export function BudgetsPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24">
       <AppHeader />
 
-      <section>
-        <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Budgets</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{monthLabel} · stay on track</p>
+      <section className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[2rem] font-bold tracking-tight leading-tight">Plan</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{monthLabel} · budgets & commitments</p>
+        </div>
+        <Link
+          to="/goals"
+          className="shrink-0 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+        >
+          Goals →
+        </Link>
       </section>
 
       {tab === 'budgets' && totalCap > 0 && (
@@ -329,7 +337,7 @@ export function BudgetsPage() {
           <button
             key={q}
             type="button"
-            onClick={() => openChat(q)}
+            onClick={() => openChat(q, { autoSend: true })}
             className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
           >
             {q}
@@ -375,7 +383,7 @@ export function BudgetsPage() {
           <SectionHeader title="Categories" />
           {budgets.length === 0 && (
             <p className="px-1 text-sm text-muted-foreground">
-              No budgets yet — tap Add New to set a weekly or monthly spending limit.
+              No budgets yet, tap Add New to set a weekly or monthly spending limit.
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">

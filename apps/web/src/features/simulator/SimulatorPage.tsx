@@ -95,7 +95,7 @@ export function SimulatorPage() {
     verdict = canAfford
       ? {
           tone: 'default',
-          text: `Yes — you can handle this. Your lowest point would be ${formatMoney(scenario.lowestBalance.balanceMinor, currency)} on ${fmtDay(scenario.lowestBalance.date)}.`,
+          text: `Yes, you can handle this. Your lowest point would be ${formatMoney(scenario.lowestBalance.balanceMinor, currency)} on ${fmtDay(scenario.lowestBalance.date)}.`,
         }
       : {
           tone: 'attention',
@@ -105,12 +105,12 @@ export function SimulatorPage() {
     verdict = payoff.monthsToPayoff === null
       ? {
           tone: 'attention',
-          text: `That payment doesn't even cover the interest building up on "${selectedDebt!.name}" — it would never actually shrink.`,
+          text: `That payment doesn't even cover the interest building up on "${selectedDebt!.name}", it would never actually shrink.`,
         }
       : !canAfford
         ? {
             tone: 'attention',
-            text: `That's tight — it would pull this month's balance down to ${formatMoney(scenario.lowestBalance.balanceMinor, currency)}.`,
+            text: `That's tight, it would pull this month's balance down to ${formatMoney(scenario.lowestBalance.balanceMinor, currency)}.`,
           }
         : {
             tone: 'default',
@@ -150,7 +150,7 @@ export function SimulatorPage() {
       {verdict ? (
         <AiInsight tone={verdict.tone}>{verdict.text}</AiInsight>
       ) : (
-        <AiInsight>Try me — put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
+        <AiInsight>Try me, put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
       )}
 
       <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
@@ -207,7 +207,7 @@ export function SimulatorPage() {
             <SelectContent>
               {payableDebts.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.name} — {formatMoney(d.balance_minor, currency)} left
+                  {d.name}, {formatMoney(d.balance_minor, currency)} left
                 </SelectItem>
               ))}
             </SelectContent>

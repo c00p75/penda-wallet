@@ -127,7 +127,7 @@ interface CategorizationRule {
   category_id: string
 }
 
-// Provider-agnostic message shape — persisted to the DB and adapted to each
+// Provider-agnostic message shape, persisted to the DB and adapted to each
 // provider's wire format at call time, so either provider can pick up a
 // conversation on any turn (this is what makes the Groq fallback possible).
 type NeutralPart =
@@ -152,7 +152,7 @@ interface ModelTurn {
 }
 
 // A staged update/delete surfaced to the client as a Yes/Cancel card. The tool
-// layer NEVER executes these — confirm-ai-action does, on an explicit user tap.
+// layer NEVER executes these, confirm-ai-action does, on an explicit user tap.
 interface PendingAction {
   id: string
   kind: 'update' | 'delete'
@@ -224,8 +224,8 @@ Deno.serve(async (req) => {
     }
 
     // Cost/abuse guard (audit finding): bound how often any one account can
-    // hit the model before doing any LLM work. Fails open on a DB hiccup —
-    // see checkRateLimits — so a broken limiter never takes down chat itself.
+    // hit the model before doing any LLM work. Fails open on a DB hiccup , 
+    // see checkRateLimits, so a broken limiter never takes down chat itself.
     const limitMessage = await checkRateLimits(supabase, user.id, 'chat-message', CHAT_RATE_LIMITS)
     if (limitMessage) {
       return respond({ error: limitMessage }, 429)
@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       return respond({ error: 'walletId and message are required' }, 400)
     }
     // walletId is interpolated into PostgREST .or() filters (categories,
-    // query_records) — RLS bounds the blast radius, but reject non-UUIDs at
+    // query_records). RLS bounds the blast radius, but reject non-UUIDs at
     // the door like sanitizePageContext already does for entityId.
     if (!UUID_RE.test(body.walletId)) {
       return respond({ error: 'walletId must be a UUID' }, 400)
@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
     }
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
-    // History needs the conversation id; the rest are independent reads — fan out.
+    // History needs the conversation id; the rest are independent reads, fan out.
     const [history, categories, rules, profile, memories, currency] = await Promise.all([
       fetchHistory(supabase, conversationId),
       fetchCategories(supabase, body.walletId),
@@ -258,7 +258,9 @@ Deno.serve(async (req) => {
 
     const tools = buildTools(categories)
     const pageContext = sanitizePageContext(body.pageContext)
-    const systemInstruction = buildSystemInstruction(profile, currency, memories, pageContext)
+    const systemInstruction = buildSystemInstruction(profile, currency, memories, pageContext, {
+      continuityEnabled: true,
+    })
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -280,7 +282,7 @@ Deno.serve(async (req) => {
       autoApplied: false,
     }
 
-    // Progress channel for the chat UI — subscribed lazily on the FIRST tool
+    // Progress channel for the chat UI, subscribed lazily on the FIRST tool
     // broadcast, so a pure Q&A turn (no tools) never pays the subscribe
     // handshake (up to 1500ms) it previously paid on every request.
     const progressChannel = supabase.channel(`chat:${conversationId}`)
@@ -305,7 +307,7 @@ Deno.serve(async (req) => {
       const turnStart = Date.now()
       try {
         for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-          // Out of wall-clock budget — stop starting new model calls and fall
+          // Out of wall-clock budget, stop starting new model calls and fall
           // through to the "try rephrasing" reply rather than risk a gateway
           // timeout with nothing persisted for the client to show.
           if (iteration > 0 && Date.now() - turnStart > TURN_BUDGET_MS) break
@@ -332,7 +334,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Partial narration before tools isn't the final reply — clear the bubble.
+          // Partial narration before tools isn't the final reply, clear the bubble.
           if (turn.text) hooks?.onReset?.()
 
           const toolResultParts: NeutralPart[] = []
@@ -356,10 +358,10 @@ Deno.serve(async (req) => {
               // turn or leave a chain half-applied. Feed the failure back so the
               // model can recover or tell the user, and so every tool_call keeps a
               // matching result (unbalanced pairs break the provider's next turn).
-              // Log only the message, never the raw error object — it can carry
+              // Log only the message, never the raw error object, it can carry
               // row data (e.g. a Postgres constraint error echoing values).
               console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
-              summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
+              summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step. Do not claim it succeeded.`
               threw = true
             }
             const action = buildCompletedAction(call, summary, ctx, threw)
@@ -397,7 +399,7 @@ Deno.serve(async (req) => {
 
       return {
         conversationId,
-        reply: "Sorry, I'm having trouble completing that one — could you try rephrasing?",
+        reply: "Sorry, I'm having trouble completing that one. Could you try rephrasing?",
         transaction: ctx.createdTransaction,
         pendingActions: ctx.pendingActions,
         actions: ctx.completedActions,
@@ -421,7 +423,7 @@ Deno.serve(async (req) => {
             send('done', result)
           } catch (error) {
             console.error(error instanceof Error ? error.message : String(error))
-            send('error', { error: 'Something went wrong on our side — please try again.' })
+            send('error', { error: 'Something went wrong on our side. Please try again.' })
           } finally {
             controller.close()
           }
@@ -442,13 +444,13 @@ Deno.serve(async (req) => {
     // Log the detail, return a generic message: a raw error (e.g. a Postgres
     // constraint failure) can echo schema names or row values to the client.
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
+    return respond({ error: 'Something went wrong on our side. Please try again.' }, 500)
   }
 })
 
 // --- Model orchestration -----------------------------------------------
 
-// Bounds the worst case of a hung upstream call — without this, a stalled
+// Bounds the worst case of a hung upstream call, without this, a stalled
 // Gemini/Groq request left "Thinking…" indefinitely with no way to recover.
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -576,7 +578,7 @@ async function callGroq(
   // A model can emit malformed tool-call JSON; letting JSON.parse throw here
   // used to escape callGroq entirely (this is the fallback provider, so
   // nothing catches it) and 500 the whole request. Drop just that call
-  // instead — dispatchTool's default branch handles an empty/unknown name.
+  // instead, dispatchTool's default branch handles an empty/unknown name.
   const toolCalls = (message.tool_calls ?? []).map((call: {
     id: string
     function: { name: string; arguments: string }
@@ -786,7 +788,7 @@ async function getOrCreateConversation(
       if (!lastAt || Date.now() - lastAt < CONVERSATION_IDLE_MS) {
         return data.id
       }
-      // Stale session — fall through to insert a fresh conversation.
+      // Stale session, fall through to insert a fresh conversation.
     }
   }
 
@@ -815,7 +817,7 @@ async function fetchHistory(supabase: SupabaseClient, conversationId: string): P
     parts: row.content as NeutralPart[],
   }))
   // A window that starts mid tool-exchange leaves unbalanced tool_result pairs
-  // and breaks the provider call — drop leading messages until a plain user text.
+  // and breaks the provider call, drop leading messages until a plain user text.
   return trimHistoryToSafeStart(rows)
 }
 
@@ -883,7 +885,7 @@ async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<C
 
 // Onboarding-collected context, woven into the system prompt. The gender line
 // is a hard requirement, not a suggestion: it may only ever shape tone, never
-// financial advice, calculations, or any other logic — see migration
+// financial advice, calculations, or any other logic, see migration
 // 0029_onboarding_profile_fields.sql.
 function buildUserContextSection(profile: ChatProfile): string {
   const lines: string[] = []
@@ -901,7 +903,7 @@ function buildUserContextSection(profile: ChatProfile): string {
 
   if (profile.incomeRange && INCOME_RANGE_LABELS[profile.incomeRange]) {
     lines.push(
-      `They describe their financial situation as "${INCOME_RANGE_LABELS[profile.incomeRange]}" — a qualitative ` +
+      `They describe their financial situation as "${INCOME_RANGE_LABELS[profile.incomeRange]}", a qualitative ` +
         'band, not an exact figure. Never ask for or assume a specific income number from this alone.',
     )
   }
@@ -909,7 +911,7 @@ function buildUserContextSection(profile: ChatProfile): string {
   if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {
     lines.push(
       `The user identifies as ${GENDER_LABELS[profile.gender]}. Use this ONLY to make tone and phrasing feel ` +
-        'natural — it must NEVER influence financial advice, calculations, risk framing, or any other logic. ' +
+        'natural, it must NEVER influence financial advice, calculations, risk framing, or any other logic. ' +
         'Treat all users identically in the substance of your guidance regardless of this field.',
     )
   }
@@ -924,7 +926,7 @@ interface Memory {
 }
 
 // A bounded slice of the Financial Journal (roadmap bet #10), which can grow
-// unbounded — the prompt only needs enough context to feel like Penda
+// unbounded, the prompt only needs enough context to feel like Penda
 // remembers, not a full transcript. Durable kinds (preference/fact) are
 // prioritized over recency: a long-lived "never guilt-trip fast food"
 // preference must not get pushed out of the window by a burst of recent mood
@@ -957,76 +959,115 @@ async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): 
   return data?.base_currency ?? 'USD'
 }
 
+function recentMoodTone(
+  memories: Memory[],
+): 'stressed' | 'low' | 'ok' | 'up' | null {
+  const recent = memories.filter((m) => m.kind === 'mood').slice(0, 5)
+  if (recent.length === 0) return null
+  for (const m of recent) {
+    const label = (m.mood ?? '').toLowerCase()
+    if (['stressed', 'anxious', 'worried'].includes(label)) return 'stressed'
+    if (['sad', 'low', 'tired', 'down'].includes(label)) return 'low'
+    if (['happy', 'great', 'excited', 'proud'].includes(label)) return 'up'
+    const text = `${m.mood ?? ''} ${m.content}`
+    if (/\b(stress|anxious|overwhelm|worried)\b/i.test(text)) return 'stressed'
+    if (/\b(sad|tired|drained|low)\b/i.test(text)) return 'low'
+  }
+  return 'ok'
+}
+
+function moodPromptFragment(tone: 'stressed' | 'low' | 'ok' | 'up' | null): string {
+  if (!tone || tone === 'ok') return ''
+  if (tone === 'up') {
+    return `\nThe user has been feeling upbeat lately. Celebrate wins briefly; it's fine to lean into goals.`
+  }
+  if (tone === 'stressed') {
+    return `\nThe user has been feeling stressed about money. Prefer reassurance and buffer ideas over alerts. Ask fewer questions. Never guilt-trip.`
+  }
+  return `\nThe user has been feeling low. Keep replies short and kind. Skip optional tips unless they ask.`
+}
+
 function buildSystemInstruction(
   profile: ChatProfile,
   currency: string,
   memories: Memory[],
   pageContext?: PageContext,
+  _opts?: { continuityEnabled?: boolean },
 ): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
   const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
+  const moodTone = recentMoodTone(memories)
   const screenLine = pageContext
     ? pageContext.entityId
       ? `The user is currently on the ${pageContext.page} page viewing record ${pageContext.entityId}; "this"/"it" likely refers to that record.\n\n`
       : `The user is currently on the ${pageContext.page} page.\n\n`
     : ''
   const houseRules = `You are ${personaName}, an AI assistant persona embedded in Penda, a personal finance
-app. Penda is the app you live in, not your name — always introduce and refer to yourself as
+app. Penda is the app you live in, not your name. Always introduce and refer to yourself as
 ${personaName}, never as "Penda". Your job in this conversation is to help the user log
-transactions by talking naturally — you are not a generic chatbot, you are the primary way this
+transactions by talking naturally. You are not a generic chatbot; you are the primary way this
 user records spending and income.
 
+Never use the em dash character (—) in replies or tool summaries. Prefer a period, comma, or colon.
+${moodPromptFragment(moodTone)}
 ${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
-This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
-everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
+This wallet's currency is ${currency} (${symbol}). ALL amounts, in the transactions you log and in
+everything you say back, are in ${currency}. When you mention money, write it with "${symbol}"
 (e.g. ${symbol}12, ${symbol}2000). Never use "$" or any other currency's symbol unless "${symbol}"
 literally is "$". The user only ever types plain numbers; the currency is always ${currency}.
+
+If the user seems mid-flow or says they're busy, do NOT block them with clarifying questions.
+Note the question briefly ("I'll ask later: …") and finish the current logging first. You can
+revisit deferred questions once they're free.
+
+When a categorization rule auto-applies, briefly teach-back: "Logged as X per your rule. Still
+right?" so the user can correct lasting mistakes.
 
 When the user describes a purchase, payment, or income (e.g. "I spent 12 on coffee at Blue Bottle",
 "got paid 2000"), call the create_transaction tool with your best judgment for amount, type,
 category, merchant, and date.
 
-Some messages imply more than one thing happened to the money — reason about what actually
+Some messages imply more than one thing happened to the money, reason about what actually
 happened and record all of it:
 - Borrowing ("I borrowed K500 from Amara", "took a loan") or lending / being owed ("I lent Tich
   K200", "Tich owes me K200"): cash actually changed hands, so call log_borrowed_or_lent_money with
   direction "i_owe" for borrowing (wallet goes UP) or "owed_to_me" for lending (wallet goes DOWN).
-  This logs the transaction and the debt together in one atomic step — never call create_transaction
+  This logs the transaction and the debt together in one atomic step, never call create_transaction
   and create_debt separately for this, since if the second call failed after the first succeeded the
   ledger would be left half-updated with a transaction but no matching debt.
 - If money was only promised and hasn't moved yet, record just the debt with create_debt.
 Never record only one half of a two-sided event.
 
-If you are genuinely unsure how to record something — the type is ambiguous, you can't tell whether
-it's a debt, or no category fits — ask ONE short clarifying question instead of guessing or doing
+If you are genuinely unsure how to record something, the type is ambiguous, you can't tell whether
+it's a debt, or no category fits, ask ONE short clarifying question instead of guessing or doing
 nothing. A quick question beats a wrong entry or silence. (A merely uncertain amount is the
 exception: make a reasonable call there and let the user correct it.)
 
-You can also read, edit, and remove the user's data — not just create it:
+You can also read, edit, and remove the user's data, not just create it:
 - ANSWERING QUESTIONS ("what did I spend this week?", "how much do I owe Amara?", "show my
   budgets"): use query_records to look things up, or get_spending_summary for totals over a period.
-  Never say you can't check — you can. Reads run immediately and freely.
+  Never say you can't check, you can. Reads run immediately and freely.
 - CREATING budgets, goals, or categories: use create_budget, create_goal, create_category.
 - EDITING or DELETING something that already exists ("actually it was K15 not K10", "delete that
   duplicate", "rename the trip goal"): you MUST first find the exact record with query_records to
   get its id, then call update_record or delete_record with that id. NEVER create a new record to
-  "fix" an old one — that leaves a duplicate.
+  "fix" an old one. That leaves a duplicate.
 
 Editing and deleting are special: update_record and delete_record do NOT take effect immediately.
 They stage the change and show the user a confirmation card they must tap. So when you edit or
-delete, DO NOT say it's done — phrase your reply as the pending question the card is asking (e.g.
+delete, DO NOT say it's done, phrase your reply as the pending question the card is asking (e.g.
 "Want me to change that to K15?" or "Delete the K10 tea entry?"). Only after the user confirms is it
 actually applied. If a tool result says a change was staged, treat it as pending, not complete.
 
 After a create or read result comes back, reply with a short, natural confirmation or answer. Do not
-restate every field back at the user like a receipt — just confirm briefly in your own voice.
+restate every field back at the user like a receipt. Just confirm briefly in your own voice.
 
 You have a memory across conversations (the Financial Journal): use save_memory when the user states
 a preference ("I never want to see fast food guilt-tripped"), shares a fact worth recalling ("I freelance
 on the side"), states a goal's real motivation, or reveals a behavioral pattern (e.g. "I stress-buy after
-work" — kind "mood" with a short mood label). Use it sparingly, for things genuinely worth recalling
+work", kind "mood" with a short mood label). Use it sparingly, for things genuinely worth recalling
 later, not routine transaction chatter. Weave anything relevant from what you already remember (below)
-into your replies naturally — don't just list it back.${buildMemorySection(memories)}`
+into your replies naturally, don't just list it back.${buildMemorySection(memories)}`
 
   const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
@@ -1069,7 +1110,7 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'create_debt',
       description:
-        'Record a debt where money has NOT moved yet — just a promise or IOU with nothing exchanged. ' +
+        'Record a debt where money has NOT moved yet, just a promise or IOU with nothing exchanged. ' +
         'Use log_borrowed_or_lent_money instead whenever cash actually changed hands, so the wallet ' +
         'transaction and the debt save together atomically.',
       parametersJsonSchema: {
@@ -1090,8 +1131,8 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'log_borrowed_or_lent_money',
       description:
-        'Atomically record BOTH sides of borrowing or lending money — the wallet transaction AND the ' +
-        'debt — in one step, so they save together or not at all. Use this INSTEAD of create_transaction ' +
+        'Atomically record BOTH sides of borrowing or lending money, the wallet transaction AND the ' +
+        'debt, in one step, so they save together or not at all. Use this INSTEAD of create_transaction ' +
         'plus create_debt whenever cash actually changes hands for a loan: borrowing (direction "i_owe", ' +
         'wallet goes up) or lending / being owed (direction "owed_to_me", wallet goes down). If money was ' +
         'only promised and hasn\'t moved yet, use create_debt alone instead.',
@@ -1186,7 +1227,7 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'update_record',
       description:
-        'Propose an edit to an existing record. Does NOT apply immediately — it stages the change and ' +
+        'Propose an edit to an existing record. Does NOT apply immediately, it stages the change and ' +
         'asks the user to confirm on a card. Find the record id first with query_records. Editable ' +
         'fields by domain: transaction {amount, type, category, merchant, description, transaction_date}; ' +
         'debt {name, direction, counterparty, amount, due_date}; budget {amount, period, category, ' +
@@ -1208,7 +1249,7 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'delete_record',
       description:
-        'Propose deleting an existing record. Does NOT delete immediately — it stages the removal and ' +
+        'Propose deleting an existing record. Does NOT delete immediately, it stages the removal and ' +
         'asks the user to confirm on a card. Find the record id first with query_records. Deleting a ' +
         'wallet or bulk-deleting is not allowed.',
       parametersJsonSchema: {
@@ -1223,9 +1264,9 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'save_memory',
       description:
-        'Save something worth remembering about the user for future conversations — a stated preference, ' +
+        'Save something worth remembering about the user for future conversations, a stated preference, ' +
         'a fact they shared, a goal\'s real motivation, or a noticed behavioral/emotional pattern (kind ' +
-        '"mood", e.g. "stress-buys after work"). Runs immediately. Use sparingly — only for things ' +
+        '"mood", e.g. "stress-buys after work"). Runs immediately. Use sparingly, only for things ' +
         'genuinely worth recalling later, not routine transaction logging.',
       parametersJsonSchema: {
         type: 'object',
@@ -1294,7 +1335,7 @@ function buildCompletedAction(
   ctx: ToolContext,
   threw: boolean,
 ): CompletedAction | null {
-  // Confirm cards already cover staged update/delete — don't duplicate them.
+  // Confirm cards already cover staged update/delete, don't duplicate them.
   if (STAGING_TOOLS.has(call.name)) return null
 
   const meta = TOOL_TRAIL_META[call.name] ?? { domain: 'general', label: 'Did something' }
@@ -1504,7 +1545,7 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
     case 'teach_categorization':
       return await handleTeachCategorization(ctx, args)
     default:
-      return `Unknown tool "${name}" — no action taken.`
+      return `Unknown tool "${name}", no action taken.`
   }
 }
 
@@ -1530,10 +1571,12 @@ async function handleCreateTransaction(
   const description = typeof input.description === 'string' ? input.description : null
 
   let categoryId = categories.find((c) => c.name === input.category)?.id ?? null
+  let matchedRule: CategorizationRule | null = null
   for (const rule of rules) {
     const haystack = (rule.match_type === 'merchant_contains' ? merchant : description) ?? ''
     if (haystack.toLowerCase().includes(rule.match_value.toLowerCase())) {
       categoryId = rule.category_id
+      matchedRule = rule
       break
     }
   }
@@ -1573,7 +1616,16 @@ async function handleCreateTransaction(
     // Habits are additive; transaction already saved.
   }
 
-  return { transaction: data, summary: `Saved: ${JSON.stringify(data)}`, habits }
+  let summary = `Saved: ${JSON.stringify(data)}`
+  if (matchedRule) {
+    const catName =
+      (data.category as { name?: string } | null)?.name ??
+      categories.find((c) => c.id === matchedRule!.category_id)?.name ??
+      'that category'
+    summary += ` TEACH_BACK: Logged as ${catName} per your "${matchedRule.match_value}" rule. Still right?`
+  }
+
+  return { transaction: data, summary, habits }
 }
 
 async function handleCreateDebt(
@@ -1621,7 +1673,7 @@ async function handleCreateDebt(
 
 // Atomic multi-tool chain (roadmap bet #4): borrowing/lending needs a wallet
 // transaction AND a debt to land together or not at all. Both inserts happen
-// inside the log_borrow_or_lend Postgres function (see migration 0026) — if
+// inside the log_borrow_or_lend Postgres function (see migration 0026), if
 // either fails, the function raises and the whole call rolls back, so this
 // can never leave a transaction with no matching debt (or vice versa).
 async function handleLogBorrowOrLend(
@@ -1667,7 +1719,7 @@ async function handleLogBorrowOrLend(
     return {
       transaction: null,
       summary:
-        `Failed to record the ${verb}: ${reason}. Nothing was saved — the transaction and the ` +
+        `Failed to record the ${verb}: ${reason}. Nothing was saved, the transaction and the ` +
         `debt roll back together, so there is no half-recorded entry to clean up.`,
     }
   }
@@ -1678,7 +1730,7 @@ async function handleLogBorrowOrLend(
     transaction: { id: data.transaction_id, amount_minor: amountMinor, type: direction === 'i_owe' ? 'income' : 'expense' },
     debtId: data.debt_id,
     summary:
-      `${verb} ${fmt(amountMinor, ctx.symbol)}${withWhom} — recorded both the transaction ` +
+      `${verb} ${fmt(amountMinor, ctx.symbol)}${withWhom}, recorded both the transaction ` +
       `(id ${data.transaction_id}) and the debt (id ${data.debt_id}) together.`,
   }
 }
@@ -1850,7 +1902,7 @@ function buildPatch(
 async function loadTarget(ctx: ToolContext, cfg: DomainCfg, domain: string, id: string): Promise<Row> {
   const { data, error } = await ctx.supabase.from(cfg.table).select(cfg.select).eq('id', id).maybeSingle()
   if (error) throw new Error(`Couldn't load that ${domain}: ${error.message}`)
-  if (!data) throw new Error(`No ${domain} found with id ${id} — look it up again with query_records; it may have changed or been removed.`)
+  if (!data) throw new Error(`No ${domain} found with id ${id}, look it up again with query_records; it may have changed or been removed.`)
   return data as Row
 }
 
@@ -1937,7 +1989,7 @@ async function autoApplyAction(
     status: 'done',
     targetId: input.targetId,
   })
-  return `Applied (no confirmation needed — user trust/consent allows it): ${input.summary} Tell the user it's done.`
+  return `Applied (no confirmation needed, user trust/consent allows it): ${input.summary} Tell the user it's done.`
 }
 
 async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
@@ -1945,7 +1997,7 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
   const cfg = CRUD_DOMAINS[domain]
   if (!cfg) return `I can't edit "${domain}".`
   const id = String(args.id ?? '')
-  if (!id) return 'I need the record id — find it first with query_records.'
+  if (!id) return 'I need the record id, find it first with query_records.'
 
   const row = await loadTarget(ctx, cfg, domain, id)
   if (cfg.softDelete && row.deleted_at) return `That ${domain} was already deleted.`
@@ -1955,14 +2007,14 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
   const changes = (args.changes ?? {}) as Record<string, unknown>
   const { patch, diff } = buildPatch(cfg, row, changes, ctx.categories, ctx.symbol)
   if (Object.keys(patch).length === 0) {
-    return `Nothing to change on ${cfg.describe(row, ctx.symbol)} — the values already match.`
+    return `Nothing to change on ${cfg.describe(row, ctx.symbol)}, the values already match.`
   }
 
   const before: Record<string, unknown> = {}
   for (const key of Object.keys(patch)) before[key] = row[key]
   const patchWithUndo = { ...patch, __before: before }
 
-  const summary = `Update ${cfg.describe(row, ctx.symbol)} — ${diff.join('; ')}.`
+  const summary = `Update ${cfg.describe(row, ctx.symbol)}, ${diff.join('; ')}.`
   if (await shouldAutoApply(ctx)) {
     ctx.autoApplied = true
     return await autoApplyAction(ctx, { kind: 'update', domain, targetId: id, patch: patchWithUndo, summary })
@@ -1979,7 +2031,7 @@ async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Pro
   if (!cfg) return `I can't delete "${domain}".`
   if (!cfg.deletable) return `Deleting a ${domain} isn't allowed.`
   const id = String(args.id ?? '')
-  if (!id) return 'I need the record id — find it first with query_records.'
+  if (!id) return 'I need the record id, find it first with query_records.'
 
   const row = await loadTarget(ctx, cfg, domain, id)
   if (cfg.softDelete && row.deleted_at) return `That ${domain} is already deleted.`
@@ -2106,7 +2158,7 @@ async function handleSpendingSummary(ctx: ToolContext, args: Record<string, unkn
   if (!since) return 'I need a start date to total spending.'
   const until = args.until ? String(args.until) : today()
 
-  // Aggregated in SQL (migration 0036) — the old version pulled up to 1000
+  // Aggregated in SQL (migration 0036), the old version pulled up to 1000
   // raw rows into the function and summed in JS, silently under-reporting
   // any range with more transactions than that.
   const { data, error } = await ctx.supabase.rpc('get_wallet_spending_summary', {

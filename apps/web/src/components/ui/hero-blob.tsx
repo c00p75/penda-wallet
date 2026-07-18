@@ -11,7 +11,7 @@ const BLOB_FILL: Record<HeroBlobTone, string> = {
 }
 
 /**
- * Decorative organic blob for HeroCard corners — stands in for the
+ * Decorative organic blob for HeroCard corners, stands in for the
  * 3D illustrations in the reference design.
  */
 export function HeroBlob({

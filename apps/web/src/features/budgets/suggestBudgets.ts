@@ -21,7 +21,7 @@ export interface SuggestBudgetsOptions {
   step?: number
   /** Ignore categories whose total spend over the window is below this. */
   minTotalMinor?: number
-  /** Categories that already have a budget — skipped so we don't duplicate. */
+  /** Categories that already have a budget, skipped so we don't duplicate. */
   existingCategoryIds?: Iterable<string>
 }
 

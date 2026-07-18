@@ -11,7 +11,7 @@ interface StarterAllocation {
 
 /**
  * Each AI persona's natural money emphasis, as a share of a monthly spending
- * plan. Weights deliberately don't sum to 1 — the remainder stays
+ * plan. Weights deliberately don't sum to 1, the remainder stays
  * unbudgeted so a cold-start user isn't locked into a rigid split on day
  * one. Lets a brand-new wallet with zero transaction history (where
  * suggestBudgets has nothing to learn from) still get a sensible starting
@@ -81,7 +81,7 @@ const STARTER_ALLOCATIONS: Record<AiPersonality, StarterAllocation[]> = {
   ],
 }
 
-/** Rounding step for suggested amounts, in minor units — matches suggestBudgets' default. */
+/** Rounding step for suggested amounts, in minor units, matches suggestBudgets' default. */
 const STEP = 1000
 
 export function starterBudgetsForPersona(

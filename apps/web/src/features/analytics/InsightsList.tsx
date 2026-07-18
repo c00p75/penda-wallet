@@ -12,7 +12,7 @@ export function InsightsList({ insights, onDismiss }: InsightsListProps) {
   if (insights.length === 0) {
     return (
       <p className="py-4 text-center text-sm text-muted-foreground">
-        No insights yet — check back after your first week of tracked spending.
+        No insights yet, check back after your first week of tracked spending.
       </p>
     )
   }

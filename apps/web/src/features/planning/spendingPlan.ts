@@ -27,7 +27,7 @@ function daysInMonthOf(monthStart: string): number {
 
 /**
  * Compare actual spend against a monthly intention, pacing it against how far
- * into the month we are — the "act" half of the plan → act → reflect loop.
+ * into the month we are, the "act" half of the plan → act → reflect loop.
  */
 export function computeSpendingPlanStatus(input: SpendingPlanInput): SpendingPlanStatus {
   const now = input.now ?? new Date()
@@ -53,7 +53,7 @@ export function computeSpendingPlanStatus(input: SpendingPlanInput): SpendingPla
 export interface SafeToSpendInput {
   intendedMinor: number
   spentMinor: number
-  /** Fixed commitments still due before the period ends — reserve these. */
+  /** Fixed commitments still due before the period ends, reserve these. */
   upcomingFixedMinor: number
   /** First day of the plan month (YYYY-MM-DD). */
   monthStart: string
@@ -72,7 +72,7 @@ export interface SafeToSpend {
 
 /**
  * The headline number: after what's already spent AND the fixed bills still due
- * this period, how much is genuinely free — as a per-day figure that answers
+ * this period, how much is genuinely free, as a per-day figure that answers
  * "can I buy this today?" without quietly spending money already spoken for.
  */
 export function computeSafeToSpend(input: SafeToSpendInput): SafeToSpend {

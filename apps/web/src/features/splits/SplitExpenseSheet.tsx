@@ -140,7 +140,7 @@ export function SplitExpenseSheet({
         </SheetHeader>
         <div className="flex flex-col gap-3 px-4 pb-4">
           <p className="rounded-2xl bg-secondary/30 px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50">
-            {transaction.merchant || 'Expense'} — edit each person’s share, then settle up from the
+            {transaction.merchant || 'Expense'}, edit each person’s share, then settle up from the
             Settle up page.
           </p>
           {members.map((m) => (

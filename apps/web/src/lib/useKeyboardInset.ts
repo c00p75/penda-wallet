@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
  *
  * Mobile browsers overlay the keyboard on top of `position: fixed` elements
  * anchored to the bottom, so a bottom sheet's input ends up hidden behind it.
- * We read `window.visualViewport` — which shrinks when the keyboard opens — and
+ * We read `window.visualViewport`, which shrinks when the keyboard opens, and
  * return the covered height so callers can lift content clear of it.
  *
  * Returns 0 when there is no keyboard, or when `visualViewport` is unavailable.

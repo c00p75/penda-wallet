@@ -12,7 +12,7 @@ function download(content: string, filename: string, mimeType: string) {
   URL.revokeObjectURL(url)
 }
 
-/** Data export — ownership builds trust, and it's an app-store/privacy expectation. */
+/** Data export, ownership builds trust, and it's an app-store/privacy expectation. */
 export function useExport(walletId: string | undefined) {
   const [isExporting, setIsExporting] = useState(false)
 
