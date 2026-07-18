@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
-import { sendPush } from '../_shared/push.ts'
+import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
 import { GENDER_LABELS, GOAL_LABELS, PERSONALITY_NAMES, PERSONALITY_PROMPTS } from '../_shared/personas.ts'
@@ -170,28 +170,20 @@ async function generateForWallet(
       period_end: periodEnd,
     })
 
-    await notifyMember(supabase, premiumIds[i], digestText)
+    await notifyUser(supabase, {
+      userId: premiumIds[i],
+      walletId,
+      kind: 'insight',
+      title: 'Your weekly recap',
+      body: digestText,
+      href: '/analytics',
+      dedupeKey: `weekly:${walletId}:${periodEnd}`,
+      payload: { period_start: periodStart, period_end: periodEnd },
+    })
     notified++
   }
 
   return { totalSpentMinor, totalIncomeMinor, topCategories, digests: digestByKey.size, notified }
-}
-
-async function notifyMember(supabase: SupabaseClient, userId: string, digestText: string) {
-  const { data: subscriptions } = await supabase
-    .from('push_subscriptions')
-    .select('id, endpoint, keys')
-    .eq('user_id', userId)
-
-  for (const sub of subscriptions ?? []) {
-    const result = await sendPush(
-      { endpoint: sub.endpoint, keys: sub.keys },
-      { title: 'Your weekly recap', body: digestText, url: '/insights' },
-    )
-    if (!result.ok && (result.statusCode === 404 || result.statusCode === 410)) {
-      await supabase.from('push_subscriptions').delete().eq('id', sub.id)
-    }
-  }
 }
 
 interface InsightProfileContext {

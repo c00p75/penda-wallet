@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { Check, ChevronRight } from 'lucide-react'
 import {
+  Bell,
   Briefcase,
   ClipboardText,
   ClockCounterClockwise,
@@ -41,11 +42,16 @@ import { useEntitlement } from '@/features/entitlements/hooks'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useExport } from '@/features/export/useExport'
-import { useSubscribeToPush } from '@/features/notifications/hooks'
+import {
+  useSubscribeToPush,
+  useUnsubscribeFromPush,
+} from '@/features/notifications/hooks'
+import type { NotificationPrefs } from '@/features/notifications/prefs'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PersonaAvatar } from './PersonaAvatar'
 import {
   DEFAULT_AI_CONSENT,
+  DEFAULT_NOTIFICATION_PREFS,
   PERSONALITIES,
   type AiConsent,
   type AiPersonality,
@@ -93,6 +99,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
   const [mode, setMode] = useState<ProfileMode>('individual')
   const [notificationOptIn, setNotificationOptIn] = useState(true)
+  const [notificationPrefs, setNotificationPrefs] =
+    useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS)
   const [aiConsent, setAiConsent] = useState<AiConsent>(DEFAULT_AI_CONSENT)
   const [blindBudgeting, setBlindBudgeting] = useState(false)
   const [roundUp, setRoundUp] = useState(false)
@@ -101,6 +109,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [setupLockOpen, setSetupLockOpen] = useState(false)
   const [disableLockOpen, setDisableLockOpen] = useState(false)
   const subscribeToPush = useSubscribeToPush()
+  const unsubscribeFromPush = useUnsubscribeFromPush()
+  const pushBusy = subscribeToPush.isPending || unsubscribeFromPush.isPending
 
   useEffect(() => {
     if (!profile) return
@@ -108,6 +118,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     setPersonality(profile.ai_personality)
     setMode(profile.mode)
     setNotificationOptIn(profile.notification_opt_in)
+    setNotificationPrefs(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS)
     setAiConsent(profile.ai_consent ?? DEFAULT_AI_CONSENT)
     setBlindBudgeting(profile.blind_budgeting)
     setRoundUp(profile.round_up_enabled)
@@ -134,6 +145,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         ai_personality: personality,
         mode,
         notification_opt_in: notificationOptIn,
+        notification_prefs: notificationPrefs,
         ai_consent: aiConsent,
         blind_budgeting: blindBudgeting,
         round_up_enabled: roundUp,
@@ -152,6 +164,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
       personality !== profile.ai_personality ||
       mode !== profile.mode ||
       notificationOptIn !== profile.notification_opt_in ||
+      JSON.stringify(notificationPrefs) !==
+        JSON.stringify(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS) ||
       JSON.stringify(aiConsent) !== JSON.stringify(profile.ai_consent ?? DEFAULT_AI_CONSENT) ||
       blindBudgeting !== profile.blind_budgeting ||
       roundUp !== profile.round_up_enabled ||
@@ -332,31 +346,60 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             <CardHeader>
               <CardTitle className="text-base">Notifications</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+            <CardContent className="flex flex-col gap-3">
               <div className="flex min-h-12 items-center justify-between gap-3">
-                <p className="text-sm font-medium">Budget alerts &amp; bill reminders</p>
+                <div>
+                  <p className="text-sm font-medium">Push on this device</p>
+                  <p className="text-xs text-muted-foreground">
+                    Budget alerts, bill reminders, and weekly recaps.
+                  </p>
+                </div>
                 <Switch
                   checked={notificationOptIn}
-                  disabled={subscribeToPush.isPending}
+                  disabled={pushBusy || !userId}
                   onCheckedChange={async (on) => {
+                    if (!userId) return
+                    const previous = notificationOptIn
                     setNotificationOptIn(on)
-                    if (!on || !userId) return
                     try {
-                      await subscribeToPush.mutateAsync(userId)
-                      toast('Push alerts enabled on this device.')
+                      if (on) {
+                        await subscribeToPush.mutateAsync(userId)
+                        toast('Push alerts enabled on this device.')
+                      } else {
+                        await unsubscribeFromPush.mutateAsync(userId)
+                        toast('Push alerts turned off on this device.')
+                      }
                     } catch (error) {
-                      setNotificationOptIn(false)
+                      setNotificationOptIn(previous)
                       toast.error(
-                        error instanceof Error ? error.message : 'Could not enable notifications.',
+                        error instanceof Error ? error.message : 'Could not update notifications.',
                       )
                     }
                   }}
-                  aria-label="Notifications"
+                  aria-label="Push notifications"
                 />
               </div>
+              {(
+                [
+                  ['reminders', 'Bill reminders'],
+                  ['tips', 'Tips'],
+                  ['insights', 'Weekly insights'],
+                  ['alerts', 'Budget alerts'],
+                ] as const
+              ).map(([key, label]) => (
+                <div key={key} className="flex min-h-10 items-center justify-between gap-3">
+                  <p className="text-sm">{label}</p>
+                  <Switch
+                    checked={notificationPrefs[key]}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs((p) => ({ ...p, [key]: checked }))
+                    }
+                    aria-label={label}
+                  />
+                </div>
+              ))}
               <p className="text-xs text-muted-foreground">
-                Turning this on asks for notification permission and registers this device for budget
-                alerts.
+                Category toggles apply after you save. Push still requires permission on this device.
               </p>
             </CardContent>
           </Card>
@@ -516,6 +559,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             <CardContent className="flex flex-col gap-1">
               {(
                 [
+                  { to: '/notifications', label: 'Notifications', icon: Bell },
                   { to: '/activity', label: 'Activity log', icon: ClockCounterClockwise },
                   { to: '/ai-actions', label: 'AI action audit', icon: ClipboardText },
                   { to: '/missions', label: 'Missions', icon: Path },

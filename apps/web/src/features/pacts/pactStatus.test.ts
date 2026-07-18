@@ -22,6 +22,7 @@ function tx(overrides: Partial<Transaction> & { transaction_date: string }): Tra
     description: null,
     source: 'manual',
     receipt_storage_path: null,
+    ai_extraction: null,
     user_confirmed: true,
     version: 1,
     deleted_at: null,

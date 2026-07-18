@@ -47,8 +47,8 @@ Deno.serve(async (req) => {
 
     await deleteReceipts(admin, userId)
 
-    // Cascades profiles → chat, ai_*, push_subscriptions, entitlements,
-    // challenge_participants, and any remaining wallet_members rows.
+    // Cascades profiles → chat, ai_*, notifications, push_subscriptions,
+    // entitlements, challenge_participants, and any remaining wallet_members rows.
     const { error } = await admin.auth.admin.deleteUser(userId)
     if (error) throw error
 

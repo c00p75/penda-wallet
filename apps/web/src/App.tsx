@@ -46,6 +46,9 @@ const AiActionsPage = lazy(() =>
 const FamilyHubPage = lazy(() =>
   import('@/features/family/FamilyHubPage').then((m) => ({ default: m.FamilyHubPage })),
 )
+const NotificationsPage = lazy(() =>
+  import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+)
 
 function OfflineQueueHost() {
   useOfflineQueueSync()
@@ -74,6 +77,7 @@ function App() {
           <Route path="/business" element={<BusinessHubPage />} />
           <Route path="/missions" element={<MissionsPage />} />
           <Route path="/activity" element={<ActivityLogPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/ai-actions" element={<AiActionsPage />} />
           <Route path="/family" element={<FamilyHubPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

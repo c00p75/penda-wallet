@@ -1,5 +1,12 @@
 import type { ProfileMode } from './modes'
 import type { Gender, IncomeRange, PrimaryGoal } from './onboardingOptions'
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  type NotificationPrefs,
+} from '@/features/notifications/prefs'
+
+export type { NotificationPrefs }
+export { DEFAULT_NOTIFICATION_PREFS }
 
 export type AiPersonality =
   | 'balanced_coach'
@@ -39,6 +46,7 @@ export interface Profile {
   income_range: IncomeRange | null
   gender: Gender
   notification_opt_in: boolean
+  notification_prefs: NotificationPrefs
   ai_consent: AiConsent
   blind_budgeting: boolean
   tax_reserve_pct: number
@@ -56,6 +64,7 @@ export interface ProfileInput {
   income_range?: IncomeRange | null
   gender?: Gender
   notification_opt_in?: boolean
+  notification_prefs?: NotificationPrefs
   ai_consent?: AiConsent
   blind_budgeting?: boolean
   tax_reserve_pct?: number

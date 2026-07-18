@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { sendPush } from '../_shared/push.ts'
+import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
 
@@ -316,22 +316,17 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
   }
 
   const day = toStr(now)
-  // Batch the one-nudge-per-day check and the push opt-outs — the old loop
-  // made three round-trips per member.
-  const [existingRes, profilesRes] = await Promise.all([
-    supabase
-      .from('ai_insights')
-      .select('user_id')
-      .eq('wallet_id', walletId)
-      .in('user_id', premiumIds)
-      .eq('type', 'recommendation')
-      .eq('period_end', day),
-    supabase.from('profiles').select('id, notification_opt_in').in('id', premiumIds),
-  ])
-  const alreadyNudged = new Set((existingRes.data ?? []).map((r) => r.user_id))
-  const optedOut = new Set(
-    (profilesRes.data ?? []).filter((p) => p.notification_opt_in === false).map((p) => p.id),
-  )
+  const { data: existingRows } = await supabase
+    .from('ai_insights')
+    .select('user_id')
+    .eq('wallet_id', walletId)
+    .in('user_id', premiumIds)
+    .eq('type', 'recommendation')
+    .eq('period_end', day)
+  const alreadyNudged = new Set((existingRows ?? []).map((r) => r.user_id))
+
+  const kind = content.kind === 'burn_rate' ? 'alert' : 'tip'
+  const dedupePrefix = content.kind === 'burn_rate' ? 'burn' : `coach:${String(content.kind)}`
 
   let notified = 0
   for (const userId of premiumIds) {
@@ -347,11 +342,17 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       period_end: day,
     })
 
-    // The insight itself always lands in-app (read via the analytics feed,
-    // independent of push) — only the push send respects the opt-out.
-    if (!optedOut.has(userId)) {
-      await notifyMember(supabase, userId, title, body, url)
-    }
+    // Inbox + optional Web Push (opt-in / category prefs gated inside notifyUser).
+    await notifyUser(supabase, {
+      userId,
+      walletId,
+      kind,
+      title,
+      body,
+      href: url,
+      dedupeKey: `${dedupePrefix}:${walletId}:${day}`,
+      payload: content,
+    })
     notified++
   }
 
@@ -409,20 +410,6 @@ function nudgeCopy(r: PaceResult, currency: string, categoryName: string): strin
   }
   const daysWord = r.daysLeft === 1 ? 'day' : 'days'
   return `${categoryName} is running hot — ${pct}% spent with ${r.daysLeft} ${daysWord} left this ${periodWord}.`
-}
-
-async function notifyMember(supabase: SupabaseClient, userId: string, title: string, body: string, url: string) {
-  const { data: subscriptions } = await supabase
-    .from('push_subscriptions')
-    .select('id, endpoint, keys')
-    .eq('user_id', userId)
-
-  for (const sub of subscriptions ?? []) {
-    const result = await sendPush({ endpoint: sub.endpoint, keys: sub.keys }, { title, body, url })
-    if (!result.ok && (result.statusCode === 404 || result.statusCode === 410)) {
-      await supabase.from('push_subscriptions').delete().eq('id', sub.id)
-    }
-  }
 }
 
 interface PeriodBounds {

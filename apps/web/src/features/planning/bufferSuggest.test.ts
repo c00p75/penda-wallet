@@ -13,6 +13,7 @@ function tx(over: Partial<Transaction> & Pick<Transaction, 'amount_minor' | 'typ
     description: null,
     source: 'manual',
     receipt_storage_path: null,
+    ai_extraction: null,
     user_confirmed: true,
     version: 1,
     deleted_at: null,

@@ -15,6 +15,7 @@ export const CHAT_PAGES = [
   'business',
   'missions',
   'activity',
+  'notifications',
   'ai-actions',
   'family',
 ] as const
@@ -48,6 +49,7 @@ export function pageContextFromPathname(pathname: string): PageContext | undefin
   if (pathname === '/business') return { page: 'business' }
   if (pathname === '/missions') return { page: 'missions' }
   if (pathname === '/activity') return { page: 'activity' }
+  if (pathname === '/notifications') return { page: 'notifications' }
   if (pathname === '/ai-actions') return { page: 'ai-actions' }
   if (pathname === '/family') return { page: 'family' }
   return undefined

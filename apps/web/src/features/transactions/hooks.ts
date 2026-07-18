@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
-import { createTransaction, deleteTransaction, fetchTransactions, updateTransaction } from './api'
-import type { TransactionInput } from './types'
+import {
+  confirmReceiptAsItems,
+  createTransaction,
+  deleteTransaction,
+  fetchTransactions,
+  updateTransaction,
+} from './api'
+import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from './types'
 
 function transactionsKey(walletId: string | undefined) {
   return ['transactions', walletId] as const
@@ -42,5 +48,17 @@ export function useDeleteTransaction(walletId: string | undefined) {
   return useMutation({
     mutationFn: (id: string) => deleteTransaction(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
+  })
+}
+
+export function useConfirmReceiptItems(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+  const userId = useAuthStore((s) => s.session?.user.id)
+
+  return useMutation({
+    mutationFn: ({ draft, input }: { draft: Transaction; input: ReceiptItemsConfirmInput }) =>
+      confirmReceiptAsItems(draft, userId!, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
+    onError: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
   })
 }

@@ -17,6 +17,7 @@ function tx(overrides: Partial<Transaction>): Transaction {
     transaction_date: '2026-07-10',
     source: 'manual',
     receipt_storage_path: null,
+    ai_extraction: null,
     user_confirmed: true,
     version: 1,
     deleted_at: null,

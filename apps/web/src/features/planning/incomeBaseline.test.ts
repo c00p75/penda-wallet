@@ -16,6 +16,7 @@ function tx(overrides: Partial<Transaction> & { amount_minor: number; transactio
     description: null,
     source: 'manual',
     receipt_storage_path: null,
+    ai_extraction: null,
     user_confirmed: true,
     version: 1,
     deleted_at: null,

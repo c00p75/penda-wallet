@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Send, X } from 'lucide-react'
-import { Microphone } from '@/components/icons/product'
+import { Camera, Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,18 @@ import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
 import { PERSONALITIES } from '@/features/profile/types'
+import { useCategories } from '@/features/categories/hooks'
+import { useEntitlement } from '@/features/entitlements/hooks'
+import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
+import type { PremiumFeature } from '@/features/entitlements/types'
+import { useUploadReceipt } from '@/features/receipts/hooks'
+import { TransactionForm } from '@/features/transactions/TransactionForm'
+import {
+  useConfirmReceiptItems,
+  useDeleteTransaction,
+  useUpdateTransaction,
+} from '@/features/transactions/hooks'
+import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { useConfirmAiAction, useSendChatMessage } from './hooks'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
@@ -159,6 +171,18 @@ export function ChatSheet({
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
   const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
+  const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
+  const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
+  const { data: categories = [] } = useCategories(walletId)
+  const uploadReceipt = useUploadReceipt(walletId)
+  const updateTransaction = useUpdateTransaction(walletId)
+  const deleteTransaction = useDeleteTransaction(walletId)
+  const confirmReceiptItems = useConfirmReceiptItems(walletId)
+
+  const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
+  const [receiptFormOpen, setReceiptFormOpen] = useState(false)
+  const [receiptDraft, setReceiptDraft] = useState<Transaction | null>(null)
+  const receiptInputRef = useRef<HTMLInputElement>(null)
 
   const keyboardInset = useKeyboardInset()
   useCloseOnBack(open, () => onOpenChange(false))
@@ -410,6 +434,79 @@ export function ChatSheet({
 
   // Keyboard activation (Enter/Space) fires click without pointer events; treat
   // it as a hands-free toggle. Pointer taps also fire click, so ignore those.
+  function openReceiptPicker() {
+    receiptInputRef.current?.click()
+  }
+
+  function openScanReceipt() {
+    if (canScanReceipt) {
+      openReceiptPicker()
+      return
+    }
+    setPaywallFeature('receipt-scan')
+  }
+
+  async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const toastId = toast.loading('Scanning receipt…')
+    try {
+      const draft = await uploadReceipt.mutateAsync(file)
+      toast.dismiss(toastId)
+      setReceiptDraft(draft)
+      setReceiptFormOpen(true)
+    } catch (error) {
+      toast.dismiss(toastId)
+      toast.error(error instanceof Error ? error.message : 'Could not read that receipt.')
+    }
+  }
+
+  async function confirmReceipt(input: TransactionInput) {
+    if (!receiptDraft) return
+    try {
+      await updateTransaction.mutateAsync({
+        id: receiptDraft.id,
+        input,
+        version: receiptDraft.version,
+      })
+      toast('Receipt confirmed.')
+      setReceiptFormOpen(false)
+      setReceiptDraft(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function confirmReceiptAsItems(input: ReceiptItemsConfirmInput) {
+    if (!receiptDraft) return
+    try {
+      await confirmReceiptItems.mutateAsync({ draft: receiptDraft, input })
+      toast(
+        input.items.length === 1
+          ? 'Receipt confirmed.'
+          : `${input.items.length} items logged from receipt.`,
+      )
+      setReceiptFormOpen(false)
+      setReceiptDraft(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+      throw error
+    }
+  }
+
+  async function discardReceipt() {
+    if (!receiptDraft) return
+    try {
+      await deleteTransaction.mutateAsync(receiptDraft.id)
+      toast('Receipt discarded.')
+      setReceiptFormOpen(false)
+      setReceiptDraft(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
   function onMicClick() {
     if (pointerHandledRef.current) {
       pointerHandledRef.current = false
@@ -629,9 +726,20 @@ export function ChatSheet({
               />
               <Button
                 type="button"
+                variant="ghost"
+                size="icon"
+                disabled={uploadReceipt.isPending || voice.state === 'transcribing' || isRecording}
+                onClick={openScanReceipt}
+                className="size-10 shrink-0 self-end rounded-xl"
+                aria-label="Scan receipt"
+              >
+                <Camera className="size-4" weight="fill" />
+              </Button>
+              <Button
+                type="button"
                 variant={isRecording ? 'destructive' : 'ghost'}
                 size="icon"
-                disabled={voice.state === 'transcribing'}
+                disabled={voice.state === 'transcribing' || uploadReceipt.isPending}
                 onPointerDown={onMicPointerDown}
                 onPointerUp={onMicPointerUp}
                 onPointerCancel={onMicPointerCancel}
@@ -646,14 +754,48 @@ export function ChatSheet({
               <Button
                 type="submit"
                 size="icon"
-                disabled={sendMessage.isPending || !input.trim()}
+                disabled={sendMessage.isPending || !input.trim() || uploadReceipt.isPending}
                 className="size-10 shrink-0 self-end rounded-xl"
                 aria-label="Send"
               >
                 <Send className="size-4" />
               </Button>
             </div>
+            <input
+              ref={receiptInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleReceiptSelected}
+            />
           </form>
+
+          <PaywallSheet
+            feature={paywallFeature}
+            onOpenChange={(open) => !open && setPaywallFeature(null)}
+            onPreviewOnce={openReceiptPicker}
+          />
+
+          <TransactionForm
+            open={receiptFormOpen}
+            onOpenChange={(open) => {
+              setReceiptFormOpen(open)
+              if (!open) setReceiptDraft(null)
+            }}
+            categories={categories}
+            currency={currency}
+            walletId={walletId}
+            transaction={receiptDraft}
+            onSubmit={confirmReceipt}
+            onConfirmItems={confirmReceiptAsItems}
+            onDelete={receiptDraft ? discardReceipt : undefined}
+            isSubmitting={
+              updateTransaction.isPending ||
+              deleteTransaction.isPending ||
+              confirmReceiptItems.isPending
+            }
+          />
         </div>
       </SheetContent>
     </Sheet>

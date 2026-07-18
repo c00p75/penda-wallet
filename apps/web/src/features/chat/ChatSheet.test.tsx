@@ -21,6 +21,20 @@ vi.mock('./useVoiceRecorder', () => ({
 vi.mock('@/features/profile/hooks', () => ({
   useProfile: () => ({ data: undefined }),
 }))
+vi.mock('@/features/entitlements/hooks', () => ({
+  useEntitlement: () => ({ isPremium: true, data: { receipt_scan_preview_used: false } }),
+}))
+vi.mock('@/features/categories/hooks', () => ({
+  useCategories: () => ({ data: [] }),
+}))
+vi.mock('@/features/receipts/hooks', () => ({
+  useUploadReceipt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/features/transactions/hooks', () => ({
+  useUpdateTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useConfirmReceiptItems: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
 vi.mock('@/lib/useKeyboardInset', () => ({
   useKeyboardInset: () => 0,
 }))
@@ -35,6 +49,9 @@ vi.mock('@/lib/supabase/client', () => ({
 }))
 vi.mock('@/pwa/offlineQueue', () => ({
   enqueueChatMessage: vi.fn(),
+}))
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (sel: (s: { session: null }) => unknown) => sel({ session: null }),
 }))
 
 function renderSheet(currency: string) {

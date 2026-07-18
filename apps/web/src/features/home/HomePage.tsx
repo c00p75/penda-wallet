@@ -22,9 +22,15 @@ import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsigh
 import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
-import { useCreateTransaction, useDeleteTransaction, useTransactions, useUpdateTransaction } from '@/features/transactions/hooks'
+import {
+  useConfirmReceiptItems,
+  useCreateTransaction,
+  useDeleteTransaction,
+  useTransactions,
+  useUpdateTransaction,
+} from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
-import type { Transaction, TransactionInput } from '@/features/transactions/types'
+import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useQuickActionStore } from '@/features/home/quickActionStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
@@ -39,6 +45,7 @@ import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
 import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
 import { useProfile } from '@/features/profile/hooks'
+import { upsertCoachingNotification } from '@/features/notifications/api'
 import { ImpulsePauseSheet } from '@/features/impulse/ImpulsePauseSheet'
 import { IMPULSE_THRESHOLD_MINOR, useImpulseStore } from '@/features/impulse/impulseStore'
 
@@ -96,6 +103,7 @@ export function HomePage() {
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
   const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const confirmReceiptItems = useConfirmReceiptItems(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
   const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
@@ -200,6 +208,21 @@ export function HomePage() {
     }
   }
 
+  async function handleConfirmReceiptItems(input: ReceiptItemsConfirmInput) {
+    if (!editing) return
+    try {
+      await confirmReceiptItems.mutateAsync({ draft: editing, input })
+      toast(
+        input.items.length === 1
+          ? 'Receipt confirmed.'
+          : `${input.items.length} items logged from receipt.`,
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+      throw error
+    }
+  }
+
   async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -293,6 +316,23 @@ export function HomePage() {
 
   const coachingInsights = detectCoachingInsights({ transactions, budgets, goals, currency })
   const suggestion = coachingInsights[0]
+
+  useEffect(() => {
+    if (!wallet?.id || !suggestion) return
+    const href =
+      suggestion.action?.kind === 'fund-goal' || suggestion.action?.kind === 'view-goals'
+        ? '/goals'
+        : '/budgets'
+    void upsertCoachingNotification({
+      walletId: wallet.id,
+      title: 'Penda tip',
+      body: suggestion.text,
+      href,
+      dedupeKey: `coaching:${suggestion.kind}:${localDateStr(new Date())}`,
+    }).catch(() => {
+      // Best-effort inbox sync — never block the home surface.
+    })
+  }, [wallet?.id, suggestion?.id, suggestion?.kind, suggestion?.text, suggestion?.action?.kind])
 
   function runInsightAction(action: CoachingAction) {
     switch (action.kind) {
@@ -578,8 +618,17 @@ export function HomePage() {
         walletId={wallet.id}
         transaction={editing}
         onSubmit={handleSubmit}
+        onConfirmItems={
+          editing?.source === 'receipt' && !editing.user_confirmed
+            ? handleConfirmReceiptItems
+            : undefined
+        }
         onDelete={editing ? handleDelete : undefined}
-        isSubmitting={createTransaction.isPending || updateTransaction.isPending}
+        isSubmitting={
+          createTransaction.isPending ||
+          updateTransaction.isPending ||
+          confirmReceiptItems.isPending
+        }
       />
 
       <PaywallSheet

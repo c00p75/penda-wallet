@@ -6,6 +6,7 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { WalletSheet } from '@/features/wallets/WalletSheet'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { BellIcon, SquaresFourIcon, TrophyIcon } from '@/components/icons/product'
+import { useUnreadNotificationCount } from '@/features/notifications/hooks'
 
 /**
  * Primary-tab chrome (Home / Budgets / Goals / Analytics): menu, compete,
@@ -15,6 +16,7 @@ export function AppHeader() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()
   const offlineQueue = useOfflinePending()
+  const { data: unreadCount = 0 } = useUnreadNotificationCount()
   const [walletSheetOpen, setWalletSheetOpen] = useState(false)
 
   if (!wallet) return null
@@ -57,11 +59,14 @@ export function AppHeader() {
             <TrophyIcon className="size-5" weight="regular" />
           </Link>
           <Link
-            to="/activity"
-            aria-label="Notifications"
-            className="grid size-10 place-items-center rounded-full text-muted-foreground transition-transform active:scale-95"
+            to="/notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            className="relative grid size-10 place-items-center rounded-full text-muted-foreground transition-transform active:scale-95"
           >
             <BellIcon className="size-5" weight="regular" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-[var(--iris)] ring-2 ring-background" />
+            )}
           </Link>
           <Link
             to="/profile"

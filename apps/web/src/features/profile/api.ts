@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { normalizeNotificationPrefs } from '@/features/notifications/prefs'
 import { DEFAULT_AI_CONSENT, type Profile, type ProfileInput } from './types'
 
 function normalizeProfile(row: Record<string, unknown>): Profile {
@@ -9,6 +10,7 @@ function normalizeProfile(row: Record<string, unknown>): Profile {
       consent && typeof consent === 'object'
         ? { ...DEFAULT_AI_CONSENT, ...(consent as object) }
         : DEFAULT_AI_CONSENT,
+    notification_prefs: normalizeNotificationPrefs(row.notification_prefs),
     blind_budgeting: Boolean(row.blind_budgeting),
     tax_reserve_pct: Number(row.tax_reserve_pct ?? 0),
     round_up_enabled: Boolean(row.round_up_enabled),

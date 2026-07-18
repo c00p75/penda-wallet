@@ -38,12 +38,22 @@ interface CategorizationRule {
   category_id: string
 }
 
+interface ExtractionItem {
+  description: string
+  quantity: number
+  /** Line total in minor units (cents), not unit price. */
+  amount_minor: number
+  /** Best-fit category name for this line alone. */
+  suggested_category: string | null
+}
+
 interface Extraction {
   merchant: string | null
   transaction_date: string | null
   total_minor: number
   currency: string
   suggested_category: string | null
+  items: ExtractionItem[]
 }
 
 const EXTRACTION_SCHEMA = {
@@ -54,8 +64,29 @@ const EXTRACTION_SCHEMA = {
     total_minor: { type: 'integer', description: 'The total amount paid, in integer minor units (cents).' },
     currency: { type: 'string', description: '3-letter currency code, e.g. USD.' },
     suggested_category: { type: 'string' },
+    items: {
+      type: 'array',
+      description:
+        'Each purchased line item. Exclude TOTAL, TAX, CASH, CHANGE, subtotal, and payment rows.',
+      items: {
+        type: 'object',
+        properties: {
+          description: { type: 'string', description: 'Item name as printed on the receipt.' },
+          quantity: { type: 'number', description: 'Quantity purchased; default 1.' },
+          amount_minor: {
+            type: 'integer',
+            description: 'Line total in cents (quantity × unit price when both are shown).',
+          },
+          suggested_category: {
+            type: 'string',
+            description: 'Best category for this line alone; may differ across items.',
+          },
+        },
+        required: ['description', 'amount_minor'],
+      },
+    },
   },
-  required: ['total_minor', 'currency'],
+  required: ['total_minor', 'currency', 'items'],
 }
 
 Deno.serve(async (req) => {
@@ -85,11 +116,15 @@ Deno.serve(async (req) => {
       return respond({ error: 'Invalid or expired session' }, 401)
     }
 
-    const { data: isPremium, error: entitlementError } = await supabase.rpc('is_premium', {
-      p_user_id: user.id,
-    })
+    // Premium: unlimited. Free: one claim via claim_receipt_scan_preview (sets
+    // entitlements.receipt_scan_preview_used). Claim runs before vision so a
+    // failed AI call still consumes the free preview.
+    const { data: canScan, error: entitlementError } = await supabase.rpc(
+      'claim_receipt_scan_preview',
+      { p_user_id: user.id },
+    )
     if (entitlementError) throw entitlementError
-    if (!isPremium) {
+    if (!canScan) {
       return respond(
         { error: 'premium_required', message: 'Receipt scanning is a Penda Premium feature.' },
         402,
@@ -205,7 +240,7 @@ async function extractWithGemini(base64: string, mimeType: string, categories: C
         parts: [
           { inlineData: { mimeType, data: base64 } },
           {
-            text: `Extract the details from this receipt photo. suggested_category must be exactly one of: ${categoryNames.join(', ')}.`,
+            text: `Extract the details from this receipt photo. Include every purchased line in items (description, quantity, amount_minor as the line total in cents, suggested_category for that line alone). Do not put TOTAL/CASH/CHANGE/TAX in items. Top-level suggested_category and each item's suggested_category must each be exactly one of: ${categoryNames.join(', ')}.`,
           },
         ],
       },
@@ -216,7 +251,7 @@ async function extractWithGemini(base64: string, mimeType: string, categories: C
     },
   })
 
-  return JSON.parse(response.text ?? '{}')
+  return normalizeExtraction(JSON.parse(response.text ?? '{}'), categoryNames)
 }
 
 async function extractWithGroq(base64: string, mimeType: string, categories: Category[]): Promise<Extraction> {
@@ -234,7 +269,7 @@ async function extractWithGroq(base64: string, mimeType: string, categories: Cat
           content: [
             {
               type: 'text',
-              text: `Extract the details from this receipt photo as a JSON object with exactly these keys: merchant (string), transaction_date (ISO 8601 YYYY-MM-DD), total_minor (integer, the total amount in cents), currency (3-letter code), suggested_category (must be exactly one of: ${categoryNames.join(', ')}). Respond with ONLY the JSON object.`,
+              text: `Extract the details from this receipt photo as a JSON object with keys: merchant (string), transaction_date (ISO 8601 YYYY-MM-DD), total_minor (integer, total paid in cents), currency (3-letter code), suggested_category (overall; must be exactly one of: ${categoryNames.join(', ')}), items (array of { description, quantity, amount_minor, suggested_category } for each purchased line — amount_minor is the line total in cents; each item's suggested_category may differ and must be one of the same list; exclude TOTAL/CASH/CHANGE/TAX). Respond with ONLY the JSON object.`,
             },
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
           ],
@@ -248,7 +283,41 @@ async function extractWithGroq(base64: string, mimeType: string, categories: Cat
   }
 
   const data = await res.json()
-  return JSON.parse(data.choices[0].message.content ?? '{}')
+  return normalizeExtraction(JSON.parse(data.choices[0].message.content ?? '{}'), categoryNames)
+}
+
+function normalizeCategoryName(value: unknown, allowed: string[]): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const exact = allowed.find((name) => name === trimmed)
+  if (exact) return exact
+  const lower = trimmed.toLowerCase()
+  return allowed.find((name) => name.toLowerCase() === lower) ?? null
+}
+
+function normalizeExtraction(raw: Partial<Extraction>, categoryNames: string[]): Extraction {
+  const topCategory = normalizeCategoryName(raw.suggested_category, categoryNames)
+  const items = Array.isArray(raw.items)
+    ? raw.items
+        .map((item) => ({
+          description: String(item?.description ?? '').trim(),
+          quantity: Number(item?.quantity) > 0 ? Number(item.quantity) : 1,
+          amount_minor: Math.round(Number(item?.amount_minor) || 0),
+          suggested_category:
+            normalizeCategoryName(item?.suggested_category, categoryNames) ?? topCategory,
+        }))
+        .filter((item) => item.description && item.amount_minor > 0)
+    : []
+
+  return {
+    merchant: raw.merchant ?? null,
+    transaction_date: raw.transaction_date ?? null,
+    total_minor: Math.round(Number(raw.total_minor) || 0),
+    currency: raw.currency ?? 'USD',
+    suggested_category: topCategory,
+    items,
+  }
 }
 
 function toBase64(bytes: Uint8Array): string {

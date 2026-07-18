@@ -41,7 +41,7 @@ interface PushPayload {
 }
 
 self.addEventListener('push', (event) => {
-  let payload: PushPayload = { title: 'Penda', body: 'You have a new insight.' }
+  let payload: PushPayload = { title: 'Penda', body: 'You have a new insight.', url: '/notifications' }
   try {
     if (event.data) payload = event.data.json()
   } catch {
@@ -54,14 +54,15 @@ self.addEventListener('push', (event) => {
       body: payload.body,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: payload.url ?? '/' },
+      data: { url: payload.url ?? '/notifications' },
     }),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl = (event.notification.data as { url?: string } | undefined)?.url ?? '/'
+  const targetUrl =
+    (event.notification.data as { url?: string } | undefined)?.url ?? '/notifications'
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
