@@ -70,7 +70,7 @@ export function SettingsPage() {
   )
 }
 
-/** The actual settings UI, shared between the standalone page and the Profile tab-switcher. */
+/** The actual settings UI, shared between the standalone page and Profile. */
 export function SettingsContent() {
   const session = useAuthStore((s) => s.session)
   const userId = session?.user.id

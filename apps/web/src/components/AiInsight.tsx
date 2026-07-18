@@ -3,14 +3,8 @@ import { useChatStore } from '@/features/chat/chatStore'
 
 export type InsightTone = 'default' | 'warm' | 'attention'
 
-const ORB_GRADIENT: Record<InsightTone, string> = {
-  default: 'conic-gradient(from 210deg, var(--iris), var(--hero-glow), var(--apricot), var(--iris))',
-  warm: 'conic-gradient(from 200deg, var(--apricot), var(--iris), var(--apricot))',
-  attention: 'radial-gradient(circle at 38% 32%, var(--rose), var(--apricot))',
-}
-
-export function AiOrb({
-  tone = 'default',
+/** Penda brand mark for insight cards — the app icon, not a generic AI glyph. */
+export function AiMark({
   thinking = false,
   className,
 }: {
@@ -21,12 +15,14 @@ export function AiOrb({
   return (
     <span
       aria-hidden
-      className={cn('block shrink-0 rounded-full', thinking && 'penda-orb-spin', className)}
-      style={{
-        backgroundImage: ORB_GRADIENT[tone],
-        boxShadow: '0 0 16px color-mix(in srgb, var(--iris) 35%, transparent)',
-      }}
-    />
+      className={cn(
+        'block shrink-0 overflow-hidden rounded-2xl shadow-[var(--shadow-soft)] ring-1 ring-border/50',
+        thinking && 'animate-pulse',
+        className,
+      )}
+    >
+      <img src="/icons/icon-192.png" alt="" className="size-full object-cover" />
+    </span>
   )
 }
 
@@ -44,8 +40,8 @@ interface AiInsightProps {
 }
 
 /**
- * The headline unit for the "AI speaks first" principle: a living orb beside a
- * single sentence Penda wrote about the user. Sits at the top of a page.
+ * The headline unit for the "AI speaks first" principle: the Penda mark
+ * beside a single sentence about the user. Sits at the top of a page.
  * When `askText` is set, tap opens chat with that sentence as the seed.
  */
 export function AiInsight({ children, tone = 'default', loading = false, className, askText }: AiInsightProps) {
@@ -54,7 +50,7 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
 
   const body = (
     <>
-      <AiOrb tone={tone} thinking={loading} className="mt-0.5 size-7" />
+      <AiMark thinking={loading} className="mt-0.5 size-7" />
       {loading ? (
         <div className="flex flex-1 flex-col gap-2 py-1">
           <div className="h-3 w-4/5 animate-pulse rounded-full bg-muted" />

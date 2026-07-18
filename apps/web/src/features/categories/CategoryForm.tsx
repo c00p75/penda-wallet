@@ -106,7 +106,7 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>{category ? 'Edit category' : 'New category'}</SheetTitle>
         </SheetHeader>
@@ -130,7 +130,7 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
 
           <div className="flex flex-col gap-1.5">
             <Label>Color</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 rounded-2xl border border-border/60 bg-secondary/30 p-3 shadow-[var(--shadow-soft)]">
               {COLOR_SWATCHES.map((swatch) => (
                 <button
                   key={swatch ?? 'none'}

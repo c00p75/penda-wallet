@@ -128,7 +128,7 @@ export function GoalForm({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>{goal ? 'Edit savings goal' : 'New savings goal'}</SheetTitle>
         </SheetHeader>
@@ -156,17 +156,17 @@ export function GoalForm({
             />
             {imagePreviewUrl ? (
               <div className="relative">
-                <img src={imagePreviewUrl} alt="" className="h-32 w-full rounded-xl object-cover" />
+                <img src={imagePreviewUrl} alt="" className="h-32 w-full rounded-2xl object-cover shadow-[var(--shadow-soft)] ring-1 ring-border/50" />
                 <button
                   type="button"
                   onClick={handleRemoveImage}
                   aria-label="Remove photo"
-                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
+                  className="absolute right-2 top-2 rounded-full bg-black/40 p-1.5 text-white backdrop-blur-sm"
                 >
                   <X className="size-3.5" />
                 </button>
                 {uploadImage.isPending && (
-                  <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 text-sm font-medium text-white">
+                  <div className="absolute inset-0 grid place-items-center rounded-2xl bg-black/40 text-sm font-medium text-white backdrop-blur-sm">
                     Uploading…
                   </div>
                 )}
@@ -175,7 +175,7 @@ export function GoalForm({
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                className="flex h-32 w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border text-muted-foreground hover:bg-muted/40"
+                className="flex h-32 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-border/60 text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-muted/40"
               >
                 <ImagePlus className="size-6" />
                 <span className="text-sm">Add a photo</span>
@@ -230,7 +230,7 @@ export function GoalForm({
           </div>
 
           {perMonth !== null && perMonth > 0 && (
-            <p className="rounded-lg bg-accent px-3 py-2 text-sm">
+            <p className="rounded-2xl bg-[var(--apricot-soft)]/60 px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/50">
               💪 Save <span className="font-semibold">{formatMoney(perMonth, currency)}/month</span> to
               reach this on time.
             </p>

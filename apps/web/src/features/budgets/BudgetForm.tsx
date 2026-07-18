@@ -80,7 +80,7 @@ export function BudgetForm({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>{budget ? 'Edit budget' : 'New budget'}</SheetTitle>
         </SheetHeader>
@@ -135,7 +135,7 @@ export function BudgetForm({
             </ToggleGroup>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-secondary/30 p-4 shadow-[var(--shadow-soft)]">
             <div>
               <Label htmlFor="budget-rollover">Roll over unused amount</Label>
               <p className="text-xs text-muted-foreground">

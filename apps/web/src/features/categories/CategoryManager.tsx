@@ -56,7 +56,7 @@ export function CategoryManager({ walletId }: CategoryManagerProps) {
           setEditing(category)
           setFormOpen(true)
         }}
-        className="flex items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm disabled:cursor-default enabled:hover:bg-accent"
+        className="flex items-center gap-2.5 rounded-2xl border border-border/60 p-2.5 text-left text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/50 disabled:cursor-default enabled:hover:bg-accent/60"
       >
         {category.icon ? (
           <span
@@ -92,7 +92,7 @@ export function CategoryManager({ walletId }: CategoryManagerProps) {
         type="button"
         variant="outline"
         size="sm"
-        className="self-start"
+        className="self-start rounded-2xl shadow-[var(--shadow-soft)]"
         onClick={() => {
           setEditing(null)
           setFormOpen(true)

@@ -34,7 +34,7 @@ export function AnalyticsPage() {
   )
 }
 
-/** The actual analytics UI, shared between the standalone page and the Profile tab-switcher. */
+/** The analytics body used by the standalone Analytics page. */
 export function AnalyticsContent() {
   const session = useAuthStore((s) => s.session)
   const { data: wallet } = useCurrentWallet()

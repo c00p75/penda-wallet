@@ -25,7 +25,7 @@ export function PaywallSheet({ feature, onOpenChange }: PaywallSheetProps) {
             style={{
               background:
                 'linear-gradient(145deg, var(--iris-hero-from) 0%, var(--iris-hero-to) 100%)',
-              boxShadow: '0 14px 36px color-mix(in srgb, var(--iris-hero-to) 45%, transparent)',
+              boxShadow: 'var(--shadow-hero)',
             }}
           >
             <span className="flex items-center gap-1.5 font-mono text-[0.68rem] uppercase tracking-[0.14em] opacity-90">

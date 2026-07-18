@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Sparkles, Split, X } from 'lucide-react'
+import { ArrowLeft, Plus, Split, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DateChip } from '@/components/ui/date-chip'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
+import { AiMark } from '@/components/AiInsight'
 import { BottomNav } from '@/components/BottomNav'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -65,7 +66,7 @@ function AiInsightActionCard({
         className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider"
         style={{ color: 'var(--iris)' }}
       >
-        <Sparkles className="size-3.5" />
+        <AiMark className="size-4 rounded-md" />
         AI Insight
       </div>
       <p className="pr-6 text-sm leading-snug">{insight.text}</p>
@@ -440,7 +441,7 @@ export function LedgerPage() {
       <Button
         onClick={openAddForm}
         size="icon"
-        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-lg"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-6 size-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label="Add transaction"
       >
         <Plus className="size-6" />

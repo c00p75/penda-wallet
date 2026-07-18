@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { ArrowRight, Lightbulb } from 'lucide-react'
-import { AiOrb, type InsightTone } from '@/components/AiInsight'
+import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export interface InsightCard {
   id: string
-  /** `read` shows the living orb; `tip` shows the pro-tip lightbulb. */
+  /** `read` shows the Penda mark; `tip` shows the pro-tip lightbulb. */
   variant: 'read' | 'tip'
   tone: InsightTone
   /** Bold prefix, e.g. "Pro tip:". */
@@ -21,13 +21,13 @@ function InsightCardView({ card }: { card: InsightCard }) {
       {card.variant === 'tip' ? (
         <span
           aria-hidden
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full"
+          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-2xl"
           style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
         >
           <Lightbulb className="size-4" style={{ color: 'var(--apricot)' }} />
         </span>
       ) : (
-        <AiOrb tone={card.tone} className="mt-0.5 size-7" />
+        <AiMark className="mt-0.5 size-7" />
       )}
       <div className="flex flex-1 flex-col gap-1.5">
         <p className="text-sm leading-snug">

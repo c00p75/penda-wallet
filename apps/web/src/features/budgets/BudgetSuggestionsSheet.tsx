@@ -48,7 +48,7 @@ export function BudgetSuggestionsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-primary" />
@@ -71,8 +71,10 @@ export function BudgetSuggestionsSheet({
                 onClick={() => toggle(s.categoryId)}
                 aria-pressed={isSelected}
                 className={cn(
-                  'flex items-center gap-3 rounded-xl border p-3 text-left',
-                  isSelected ? 'border-primary bg-accent' : 'border-border opacity-60',
+                  'flex items-center gap-3 rounded-2xl border p-3.5 text-left shadow-[var(--shadow-soft)] ring-1 ring-border/50',
+                  isSelected
+                    ? 'border-primary/40 bg-[var(--iris-soft)]/60'
+                    : 'border-border/60 opacity-60',
                 )}
               >
                 <span className="text-xl" aria-hidden>

@@ -29,14 +29,6 @@ function GoogleLogo() {
   )
 }
 
-function AppleLogo() {
-  return (
-    <svg className="size-4" viewBox="0 0 24 24" aria-hidden fill="currentColor">
-      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.43c1.29.06 2.16.67 2.92.69.9-.15 1.76-.76 3.04-.82 1.55-.08 2.97.62 3.78 1.74-3.44 2.07-2.87 6.65.92 7.93-.42 1.08-.97 2.14-2.66 3.31zM12.03 7.25c-.17-2.63 2.07-4.82 4.72-4.75.19 2.98-2.73 5.08-4.72 4.75z" />
-    </svg>
-  )
-}
-
 // Four-point sparkle used as graphic decoration on the hero panel.
 function Sparkle({
   className,
@@ -100,7 +92,7 @@ export function LoginPage() {
     }
   }
 
-  async function handleOAuth(provider: 'apple' | 'google') {
+  async function handleOAuth(provider: 'google') {
     await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: window.location.origin },
@@ -118,11 +110,10 @@ export function LoginPage() {
           animationDuration: '600ms',
         }}
       >
-        {/* Graphic sparkles */}
-        <Sparkle twinkle={false} color="var(--foreground)" rotate={-8} className="absolute bottom-16 left-6 size-20 opacity-90" />
+        {/* Corner sparkles — kept clear of the headline */}
         <Sparkle twinkle={false} color="rgba(255,255,255,0.9)" rotate={10} className="absolute right-7 top-10 size-12" />
         <Sparkle twinkle={false} color="rgba(255,255,255,0.85)" className="absolute bottom-10 right-10 size-7" />
-        <Sparkle color="var(--iris)" durationMs={3600} className="absolute right-24 top-28 size-4 opacity-80" />
+        <Sparkle color="var(--iris)" durationMs={3600} className="absolute right-6 top-28 size-4 opacity-80" />
 
         {/* Content */}
         <div className="relative z-10 flex items-center gap-1.5 text-sm font-semibold tracking-wide text-foreground/70">
@@ -130,16 +121,21 @@ export function LoginPage() {
           <Sparkle color="var(--iris)" durationMs={3200} className="size-3.5" />
         </div>
 
-        <h1 className="relative z-10 mt-8 text-[2.6rem] font-bold leading-[1.08] tracking-tight text-foreground">
+        <h1 className="relative z-10 mt-6 text-[2.6rem] font-bold leading-[1.08] tracking-tight text-foreground">
           Your money,
           <br />
           finally
           <br />
           understood.
         </h1>
-        <p className="relative z-10 mt-4 max-w-[16rem] text-[15px] font-medium leading-relaxed text-foreground/55">
+        <p className="relative z-10 mt-3.5 max-w-[16rem] text-[15px] font-medium leading-relaxed text-foreground/55">
           Meet Penda — your private AI money companion.
         </p>
+
+        {/* Big graphic star — flows below the copy (never behind the headline) and bleeds off the panel edge */}
+        <div className="relative z-0 mt-auto -mb-3 -ml-1 pt-6">
+          <Sparkle twinkle={false} color="var(--foreground)" rotate={-8} className="size-24 opacity-90" />
+        </div>
       </section>
 
       {/* Auth actions */}
@@ -151,15 +147,6 @@ export function LoginPage() {
         >
           <GoogleLogo />
           Continue with Google
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleOAuth('apple')}
-          className="flex h-13 items-center justify-center gap-2.5 rounded-2xl bg-foreground text-sm font-semibold text-background shadow-[var(--shadow-soft)] outline-none transition-all hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
-        >
-          <AppleLogo />
-          Continue with Apple
         </button>
 
         <div className="flex items-center gap-3 py-0.5 text-xs text-muted-foreground/70">
@@ -192,7 +179,7 @@ export function LoginPage() {
               />
             </div>
             {status === 'error' && <p className="text-xs font-medium text-[var(--rose)]">{errorMessage}</p>}
-            <Button type="submit" disabled={status === 'sending'} className="h-12 w-full rounded-2xl font-semibold shadow-md shadow-primary/25">
+            <Button type="submit" disabled={status === 'sending'} className="h-12 w-full rounded-2xl font-semibold shadow-[var(--shadow-soft)]">
               {status === 'sending' ? 'Sending link…' : 'Send magic link'}
             </Button>
           </form>

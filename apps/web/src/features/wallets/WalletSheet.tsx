@@ -1,4 +1,16 @@
 import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  CalendarRange,
+  Camera,
+  ClipboardPaste,
+  MessageCircle,
+  NotebookPen,
+  Plus,
+  Sparkles,
+  Target,
+  Trophy,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -12,9 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { IconTile } from '@/components/ui/icon-tile'
+import { SectionHeader } from '@/components/ui/section-header'
 import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
+import { useChatStore } from '@/features/chat/chatStore'
+import { useQuickActionStore, type QuickActionIntent } from '@/features/home/quickActionStore'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import {
   useCreateWallet,
@@ -36,6 +52,10 @@ const PREMIUM_REQUIRED_PREFIX = 'PREMIUM_REQUIRED:'
 
 export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
   const session = useAuthStore((s) => s.session)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const openChat = useChatStore((s) => s.openChat)
+  const requestQuickAction = useQuickActionStore((s) => s.request)
   const { data: wallets = [] } = useWallets()
   const setCurrentWalletId = useWalletStore((s) => s.setCurrentWalletId)
   const { data: members = [] } = useWalletMembers(wallet?.id)
@@ -54,6 +74,74 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
 
   const myRole = members.find((m) => m.user_id === session?.user.id)?.role
   const isOwner = myRole === 'owner'
+
+  function runAndClose(action: () => void) {
+    onOpenChange(false)
+    action()
+  }
+
+  function requestHomeIntent(intent: QuickActionIntent) {
+    requestQuickAction(intent)
+    onOpenChange(false)
+    if (location.pathname !== '/') navigate('/')
+  }
+
+  const quickActions = [
+    {
+      icon: MessageCircle,
+      label: 'Log expense',
+      tone: 'iris' as const,
+      onTap: () => runAndClose(() => openChat('I spent ')),
+    },
+    {
+      icon: ClipboardPaste,
+      label: 'Paste MoMo',
+      tone: 'apricot' as const,
+      onTap: () => requestHomeIntent('paste-momo'),
+    },
+    {
+      icon: Camera,
+      label: 'Scan receipt',
+      tone: 'sun' as const,
+      onTap: () => requestHomeIntent('scan-receipt'),
+    },
+    {
+      icon: CalendarRange,
+      label: 'Cashflow',
+      tone: 'mint' as const,
+      onTap: () => runAndClose(() => navigate('/cashflow')),
+    },
+    {
+      icon: NotebookPen,
+      label: 'Journal',
+      tone: 'rose' as const,
+      onTap: () => runAndClose(() => navigate('/journal')),
+    },
+    {
+      icon: Sparkles,
+      label: 'What if…',
+      tone: 'iris' as const,
+      onTap: () => runAndClose(() => navigate('/simulator')),
+    },
+    {
+      icon: Target,
+      label: 'Missions',
+      tone: 'apricot' as const,
+      onTap: () => runAndClose(() => navigate('/missions')),
+    },
+    {
+      icon: Trophy,
+      label: 'Compete',
+      tone: 'sun' as const,
+      onTap: () => runAndClose(() => navigate('/challenges')),
+    },
+    {
+      icon: Plus,
+      label: 'Add txn',
+      tone: 'mint' as const,
+      onTap: () => requestHomeIntent('add-txn'),
+    },
+  ]
 
   useEffect(() => {
     if (!wallet) return
@@ -133,10 +221,21 @@ export function WalletSheet({ open, onOpenChange, wallet }: WalletSheetProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>Wallets</SheetTitle>
+          <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 px-5 pb-6">
+          <section>
+            <SectionHeader title="Quick actions" />
+            <div className="grid grid-cols-3 gap-2.5">
+              {quickActions.map(({ icon, label, tone, onTap }) => (
+                <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
+              ))}
+            </div>
+          </section>
+
+          <Separator />
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="wallet-switch">Current wallet</Label>
             <Select value={wallet?.id} onValueChange={setCurrentWalletId}>

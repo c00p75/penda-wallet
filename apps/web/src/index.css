@@ -232,18 +232,6 @@ body {
   }
 }
 
-/* Penda AI orb — gently rotates while the assistant is thinking */
-@keyframes penda-orb-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .penda-orb-spin {
-    animation: penda-orb-spin 7s linear infinite;
-  }
-}
-
 /* Ambient sparkles — decorative AI "magic" twinkle on the auth screen */
 @keyframes penda-sparkle-twinkle {
   0%,
@@ -292,4 +280,38 @@ body {
   .penda-pulse {
     animation: penda-pulse 3.4s ease-in-out infinite;
   }
+}
+
+/* Chat typing indicator — three soft bouncing dots */
+@keyframes penda-typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .penda-typing-dot {
+    animation: penda-typing-dot 1.2s ease-in-out infinite;
+  }
+  .penda-typing-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .penda-typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+/* Sonner toast chrome — match soft card language */
+.cn-toast {
+  border-radius: 1.35rem !important;
+  box-shadow: var(--shadow-card) !important;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent) !important;
+  background: var(--card) !important;
+  color: var(--card-foreground) !important;
 }

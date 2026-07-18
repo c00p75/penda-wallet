@@ -69,7 +69,7 @@ export function DebtForm({ open, onOpenChange, currency, debt, onSubmit, onDelet
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>{debt ? 'Edit debt' : 'New debt'}</SheetTitle>
         </SheetHeader>

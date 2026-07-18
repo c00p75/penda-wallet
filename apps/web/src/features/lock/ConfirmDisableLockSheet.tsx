@@ -70,7 +70,7 @@ export function ConfirmDisableLockSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="flex flex-col gap-4">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 px-5 pb-6 ring-0">
         <SheetHeader>
           <SheetTitle>Turn off balance privacy?</SheetTitle>
           <SheetDescription>
@@ -79,13 +79,13 @@ export function ConfirmDisableLockSheet({
         </SheetHeader>
 
         {hasBiometric && (
-          <Button variant="outline" onClick={attemptBiometric} disabled={busy} className="gap-2">
+          <Button variant="outline" onClick={attemptBiometric} disabled={busy} className="gap-2 rounded-2xl shadow-[var(--shadow-soft)]">
             <Fingerprint className="size-4" />
             Confirm with biometrics
           </Button>
         )}
 
-        <form onSubmit={submitPin} className="flex flex-col gap-2">
+        <form onSubmit={submitPin} className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-secondary/30 p-4 shadow-[var(--shadow-soft)]">
           <Input
             type="password"
             inputMode="numeric"
@@ -99,7 +99,7 @@ export function ConfirmDisableLockSheet({
             placeholder={hasBiometric ? 'Or enter your PIN' : 'Enter your PIN'}
             aria-label="PIN"
           />
-          {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+          {error && <p className="text-sm text-[var(--rose)]">{error}</p>}
           <Button type="submit" disabled={busy || pin.length < 4}>
             {busy ? 'Checking…' : 'Turn off privacy'}
           </Button>

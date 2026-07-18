@@ -45,21 +45,21 @@ export function DeleteAccountDialog() {
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" className="border-rose-300 text-rose-600 dark:border-rose-900 dark:text-rose-400">
+        <Button variant="outline" className="rounded-2xl border-[var(--rose)]/30 bg-[var(--rose-soft)]/40 text-[var(--rose)] hover:bg-[var(--rose-soft)]/60">
           Delete account
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete your account?</DialogTitle>
+          <DialogTitle className="text-[var(--rose)]">Delete your account?</DialogTitle>
           <DialogDescription>
             This permanently erases your profile, wallets you solely own, and all their transactions,
             budgets, goals and history. Wallets you share with others stay with them. This cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--rose)]/20 bg-[var(--rose-soft)]/50 p-4 shadow-[var(--shadow-soft)]">
           <Label htmlFor="confirm-delete">
-            Type <span className="font-semibold">{CONFIRM_WORD}</span> to confirm
+            Type <span className="font-semibold text-[var(--rose)]">{CONFIRM_WORD}</span> to confirm
           </Label>
           <Input
             id="confirm-delete"
@@ -72,7 +72,7 @@ export function DeleteAccountDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            className="bg-rose-600 text-white hover:bg-rose-700 hover:text-white"
+            className="rounded-2xl border-[var(--rose)]/30 bg-[var(--rose)] text-white hover:bg-[var(--rose)]/90 hover:text-white"
             disabled={confirmText !== CONFIRM_WORD || busy}
             onClick={handleDelete}
           >

@@ -86,16 +86,16 @@ export function SplitExpenseSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
           <SheetTitle>Split {formatMoney(transaction.amount_minor, currency)}</SheetTitle>
         </SheetHeader>
         <div className="flex flex-col gap-3 px-4 pb-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="rounded-2xl bg-secondary/30 px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50">
             {transaction.merchant || 'Expense'} — edit each person’s share, then settle up later.
           </p>
           {members.map((m) => (
-            <div key={m.user_id} className="flex flex-col gap-1">
+            <div key={m.user_id} className="flex flex-col gap-1.5 rounded-2xl bg-secondary/30 px-3.5 py-2.5 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
               <Label htmlFor={`share-${m.user_id}`}>{m.label}</Label>
               <Input
                 id={`share-${m.user_id}`}

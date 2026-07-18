@@ -19,11 +19,11 @@ describe('BottomNav', () => {
 
   it('shows the four destination tabs flanking the AI button', () => {
     renderNav()
-    for (const label of ['Ledger', 'Budgets', 'Goals', 'Profile']) {
+    for (const label of ['Home', 'Budgets', 'Goals', 'Analytics']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    // Analytics/Compete/Settings now live inside the Profile tab-switcher, not the bar.
-    expect(screen.queryByText('Analytics')).not.toBeInTheDocument()
+    expect(screen.queryByText('You')).not.toBeInTheDocument()
+    expect(screen.queryByText('Profile')).not.toBeInTheDocument()
   })
 
   it('opens Penda chat when the center AI button is tapped', () => {

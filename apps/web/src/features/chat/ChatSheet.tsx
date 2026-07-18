@@ -460,9 +460,7 @@ export function ChatSheet({
         // `data-[side=bottom]:h-auto` in specificity (both are attribute-
         // scoped), so it actually overrides it — a plain `h-[85svh]` loses to
         // that attribute selector and the sheet grows unbounded with content.
-        // `rounded-t-[2rem]` + `overflow-hidden` match the ledger's
-        // transactions card so the two sheet surfaces read as one system.
-        className="flex h-[85svh] flex-col gap-0 overflow-hidden border-0 p-0 ring-0 data-[side=bottom]:h-[85svh]"
+        className="flex h-[85svh] flex-col gap-0 overflow-hidden rounded-t-[1.75rem] border-0 p-0 ring-0 data-[side=bottom]:h-[85svh] data-[side=bottom]:rounded-t-[1.75rem]"
         // Lift the sheet's contents clear of the on-screen keyboard so the input
         // and buttons stay visible while typing.
         style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
@@ -510,7 +508,7 @@ export function ChatSheet({
                       key={prompt}
                       type="button"
                       onClick={() => submitText(prompt)}
-                      className="rounded-full border border-border/60 bg-card px-3.5 py-2 text-xs font-medium text-foreground/80 shadow-[var(--shadow-soft)] transition-colors hover:bg-[var(--iris-soft)]/60"
+                      className="rounded-full border border-border/60 bg-card px-3.5 py-2 text-xs font-medium text-foreground/80 shadow-[var(--shadow-soft)] transition-all hover:bg-[var(--iris-soft)]/60 active:scale-[0.98]"
                     >
                       {prompt}
                     </button>
@@ -524,8 +522,8 @@ export function ChatSheet({
                   <div
                     className={
                       m.role === 'user'
-                        ? 'ml-auto max-w-[80%] rounded-[1.25rem] rounded-br-md bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)]'
-                        : 'mr-auto max-w-[80%] rounded-[1.25rem] rounded-bl-md bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40'
+                        ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-xl bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
+                        : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
                     }
                   >
                     <MessageBody text={m.text} />
@@ -569,15 +567,26 @@ export function ChatSheet({
                 </div>
               ))}
               {sendMessage.isPending && (
-                <div className="mr-auto max-w-[80%] rounded-[1.25rem] rounded-bl-md bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40">
-                  {toolProgress ?? 'Thinking…'}
+                <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                  {toolProgress ? (
+                    <span>{toolProgress}</span>
+                  ) : (
+                    <>
+                      <span className="sr-only">Thinking</span>
+                      <span className="flex items-center gap-1" aria-hidden>
+                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="border-t border-border/50 bg-card/80 p-5 backdrop-blur-sm">
+          <form onSubmit={handleSubmit} className="border-t border-border/50 bg-card/90 p-4 backdrop-blur-md">
             {statusText && (
               <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <span className="relative flex size-2.5">
@@ -587,12 +596,13 @@ export function ChatSheet({
                 {statusText}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
                 autoComplete="off"
+                className="h-12 rounded-2xl border-border/60 bg-secondary/40 shadow-[var(--shadow-soft)]"
               />
               <Button
                 type="button"
@@ -604,13 +614,13 @@ export function ChatSheet({
                 onPointerCancel={onMicPointerCancel}
                 onContextMenu={(e) => e.preventDefault()}
                 onClick={onMicClick}
-                className={cn('touch-none', isRecording && 'animate-pulse')}
+                className={cn('size-12 shrink-0 touch-none rounded-2xl', isRecording && 'animate-pulse')}
                 aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
                 aria-pressed={isRecording}
               >
                 <Mic className="size-4" />
               </Button>
-              <Button type="submit" disabled={sendMessage.isPending}>
+              <Button type="submit" disabled={sendMessage.isPending} className="h-12 rounded-2xl px-4">
                 Send
               </Button>
             </div>

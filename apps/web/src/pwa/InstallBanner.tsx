@@ -16,12 +16,12 @@ export function InstallBanner() {
   if (!canPrompt && !showIosInstructions) return null
 
   return (
-    <div className="relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/40">
+    <div className="relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-300">
       <button
         type="button"
         onClick={dismiss}
         aria-label="Dismiss install banner"
-        className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-2xl text-muted-foreground transition-colors hover:bg-accent/60"
+        className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-2xl text-muted-foreground transition-all hover:bg-accent/60 active:scale-95"
       >
         <X className="size-4" />
       </button>

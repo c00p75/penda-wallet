@@ -207,7 +207,7 @@ export function ChallengesContent() {
       <Button
         onClick={() => setFormOpen(true)}
         size="icon"
-        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-lg"
+        className="fixed bottom-20 right-6 h-14 w-14 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
         aria-label="Create challenge"
       >
         <Plus className="size-6" />

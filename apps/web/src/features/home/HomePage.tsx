@@ -1,25 +1,14 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import {
-  CalendarRange,
-  Camera,
-  ClipboardPaste,
-  MessageCircle,
-  NotebookPen,
-  Plus,
-  Sparkles,
-  Target,
-  Trophy,
-} from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { HeroCard } from '@/components/ui/hero-card'
-import { IconTile } from '@/components/ui/icon-tile'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
-import { AiOrb } from '@/components/AiInsight'
+import { AiMark } from '@/components/AiInsight'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
 import { useOfflinePending } from '@/pwa/useOfflineQueue'
@@ -40,6 +29,7 @@ import { MoMoPasteSheet, parsedToDraft } from '@/features/transactions/MoMoPaste
 import { parseMoMoText } from '@/features/transactions/momoParser'
 import type { Transaction, TransactionDraft, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
+import { useQuickActionStore } from '@/features/home/quickActionStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { formatMoney, fromMinorUnits } from '@/lib/money'
 import { localDateStr, localMonthEnd, localMonthPrefix, localMonthStart } from '@/lib/dates'
@@ -96,6 +86,8 @@ export function HomePage() {
   const isAuthLoading = useAuthStore((s) => s.isLoading)
   const navigate = useNavigate()
   const openChat = useChatStore((s) => s.openChat)
+  const quickActionIntent = useQuickActionStore((s) => s.intent)
+  const consumeQuickAction = useQuickActionStore((s) => s.consume)
   const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
@@ -136,6 +128,14 @@ export function HomePage() {
     setFormOpen(true)
   }
 
+  function openScanReceipt() {
+    if (isPremium || localStorage.getItem('penda:preview:receipt-scan') === '1') {
+      receiptInputRef.current?.click()
+      return
+    }
+    setPaywallFeature('receipt-scan')
+  }
+
   async function openPaste() {
     let clip = ''
     try {
@@ -153,6 +153,21 @@ export function HomePage() {
     setPasteInitialText(clip)
     setPasteOpen(true)
   }
+
+  useEffect(() => {
+    if (!quickActionIntent || !wallet) return
+    const intent = consumeQuickAction()
+    if (!intent) return
+    if (intent === 'add-txn') {
+      openAddForm()
+      return
+    }
+    if (intent === 'paste-momo') {
+      void openPaste()
+      return
+    }
+    openScanReceipt()
+  }, [quickActionIntent, wallet])
 
   async function saveOffline(input: TransactionInput) {
     if (!wallet || !session) return
@@ -366,29 +381,6 @@ export function HomePage() {
     .sort((a, b) => b.transaction_date.localeCompare(a.transaction_date) || b.created_at.localeCompare(a.created_at))
     .slice(0, 5)
 
-  const quickActions = [
-    { icon: MessageCircle, label: 'Log expense', tone: 'iris' as const, onTap: () => openChat('I spent ') },
-    { icon: ClipboardPaste, label: 'Paste MoMo', tone: 'apricot' as const, onTap: openPaste },
-    {
-      icon: Camera,
-      label: 'Scan receipt',
-      tone: 'sun' as const,
-      onTap: () => {
-        if (isPremium || localStorage.getItem('penda:preview:receipt-scan') === '1') {
-          receiptInputRef.current?.click()
-          return
-        }
-        setPaywallFeature('receipt-scan')
-      },
-    },
-    { icon: CalendarRange, label: 'Cashflow', tone: 'mint' as const, onTap: () => navigate('/cashflow') },
-    { icon: NotebookPen, label: 'Journal', tone: 'rose' as const, onTap: () => navigate('/journal') },
-    { icon: Sparkles, label: 'What if…', tone: 'iris' as const, onTap: () => navigate('/simulator') },
-    { icon: Target, label: 'Missions', tone: 'apricot' as const, onTap: () => navigate('/missions') },
-    { icon: Trophy, label: 'Compete', tone: 'sun' as const, onTap: () => navigate('/challenges') },
-    { icon: Plus, label: 'Add txn', tone: 'mint' as const, onTap: openAddForm },
-  ]
-
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <AppHeader />
@@ -513,16 +505,6 @@ export function HomePage() {
           />
         </div>
 
-        {/* Quick actions */}
-        <section>
-          <SectionHeader title="Quick actions" />
-          <div className="grid grid-cols-3 gap-2.5">
-            {quickActions.map(({ icon, label, tone, onTap }) => (
-              <IconTile key={label} icon={icon} label={label} tone={tone} onClick={onTap} />
-            ))}
-          </div>
-        </section>
-
         {/* Upcoming */}
         {upcoming && (
           <section>
@@ -565,7 +547,7 @@ export function HomePage() {
               boxShadow: 'var(--shadow-soft)',
             }}
           >
-            <AiOrb tone="default" className="mt-0.5 size-8 shrink-0" />
+            <AiMark className="mt-0.5 size-8 shrink-0" />
             <div className="min-w-0">
               <p className="text-xs font-semibold" style={{ color: 'var(--iris)' }}>
                 Suggestion
@@ -642,7 +624,7 @@ export function HomePage() {
           <Button
             onClick={openAddForm}
             size="icon"
-            className="size-12 shrink-0 rounded-full shadow-lg"
+            className="size-12 shrink-0 rounded-full shadow-[var(--shadow-card)] transition-transform active:scale-95"
             aria-label="Add transaction"
           >
             <Plus className="size-5" />

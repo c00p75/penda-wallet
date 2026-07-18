@@ -26,11 +26,11 @@ export function BottomNav() {
         to={to}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
-        className="relative flex flex-1 justify-center py-2.5"
+        className="relative flex flex-1 justify-center py-2.5 transition-transform active:scale-95"
       >
         {active && (
           <span
-            className="absolute top-0.5 size-1.5 rounded-full"
+            className="absolute top-0.5 size-1.5 rounded-full motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
             style={{ background: 'var(--apricot)' }}
             aria-hidden
           />
@@ -49,31 +49,18 @@ export function BottomNav() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40">
       <div className="relative mx-auto max-w-md">
-        {/*
-          A real notch: the bar is masked with a circle cut into its top-center
-          edge, sized a bit larger than the button so it nests inside the cut
-          with an even gap all the way around.
-        */}
         <div
           className="flex items-center justify-around gap-1 rounded-t-[1.75rem] px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
           style={{
             background: 'var(--card)',
             boxShadow: 'var(--shadow-card)',
             borderTop: '1px solid color-mix(in srgb, var(--border) 70%, transparent)',
-            WebkitMaskImage: 'radial-gradient(circle at 50% 8px, transparent 42px, #000 42px)',
-            maskImage: 'radial-gradient(circle at 50% 8px, transparent 42px, #000 42px)',
           }}
         >
           {LEFT.map(renderTab)}
           <div className="w-20 shrink-0" aria-hidden />
           {RIGHT.map(renderTab)}
         </div>
-
-        <div
-          className="pointer-events-none absolute inset-x-0 -top-8 z-[5] mx-auto size-[5.25rem] rounded-full"
-          style={{ border: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', clipPath: 'inset(40% 0 0 0)' }}
-          aria-hidden
-        />
 
         <button
           type="button"
@@ -83,7 +70,7 @@ export function BottomNav() {
           style={{
             background:
               'linear-gradient(155deg, color-mix(in oklch, var(--primary) 55%, white 45%) 0%, var(--primary) 50%, color-mix(in oklch, var(--primary) 70%, black 30%) 100%)',
-            boxShadow: '0 10px 28px color-mix(in srgb, var(--iris-hero-to) 45%, transparent)',
+            boxShadow: 'var(--shadow-hero)',
           }}
         >
           <Sparkles className="size-6" />
