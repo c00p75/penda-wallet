@@ -36,7 +36,7 @@ export function detectGhostLeaks(ctx: GhostLeakContext): CoachingInsight[] {
     return FEE_PATTERN.test(hay)
   })
   if (feeTx.length >= 2) {
-    const total = feeTx.reduce((sum, tx) => sum + tx.amount_minor, 0)
+    const total = feeTx.reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
     insights.push({
       id: 'ghost:fees',
       kind: 'observability',
@@ -59,7 +59,7 @@ export function detectGhostLeaks(ctx: GhostLeakContext): CoachingInsight[] {
   let best: { merchant: string; count: number; total: number } | null = null
   for (const [merchant, list] of byMerchant) {
     if (list.length < SMALL_P2P_MIN_COUNT) continue
-    const total = list.reduce((sum, tx) => sum + tx.amount_minor, 0)
+    const total = list.reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
     if (!best || list.length > best.count || (list.length === best.count && total > best.total)) {
       best = { merchant, count: list.length, total }
     }

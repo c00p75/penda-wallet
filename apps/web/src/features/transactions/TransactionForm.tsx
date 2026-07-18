@@ -30,7 +30,9 @@ import type {
   TransactionType,
 } from './types'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { CURRENCIES } from '@/lib/currencies'
 import { getReceiptImageUrl } from '@/features/receipts/api'
+import { fetchUsdRates } from '@/features/fx/api'
 
 interface LineDraft {
   key: string
@@ -104,6 +106,7 @@ export function TransactionForm({
 }: TransactionFormProps) {
   const [type, setType] = useState<TransactionType>('expense')
   const [amount, setAmount] = useState('')
+  const [txCurrency, setTxCurrency] = useState(currency)
   const [categoryId, setCategoryId] = useState<string>('')
   const [merchant, setMerchant] = useState('')
   const [description, setDescription] = useState('')
@@ -112,11 +115,13 @@ export function TransactionForm({
   const [teachPenda, setTeachPenda] = useState(false)
   const [receiptMode, setReceiptMode] = useState<ReceiptLogMode>('combined')
   const [lines, setLines] = useState<LineDraft[]>([])
+  const [ratesFetchedAt, setRatesFetchedAt] = useState<string | null>(null)
 
   const isReceiptDraft = !!transaction && transaction.source === 'receipt' && !transaction.user_confirmed
   const extractedItems = transaction?.ai_extraction?.items ?? []
   const canItemize = isReceiptDraft && !!onConfirmItems && extractedItems.length > 0
   const itemsMode = canItemize && receiptMode === 'items'
+  const needsFx = txCurrency.toUpperCase() !== currency.toUpperCase()
 
   useEffect(() => {
     if (!open || !transaction?.receipt_storage_path) {
@@ -127,11 +132,30 @@ export function TransactionForm({
   }, [open, transaction?.receipt_storage_path])
 
   useEffect(() => {
+    if (!open || !needsFx) {
+      setRatesFetchedAt(null)
+      return
+    }
+    let cancelled = false
+    void fetchUsdRates()
+      .then(({ fetchedAt }) => {
+        if (!cancelled) setRatesFetchedAt(fetchedAt)
+      })
+      .catch(() => {
+        if (!cancelled) setRatesFetchedAt(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, needsFx, txCurrency])
+
+  useEffect(() => {
     if (!open) return
     setTeachPenda(false)
     if (transaction) {
       setType(transaction.type)
       setAmount(fromMinorUnits(transaction.amount_minor).toString())
+      setTxCurrency(transaction.currency || currency)
       setCategoryId(transaction.category_id ?? '')
       setMerchant(transaction.merchant ?? '')
       setDescription(transaction.description ?? '')
@@ -146,6 +170,7 @@ export function TransactionForm({
     } else if (draft) {
       setType(draft.type)
       setAmount(fromMinorUnits(draft.amount_minor).toString())
+      setTxCurrency(currency)
       setCategoryId('')
       setMerchant(draft.merchant ?? '')
       setDescription(draft.description ?? '')
@@ -155,6 +180,7 @@ export function TransactionForm({
     } else {
       setType('expense')
       setAmount('')
+      setTxCurrency(currency)
       setCategoryId('')
       setMerchant('')
       setDescription('')
@@ -162,7 +188,7 @@ export function TransactionForm({
       setLines([])
       setReceiptMode('combined')
     }
-  }, [open, transaction, draft, categories])
+  }, [open, transaction, draft, categories, currency])
 
   const canTeach =
     !itemsMode &&
@@ -176,6 +202,18 @@ export function TransactionForm({
     return sum + (n > 0 ? toMinorUnits(n) : 0)
   }, 0)
   const receiptTotalMinor = transaction?.amount_minor ?? 0
+
+  const ratesFreshness =
+    needsFx && ratesFetchedAt
+      ? Date.now() - new Date(ratesFetchedAt).getTime() > 48 * 60 * 60 * 1000
+        ? ' Rates may be stale.'
+        : ` Rates as of ${new Date(ratesFetchedAt).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}.`
+      : ''
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -192,7 +230,7 @@ export function TransactionForm({
 
       await onConfirmItems!({
         type,
-        currency,
+        currency: txCurrency,
         merchant: merchant || null,
         transaction_date: date,
         items,
@@ -204,7 +242,7 @@ export function TransactionForm({
       await onSubmit({
         type,
         amount_minor: toMinorUnits(amountNumber),
-        currency,
+        currency: txCurrency,
         category_id: categoryId || null,
         merchant: merchant || null,
         description: description || null,
@@ -414,6 +452,28 @@ export function TransactionForm({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                 />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="tx-currency">Currency</Label>
+                <Select value={txCurrency} onValueChange={setTxCurrency}>
+                  <SelectTrigger id="tx-currency" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.code} — {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {needsFx ? (
+                  <p className="text-xs text-muted-foreground">
+                    Converted to wallet {currency} for balances and budgets.
+                    {ratesFreshness}
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-1.5">

@@ -33,7 +33,7 @@ export function computeRetro(
   const monthEnd = monthEndOf(monthStart)
   const spentMinor = transactions
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= monthStart && tx.transaction_date <= monthEnd)
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 
   const deltaMinor = intendedMinor - spentMinor
   const pace: RetroPace =

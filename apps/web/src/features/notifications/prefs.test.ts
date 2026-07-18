@@ -16,6 +16,8 @@ describe('normalizeNotificationPrefs', () => {
       insights: true,
       alerts: true,
       updates: true,
+      morning_minute: true,
+      annual_recap: true,
     })
   })
 })

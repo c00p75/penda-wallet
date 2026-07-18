@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
+import { loadEngagement, shouldSkipSoftNudge } from '../_shared/engagement.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -332,6 +333,12 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
   for (const userId of premiumIds) {
     // At most one nudge per member per day — burn-rate or coaching, never both.
     if (alreadyNudged.has(userId)) continue
+
+    // Soft coaching tips respect adaptive cadence; budget alerts always send.
+    if (kind === 'tip') {
+      const engagement = await loadEngagement(supabase, userId)
+      if (shouldSkipSoftNudge(engagement)) continue
+    }
 
     await supabase.from('ai_insights').insert({
       wallet_id: walletId,

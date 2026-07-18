@@ -12,6 +12,7 @@ import {
   useMarkNotificationsRead,
   useNotifications,
 } from './hooks'
+import { bumpEngagement } from './engagement'
 import { groupNotificationsByDay } from './prefs'
 import type { AppNotification, NotificationFilter, NotificationKind } from './types'
 
@@ -55,7 +56,22 @@ export function NotificationsPage() {
         // Navigation still proceeds — unread can be cleared later.
       }
     }
+    if (session?.user.id && (n.kind === 'tip' || n.kind === 'reminder')) {
+      void bumpEngagement(session.user.id, 'nudge_opens')
+    }
     navigate(n.href || '/notifications')
+  }
+
+  async function handleArchive(id: string) {
+    const n = notifications.find((x) => x.id === id)
+    try {
+      await archive.mutateAsync(id)
+      if (session?.user.id && n && (n.kind === 'tip' || n.kind === 'reminder')) {
+        void bumpEngagement(session.user.id, 'nudge_dismisses')
+      }
+    } catch {
+      // ignore
+    }
   }
 
   return (
@@ -114,7 +130,7 @@ export function NotificationsPage() {
                   key={n.id}
                   notification={n}
                   onOpen={handleOpen}
-                  onArchive={(id) => archive.mutate(id)}
+                  onArchive={handleArchive}
                 />
               ))}
             </div>

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Send, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Send, X } from 'lucide-react'
 import { Camera, Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
+import { undoSoftDeletedTransaction } from '@/features/audit/api'
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,7 +13,7 @@ import { currencySymbol } from '@/lib/currencies'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
 import { useCloseOnBack } from '@/lib/useCloseOnBack'
 import { supabase } from '@/lib/supabase/client'
-import { enqueueChatMessage } from '@/pwa/offlineQueue'
+import { enqueueAiConfirm, enqueueChatMessage } from '@/pwa/offlineQueue'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
@@ -28,36 +30,19 @@ import {
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
-import { useConfirmAiAction, useSendChatMessage } from './hooks'
+import { sendChatMessageStream } from './api'
+import { ActionTrail } from './ActionTrail'
+import {
+  finalizeLiveActions,
+  mergeTrailActions,
+  toolUi,
+  viewHrefFor,
+  withViewHrefs,
+} from './actionMeta'
+import { invalidateAfterChatResponse, useConfirmAiAction, useSendChatMessage } from './hooks'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
-import type { ChatMessage, PendingAction } from './types'
-
-const TOOL_PROGRESS_COPY: Record<string, string> = {
-  create_transaction: 'Logging that…',
-  get_budget_progress: 'Checking your budgets…',
-  query_records: 'Looking that up…',
-  get_spending_summary: 'Tallying your spend…',
-  create_budget: 'Setting up a budget…',
-  create_goal: 'Setting up a goal…',
-  log_borrowed_or_lent_money: 'Recording the loan…',
-  save_memory: 'Remembering that…',
-}
-
-function viewHrefFor(domain: string, targetId?: string): string | undefined {
-  switch (domain) {
-    case 'transaction':
-      return '/transactions'
-    case 'budget':
-      return '/budgets'
-    case 'goal':
-      return targetId ? `/goals/${targetId}` : '/goals'
-    case 'debt':
-      return '/goals'
-    default:
-      return undefined
-  }
-}
+import type { ChatAction, ChatMessage, PendingAction } from './types'
 
 interface ChatSheetProps {
   open: boolean
@@ -112,7 +97,11 @@ function loadStoredChat(walletId: string | undefined): StoredChat {
   }
 }
 
-const SUGGESTED_PROMPTS = ['What did I spend this week?', 'How are my budgets doing?', 'Help me build a budget']
+const SUGGESTED_PROMPTS = [
+  'What did I spend this week?',
+  'How are my budgets doing?',
+  'Always categorize Uber as Transport',
+]
 
 export function ChatSheet({
   open,
@@ -137,9 +126,17 @@ export function ChatSheet({
     () => loadStoredChat(walletId).actionStatus,
   )
   const [resolvingId, setResolvingId] = useState<string | null>(null)
-  const [toolProgress, setToolProgress] = useState<string | null>(null)
+  /** In-flight tool steps for the current send (replaced by durable message.actions). */
+  const [liveActions, setLiveActions] = useState<ChatAction[]>([])
+  /** Assistant bubble currently receiving SSE tokens (null when idle). */
+  const [streamingId, setStreamingId] = useState<string | null>(null)
   const sentConversationIdRef = useRef(conversationId)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const streamAbortRef = useRef<AbortController | null>(null)
+  // Keep a ref so the broadcast handler can merge without stale closures.
+  const liveActionsRef = useRef<ChatAction[]>([])
+  liveActionsRef.current = liveActions
+  const queryClient = useQueryClient()
 
   // field-sizing:content shrinks width to the text; grow height manually instead.
   useEffect(() => {
@@ -168,6 +165,7 @@ export function ChatSheet({
   }, [walletId, messages, conversationId, actionStatus])
   const sendMessage = useSendChatMessage(walletId)
   const confirmAction = useConfirmAiAction(walletId)
+  const busy = sendMessage.isPending || streamingId !== null
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
   const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
@@ -246,80 +244,196 @@ export function ChatSheet({
     channel
       .on('broadcast', { event: 'tool' }, ({ payload }) => {
         const tool = typeof payload?.tool === 'string' ? payload.tool : ''
-        setToolProgress(TOOL_PROGRESS_COPY[tool] ?? 'Working on it…')
+        if (!tool) return
+        const id =
+          typeof payload?.id === 'string' && payload.id
+            ? payload.id
+            : `live-${tool}-${Date.now()}`
+        const status =
+          payload?.status === 'done' || payload?.status === 'error' || payload?.status === 'running'
+            ? payload.status
+            : 'running'
+        const meta = toolUi(tool)
+        const label = typeof payload?.label === 'string' && payload.label ? payload.label : meta.label
+        const summary =
+          typeof payload?.summary === 'string' && payload.summary
+            ? payload.summary
+            : status === 'running'
+              ? meta.progress
+              : meta.label
+
+        setLiveActions((prev) => {
+          const existing = prev.find((a) => a.id === id)
+          if (existing) {
+            return prev.map((a) =>
+              a.id === id
+                ? {
+                    ...a,
+                    status,
+                    label,
+                    summary: status === 'running' && !payload?.summary ? a.summary : summary,
+                  }
+                : a,
+            )
+          }
+          // Legacy broadcast (tool name only): mark prior running steps done.
+          const advanced = prev.map((a) =>
+            a.status === 'running' ? { ...a, status: 'done' as const } : a,
+          )
+          return [
+            ...advanced,
+            {
+              id,
+              tool,
+              domain: meta.domain,
+              label,
+              summary,
+              status,
+            },
+          ]
+        })
       })
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
-      setToolProgress(null)
     }
   }, [open, conversationId])
 
   // Progress cues only mean something while a reply is in flight.
   useEffect(() => {
-    if (!sendMessage.isPending) setToolProgress(null)
-  }, [sendMessage.isPending])
+    if (!busy) setLiveActions([])
+  }, [busy])
 
-  // The network round-trip shared by a fresh send and a retry. `replaceId`,
-  // when set, is the failed bubble being retried — its error is replaced by
-  // the outcome rather than appending a new one.
-  function sendToAssistant(text: string, replaceId?: string) {
-    sentConversationIdRef.current = conversationId
-    sendMessage
-      .mutateAsync({ message: text, conversationId, pageContext })
-      .then((result) => {
-        const rotated =
-          !!sentConversationIdRef.current && sentConversationIdRef.current !== result.conversationId
-        setConversationId(result.conversationId)
-        if (rotated) {
-          pushMessage({
-            id: nextId(),
-            role: 'assistant',
-            text: '— new session —',
-          })
-        }
-        const reply: ChatMessage = {
-          id: nextId(),
-          role: 'assistant',
-          text: result.reply,
-          pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
-        }
-        if (replaceId) replaceMessage(replaceId, reply)
-        else pushMessage(reply)
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort()
+    }
+  }, [])
+
+  function applyChatResult(result: import('./types').ChatResponse, bubbleId: string, replaceId?: string) {
+    const rotated =
+      !!sentConversationIdRef.current && sentConversationIdRef.current !== result.conversationId
+    setConversationId(result.conversationId)
+    if (rotated) {
+      pushMessage({
+        id: nextId(),
+        role: 'assistant',
+        text: '— new session —',
       })
-      .catch(async (error) => {
-        const networkFail =
-          !navigator.onLine ||
-          (error instanceof TypeError) ||
-          (error instanceof Error && /fetch|network/i.test(error.message))
-        if (networkFail && walletId && !replaceId) {
-          try {
-            await enqueueChatMessage(walletId, text)
-            pushMessage({
-              id: nextId(),
-              role: 'assistant',
-              text: 'Queued — sends when you’re back online.',
-              queued: true,
-            })
-            return
-          } catch {
-            /* fall through to error bubble */
-          }
+    }
+    const actions =
+      result.actions && result.actions.length > 0
+        ? withViewHrefs(result.actions)
+        : finalizeLiveActions(liveActionsRef.current)
+    const reply: ChatMessage = {
+      id: bubbleId,
+      role: 'assistant',
+      text: result.reply,
+      pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
+      actions: actions.length > 0 ? actions : undefined,
+      autoApplied: result.autoApplied || undefined,
+    }
+    replaceMessage(bubbleId, reply)
+    // If we were retrying a different error bubble id, drop it.
+    if (replaceId && replaceId !== bubbleId) {
+      setMessages((prev) => prev.filter((m) => m.id !== replaceId))
+    }
+    invalidateAfterChatResponse(queryClient, walletId, result)
+    if (result.autoApplied) {
+      toast('Applied without asking — undo anytime in AI actions.')
+    }
+  }
+
+  // SSE-first send; falls back to JSON invoke if the stream path fails before done.
+  function sendToAssistant(text: string, replaceId?: string) {
+    if (!walletId) return
+    sentConversationIdRef.current = conversationId
+    const bubbleId = replaceId ?? nextId()
+    if (replaceId) {
+      replaceMessage(replaceId, { id: bubbleId, role: 'assistant', text: '' })
+    } else {
+      pushMessage({ id: bubbleId, role: 'assistant', text: '' })
+    }
+    setStreamingId(bubbleId)
+
+    streamAbortRef.current?.abort()
+    const abort = new AbortController()
+    streamAbortRef.current = abort
+    let finished = false
+
+    const fail = async (error: unknown) => {
+      if (finished) return
+      finished = true
+      const networkFail =
+        !navigator.onLine ||
+        error instanceof TypeError ||
+        (error instanceof Error && /fetch|network/i.test(error.message))
+      if (networkFail && !replaceId) {
+        try {
+          await enqueueChatMessage(walletId, text)
+          replaceMessage(bubbleId, {
+            id: bubbleId,
+            role: 'assistant',
+            text: 'Queued — sends when you’re back online.',
+            queued: true,
+          })
+          return
+        } catch {
+          /* fall through */
         }
-        const errorMessage: ChatMessage = {
-          id: nextId(),
+      }
+      // Stream failed — try classic JSON once.
+      try {
+        const result = await sendMessage.mutateAsync({ message: text, conversationId, pageContext })
+        applyChatResult(result, bubbleId, replaceId)
+      } catch (fallbackError) {
+        replaceMessage(bubbleId, {
+          id: bubbleId,
           role: 'assistant',
-          text: error instanceof Error ? `Something went wrong: ${error.message}` : 'Something went wrong.',
+          text:
+            fallbackError instanceof Error
+              ? `Something went wrong: ${fallbackError.message}`
+              : 'Something went wrong.',
           retryText: text,
-        }
-        if (replaceId) replaceMessage(replaceId, errorMessage)
-        else pushMessage(errorMessage)
+        })
+      }
+    }
+
+    void sendChatMessageStream(
+      walletId,
+      text,
+      conversationId,
+      pageContext,
+      {
+        onMeta: ({ conversationId: id }) => setConversationId(id),
+        onToken: ({ text: delta }) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === bubbleId ? { ...m, text: m.text + delta } : m)),
+          )
+        },
+        onReset: () => {
+          setMessages((prev) => prev.map((m) => (m.id === bubbleId ? { ...m, text: '' } : m)))
+        },
+        onDone: (result) => {
+          finished = true
+          applyChatResult(result, bubbleId, replaceId)
+        },
+      },
+      abort.signal,
+    )
+      .catch((error) => {
+        if (abort.signal.aborted) return
+        void fail(error)
+      })
+      .finally(() => {
+        if (streamAbortRef.current === abort) streamAbortRef.current = null
+        setStreamingId((id) => (id === bubbleId ? null : id))
       })
   }
 
   function submitText(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || sendMessage.isPending) return
+    if (!trimmed || busy) return
 
     pushMessage({ id: nextId(), role: 'user', text: trimmed })
     setInput('')
@@ -340,7 +454,7 @@ export function ChatSheet({
   }
 
   function retry(message: ChatMessage) {
-    if (!message.retryText || sendMessage.isPending) return
+    if (!message.retryText || busy) return
     sendToAssistant(message.retryText, message.id)
   }
 
@@ -354,13 +468,45 @@ export function ChatSheet({
   async function resolveAction(action: PendingAction, decision: 'confirm' | 'cancel') {
     if (actionStatus[action.id] || resolvingId) return
     setResolvingId(action.id)
+
+    async function queueConfirm() {
+      await enqueueAiConfirm(action.id, decision)
+      setActionStatus((prev) => ({ ...prev, [action.id]: decision === 'confirm' ? 'confirmed' : 'cancelled' }))
+      pushMessage({
+        id: nextId(),
+        role: 'assistant',
+        text:
+          decision === 'confirm'
+            ? 'Queued — I’ll apply that when you’re back online.'
+            : 'Queued cancel — I’ll drop that when you’re back online.',
+        queued: true,
+      })
+    }
+
+    if (!navigator.onLine) {
+      try {
+        await queueConfirm()
+      } catch (error) {
+        pushMessage({
+          id: nextId(),
+          role: 'assistant',
+          text: `I couldn't queue that: ${error instanceof Error ? error.message : 'something went wrong'}.`,
+        })
+      } finally {
+        setResolvingId(null)
+      }
+      return
+    }
+
     try {
       const res = await confirmAction.mutateAsync({ actionId: action.id, decision })
       setActionStatus((prev) => ({ ...prev, [action.id]: res.status }))
-      const href =
-        decision === 'confirm'
-          ? viewHrefFor(res.domain, res.targetId ?? action.targetId)
-          : undefined
+      const targetId = res.targetId ?? action.targetId
+      const canUndoDelete =
+        decision === 'confirm' &&
+        (res.kind ?? action.kind) === 'delete' &&
+        res.domain === 'transaction' &&
+        !!targetId
       pushMessage({
         id: nextId(),
         role: 'assistant',
@@ -368,9 +514,36 @@ export function ChatSheet({
           decision === 'confirm'
             ? `Done — ${res.summary.replace(/\.$/, '')}.`
             : 'No worries — I left it as it was.',
-        viewHref: href,
+        viewHref:
+          decision === 'confirm' ? viewHrefFor(res.domain, targetId) : undefined,
+        undoTransactionId: canUndoDelete ? targetId : undefined,
+        actions: decision === 'confirm'
+          ? withViewHrefs([
+              {
+                id: nextId(),
+                tool: action.kind === 'delete' ? 'delete_record' : 'update_record',
+                domain: res.domain,
+                label: action.kind === 'delete' ? 'Deleted' : 'Updated',
+                summary: res.summary,
+                status: 'done',
+                targetId,
+              },
+            ])
+          : undefined,
       })
     } catch (error) {
+      const networkFail =
+        !navigator.onLine ||
+        error instanceof TypeError ||
+        (error instanceof Error && /fetch|network/i.test(error.message))
+      if (networkFail) {
+        try {
+          await queueConfirm()
+          return
+        } catch {
+          /* fall through */
+        }
+      }
       pushMessage({
         id: nextId(),
         role: 'assistant',
@@ -378,6 +551,23 @@ export function ChatSheet({
       })
     } finally {
       setResolvingId(null)
+    }
+  }
+
+  async function undoFromChat(transactionId: string, messageId: string) {
+    if (!session?.user.id) return
+    try {
+      await undoSoftDeletedTransaction(transactionId, session.user.id)
+      toast('Transaction restored. AI confirmations are required again.')
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, undoTransactionId: undefined, text: `${m.text}\n\n(Undone.)` }
+            : m,
+        ),
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not undo.')
     }
   }
 
@@ -648,49 +838,83 @@ export function ChatSheet({
                         Retry
                       </Button>
                     )}
-                    {m.viewHref && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => {
-                          onOpenChange(false)
-                          navigate(m.viewHref!)
-                        }}
-                      >
-                        View
-                      </Button>
-                    )}
                   </div>
-                  {m.pendingActions?.map((action) => (
-                    <PendingActionCard
-                      key={action.id}
-                      action={action}
-                      status={actionStatus[action.id]}
-                      busy={resolvingId === action.id}
-                      disabled={resolvingId !== null && resolvingId !== action.id}
-                      onResolve={resolveAction}
-                    />
-                  ))}
+                  {(() => {
+                    const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)
+                    const showAudit =
+                      trail.length > 0 || m.autoApplied || m.undoTransactionId || m.viewHref
+                    if (!showAudit) return null
+                    return (
+                      <ActionTrail
+                        actions={trail}
+                        onNavigateAway={() => onOpenChange(false)}
+                        busyActionId={resolvingId}
+                        resolveDisabled={resolvingId !== null}
+                        onResolvePending={resolveAction}
+                        footer={
+                          <>
+                            {m.viewHref && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  navigate(m.viewHref!)
+                                }}
+                              >
+                                View
+                              </Button>
+                            )}
+                            {m.undoTransactionId && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs"
+                                onClick={() => void undoFromChat(m.undoTransactionId!, m.id)}
+                              >
+                                Undo
+                              </Button>
+                            )}
+                            {(trail.length > 0 || m.autoApplied) && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2.5 text-xs text-muted-foreground"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  navigate('/ai-actions')
+                                }}
+                              >
+                                AI actions
+                              </Button>
+                            )}
+                          </>
+                        }
+                      />
+                    )
+                  })()}
                 </div>
               ))}
-              {sendMessage.isPending && (
-                <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-                  {toolProgress ? (
-                    <span>{toolProgress}</span>
-                  ) : (
-                    <>
-                      <span className="sr-only">Thinking</span>
-                      <span className="flex items-center gap-1" aria-hidden>
-                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                        <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
+              {sendMessage.isPending &&
+                (liveActions.length > 0 ? (
+                  <ActionTrail
+                    actions={liveActions}
+                    className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+                  />
+                ) : (
+                  <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                    <span className="sr-only">Thinking</span>
+                    <span className="flex items-center gap-1" aria-hidden>
+                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                      <span className="penda-typing-dot size-1.5 rounded-full bg-muted-foreground" />
+                    </span>
+                  </div>
+                ))}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -845,63 +1069,3 @@ function MessageBody({ text }: { text: string }) {
   return <div className="space-y-1">{blocks}</div>
 }
 
-function PendingActionCard({
-  action,
-  status,
-  busy,
-  disabled,
-  onResolve,
-}: {
-  action: PendingAction
-  status: 'confirmed' | 'cancelled' | undefined
-  busy: boolean
-  disabled: boolean
-  onResolve: (action: PendingAction, decision: 'confirm' | 'cancel') => void
-}) {
-  const destructive = action.kind === 'delete'
-
-  return (
-    <div className="mr-auto max-w-[85%] rounded-2xl border border-border/60 bg-card px-3.5 py-3 text-sm shadow-[var(--shadow-soft)]">
-      <p className="text-card-foreground">{action.summary}</p>
-      {status ? (
-        <p
-          className={cn(
-            'mt-1.5 flex items-center gap-1 text-xs font-medium',
-            status === 'confirmed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
-          )}
-        >
-          {status === 'confirmed' ? (
-            <>
-              <Check className="size-3.5" /> Applied
-            </>
-          ) : (
-            <>
-              <X className="size-3.5" /> Cancelled
-            </>
-          )}
-        </p>
-      ) : (
-        <div className="mt-2 flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={destructive ? 'destructive' : 'default'}
-            disabled={busy || disabled}
-            onClick={() => onResolve(action, 'confirm')}
-          >
-            {busy ? 'Working…' : destructive ? 'Delete' : 'Confirm'}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={busy || disabled}
-            onClick={() => onResolve(action, 'cancel')}
-          >
-            Cancel
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}

@@ -1,6 +1,22 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { confirmAiAction, sendChatMessage } from './api'
+import type { ChatResponse } from './types'
 import type { PageContext } from './pageContext'
+
+/** Shared cache bust after a chat turn creates/updates records. */
+export function invalidateAfterChatResponse(
+  queryClient: QueryClient,
+  walletId: string | undefined,
+  data: ChatResponse,
+) {
+  if (data.transaction) {
+    queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })
+    queryClient.invalidateQueries({ queryKey: ['insights', walletId] })
+  }
+  for (const action of data.actions ?? []) {
+    if (action.status === 'done') invalidateForDomain(queryClient, action.domain, walletId)
+  }
+}
 
 export function useSendChatMessage(walletId: string | undefined) {
   const queryClient = useQueryClient()
@@ -15,12 +31,7 @@ export function useSendChatMessage(walletId: string | undefined) {
       conversationId?: string
       pageContext?: PageContext
     }) => sendChatMessage(walletId!, message, conversationId, pageContext),
-    onSuccess: (data) => {
-      if (data.transaction) {
-        queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })
-        queryClient.invalidateQueries({ queryKey: ['insights', walletId] })
-      }
-    },
+    onSuccess: (data) => invalidateAfterChatResponse(queryClient, walletId, data),
   })
 }
 

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/store/authStore'
+import { formatMoney } from '@/lib/money'
 import {
   confirmReceiptAsItems,
   createTransaction,
@@ -27,7 +29,16 @@ export function useCreateTransaction(walletId: string | undefined) {
 
   return useMutation({
     mutationFn: (input: TransactionInput) => createTransaction(walletId!, userId!, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) }),
+    onSuccess: (tx) => {
+      queryClient.invalidateQueries({ queryKey: transactionsKey(walletId) })
+      queryClient.invalidateQueries({ queryKey: ['savings-goals', walletId] })
+      const habits = (tx as Transaction & { habits?: { applied?: boolean; contributions?: Array<{ kind: string; amount_minor: number }> } }).habits
+      const first = habits?.contributions?.[0]
+      if (habits?.applied && first) {
+        const label = first.kind === 'round_up' ? 'Rounded up' : 'Paid yourself first'
+        toast(`${label} ${formatMoney(first.amount_minor, tx.currency)} → savings`)
+      }
+    },
   })
 }
 

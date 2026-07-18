@@ -28,6 +28,8 @@ export interface Transaction {
   category_id: string | null
   amount_minor: number
   currency: string
+  fx_rate_to_wallet_base: number | null
+  converted_amount_minor: number | null
   type: TransactionType
   merchant: string | null
   description: string | null

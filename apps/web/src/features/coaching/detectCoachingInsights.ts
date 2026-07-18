@@ -52,7 +52,7 @@ function sumExpenseBetween(transactions: Transaction[], afterExclusive: string, 
       (tx) =>
         tx.type === 'expense' && tx.transaction_date > afterExclusive && tx.transaction_date <= throughInclusive,
     )
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 }
 
 /**

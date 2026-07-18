@@ -54,12 +54,12 @@ export function AnalyticsContent() {
   })
   const monthIncomeMinor = monthTransactions
     .filter((tx) => tx.type === 'income')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const monthExpenseMinor = monthTransactions
     .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const balanceMinor = transactions.reduce(
-    (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
+    (sum, tx) => sum + (tx.type === 'income' ? (tx.converted_amount_minor ?? tx.amount_minor) : tx.type === 'expense' ? -(tx.converted_amount_minor ?? tx.amount_minor) : 0),
     0,
   )
   const goalProgressAvg =

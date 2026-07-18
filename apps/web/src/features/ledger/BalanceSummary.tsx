@@ -18,10 +18,10 @@ export function BalanceSummary({ transactions, currency, mode = 'individual' }: 
 
   const income = thisMonth
     .filter((tx) => tx.type === 'income')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const expenses = thisMonth
     .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 
   return (
     <div className="grid grid-cols-2 gap-3 rounded-2xl bg-background/70 p-4 shadow-xs backdrop-blur">

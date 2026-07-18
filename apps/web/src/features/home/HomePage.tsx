@@ -6,7 +6,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
-import { AiMark } from '@/components/AiInsight'
+import { Microphone } from '@/components/icons/product'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { enqueueTransaction } from '@/pwa/offlineQueue'
@@ -20,8 +20,10 @@ import { useSavingsGoals } from '@/features/goals/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
+import { InsightCarousel, type InsightCard } from '@/features/coaching/InsightCarousel'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
+import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder'
 import {
   useConfirmReceiptItems,
   useCreateTransaction,
@@ -120,8 +122,28 @@ export function HomePage() {
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
+  const voice = useVoiceRecorder({
+    onLiveTranscript: () => {},
+    onError: (message) => toast.error(message),
+  })
+
   useWalletRealtime(wallet?.id)
   const offlineQueue = useOfflinePending()
+
+  async function toggleVoiceQuickLog() {
+    if (voice.state === 'recording') {
+      const transcript = (await voice.stop()).trim()
+      if (transcript) openChat(transcript, { autoSend: true })
+      return
+    }
+    if (voice.state === 'idle') {
+      try {
+        await voice.start()
+      } catch {
+        // Mic denied — useVoiceRecorder already toasted.
+      }
+    }
+  }
 
   function openAddForm() {
     setEditing(null)
@@ -150,6 +172,33 @@ export function HomePage() {
     }
     openScanReceipt()
   }, [quickActionIntent, wallet])
+
+  // Must run before any early return — otherwise React crashes after splash when
+  // auth/wallet resolve and this hook appears on a later render.
+  const coachingInsights = detectCoachingInsights({
+    transactions,
+    budgets,
+    goals,
+    currency: wallet?.base_currency ?? 'USD',
+  })
+  const suggestion = coachingInsights[0]
+
+  useEffect(() => {
+    if (!wallet?.id || !suggestion) return
+    const href =
+      suggestion.action?.kind === 'fund-goal' || suggestion.action?.kind === 'view-goals'
+        ? '/goals'
+        : '/budgets'
+    void upsertCoachingNotification({
+      walletId: wallet.id,
+      title: 'Penda tip',
+      body: suggestion.text,
+      href,
+      dedupeKey: `coaching:${suggestion.kind}:${localDateStr(new Date())}`,
+    }).catch(() => {
+      // Best-effort inbox sync — never block the home surface.
+    })
+  }, [wallet?.id, suggestion?.id, suggestion?.kind, suggestion?.text, suggestion?.action?.kind])
 
   async function saveOffline(input: TransactionInput) {
     if (!wallet || !session) return
@@ -250,15 +299,15 @@ export function HomePage() {
   const name = firstNameFromSession(session)
   const greet = greetingLabel(now)
 
-  const balanceMinor = transactions.reduce(
-    (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
-    0,
-  )
+  const balanceMinor = transactions.reduce((sum, tx) => {
+    const amt = tx.converted_amount_minor ?? tx.amount_minor
+    return sum + (tx.type === 'income' ? amt : tx.type === 'expense' ? -amt : 0)
+  }, 0)
   const thisMonthPrefix = localMonthPrefix(now)
   const thisMonthTx = transactions.filter((tx) => tx.transaction_date.startsWith(thisMonthPrefix))
   const monthSpending = thisMonthTx
     .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const balanceParts = splitBalance(balanceMinor, currency)
   const isNegative = balanceMinor < 0
 
@@ -270,7 +319,7 @@ export function HomePage() {
   const totalSpentMinor = monthlyBudgets.reduce((sum, b) => sum + b.spent_minor, 0)
   const monthSpentForPlan = thisMonthTx
     .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const planSafe = plan
     ? computeSafeToSpend({
         intendedMinor: plan.intended_amount_minor,
@@ -314,26 +363,6 @@ export function HomePage() {
         ? `You've spent ${formatMoney(last7Spent, currency)} in the last 7 days.`
         : "Nothing logged this week yet — tell me about a purchase and I'll take it from there."
 
-  const coachingInsights = detectCoachingInsights({ transactions, budgets, goals, currency })
-  const suggestion = coachingInsights[0]
-
-  useEffect(() => {
-    if (!wallet?.id || !suggestion) return
-    const href =
-      suggestion.action?.kind === 'fund-goal' || suggestion.action?.kind === 'view-goals'
-        ? '/goals'
-        : '/budgets'
-    void upsertCoachingNotification({
-      walletId: wallet.id,
-      title: 'Penda tip',
-      body: suggestion.text,
-      href,
-      dedupeKey: `coaching:${suggestion.kind}:${localDateStr(new Date())}`,
-    }).catch(() => {
-      // Best-effort inbox sync — never block the home surface.
-    })
-  }, [wallet?.id, suggestion?.id, suggestion?.kind, suggestion?.text, suggestion?.action?.kind])
-
   function runInsightAction(action: CoachingAction) {
     switch (action.kind) {
       case 'create-budget':
@@ -346,6 +375,26 @@ export function HomePage() {
         break
     }
   }
+
+  const insightCards: InsightCard[] = [
+    {
+      id: 'week-read',
+      variant: 'read',
+      tone: buffer != null ? 'warm' : 'default',
+      text: weekInsight,
+      action: { label: 'Ask Penda', onTap: () => openChat() },
+    },
+    ...coachingInsights.map((insight) => ({
+      id: insight.id,
+      variant: 'tip' as const,
+      tone: insight.tone,
+      label: 'Pro tip:',
+      text: insight.text,
+      action: insight.action
+        ? { label: insight.action.label, onTap: () => runInsightAction(insight.action!) }
+        : undefined,
+    })),
+  ]
 
   const auraLabel =
     balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
@@ -396,97 +445,117 @@ export function HomePage() {
         <InstallBanner />
 
         {/* Greeting */}
-        <section>
-          <h1 className="text-[2.5rem] leading-[1.05] tracking-tight text-foreground">
-            <span className="font-bold">{greet}</span>
-            <br />
-            <span className="font-light">{name}</span>
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {wallet.name}
-            <span className="mx-1.5 text-border">·</span>
-            <span
-              style={{
-                color:
-                  auraLabel === 'Comfortable'
-                    ? 'var(--mint)'
-                    : auraLabel === 'Tight'
-                      ? 'var(--apricot)'
-                      : 'var(--rose)',
-              }}
-            >
-              {auraLabel}
-            </span>
-          </p>
+        <section className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-[2.5rem] leading-[1.05] tracking-tight text-foreground">
+              <span className="font-bold">{greet}</span>
+              <br />
+              <span className="font-light">{name}</span>
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {wallet.name}
+              <span className="mx-1.5 text-border">·</span>
+              <span
+                style={{
+                  color:
+                    auraLabel === 'Comfortable'
+                      ? 'var(--mint)'
+                      : auraLabel === 'Tight'
+                        ? 'var(--apricot)'
+                        : 'var(--rose)',
+                }}
+              >
+                {auraLabel}
+              </span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void toggleVoiceQuickLog()}
+            disabled={voice.state === 'transcribing'}
+            aria-label={voice.state === 'recording' ? 'Stop voice log' : 'Voice quick-log'}
+            aria-pressed={voice.state === 'recording'}
+            className="mt-1 grid size-11 shrink-0 place-items-center rounded-2xl border border-border/70 bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 disabled:opacity-50"
+            style={
+              voice.state === 'recording'
+                ? { borderColor: 'var(--rose)', color: 'var(--rose)', background: 'var(--rose-soft)' }
+                : undefined
+            }
+          >
+            <Microphone className="size-5" weight="fill" />
+          </button>
         </section>
 
-        {/* Hero carousel */}
-        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory [scrollbar-width:none]">
-          <HeroCard
-            tone="iris"
-            className="snap-start"
-            label="Balance"
-            value={
-              blindBudgeting ? (
-                auraLabel
-              ) : (
-                <HiddenAmount>
-                  <span>
-                    {isNegative ? '−' : ''}
-                    {balanceParts.symbol}
-                    {balanceParts.whole}
-                    {balanceParts.decimal && (
-                      <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
-                    )}
-                  </span>
-                </HiddenAmount>
-              )
-            }
-          />
-          {hasBudgets && (
+        {/* Hero carousel — inner row keeps leading/trailing inset; flex+overflow
+            otherwise collapses padding so the first card sits on the screen edge. */}
+        <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none]">
+          <div className="flex w-max gap-3 px-4 snap-x snap-mandatory">
             <HeroCard
-              tone="mint"
+              tone="iris"
               className="snap-start"
-              label="Safe to spend"
+              label="Balance"
               value={
-                <HiddenAmount>
-                  <span>
-                    {formatMoney(safeToSpendPerDayMinor, currency)}
-                    <span className="text-base font-medium opacity-80"> /day</span>
-                  </span>
-                </HiddenAmount>
+                blindBudgeting ? (
+                  auraLabel
+                ) : (
+                  <HiddenAmount>
+                    <span>
+                      {isNegative ? '−' : ''}
+                      {balanceParts.symbol}
+                      {balanceParts.whole}
+                      {balanceParts.decimal && (
+                        <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
+                      )}
+                    </span>
+                  </HiddenAmount>
+                )
               }
             />
-          )}
-          {topGoal && (
+            {hasBudgets && (
+              <HeroCard
+                tone="mint"
+                className="snap-start"
+                label="Safe to spend"
+                value={
+                  <HiddenAmount>
+                    <span>
+                      {formatMoney(safeToSpendPerDayMinor, currency)}
+                      <span className="text-base font-medium opacity-80"> /day</span>
+                    </span>
+                  </HiddenAmount>
+                }
+              />
+            )}
+            {topGoal && (
+              <HeroCard
+                tone="apricot"
+                className="snap-start"
+                onClick={() => navigate(`/goals/${topGoal.id}`)}
+                label={topGoal.name}
+                value={
+                  <HiddenAmount>
+                    <span>
+                      {topGoalPct ?? 0}
+                      <span className="text-xl font-semibold opacity-80">%</span>
+                    </span>
+                  </HiddenAmount>
+                }
+              />
+            )}
             <HeroCard
-              tone="apricot"
+              tone="sun"
               className="snap-start"
-              onClick={() => navigate(`/goals/${topGoal.id}`)}
-              label={topGoal.name}
+              onClick={() => navigate('/transactions')}
+              label="This month"
               value={
-                <HiddenAmount>
-                  <span>
-                    {topGoalPct ?? 0}
-                    <span className="text-xl font-semibold opacity-80">%</span>
-                  </span>
-                </HiddenAmount>
+                blindBudgeting ? (
+                  '—'
+                ) : (
+                  <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
+                )
               }
             />
-          )}
-          <HeroCard
-            tone="sun"
-            className="snap-start"
-            onClick={() => navigate('/transactions')}
-            label="This month"
-            value={
-              blindBudgeting ? (
-                '—'
-              ) : (
-                <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
-              )
-            }
-          />
+          </div>
         </div>
 
         {/* Upcoming */}
@@ -518,29 +587,10 @@ export function HomePage() {
           </section>
         )}
 
-        {/* Penda suggestion */}
+        {/* Penda insights */}
         <section>
           <SectionHeader title="Penda says" />
-          <button
-            type="button"
-            onClick={() => (suggestion?.action ? runInsightAction(suggestion.action) : openChat())}
-            className="flex w-full items-start gap-3 rounded-[1.5rem] border-2 p-4 text-left transition-transform active:scale-[0.99]"
-            style={{
-              borderColor: 'var(--iris)',
-              background: 'color-mix(in srgb, var(--iris) 8%, var(--card))',
-              boxShadow: 'var(--shadow-soft)',
-            }}
-          >
-            <AiMark className="mt-0.5 size-8 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-semibold" style={{ color: 'var(--iris)' }}>
-                Suggestion
-              </p>
-              <p className="mt-1 text-sm leading-snug text-foreground">
-                {suggestion?.text ?? weekInsight}
-              </p>
-            </div>
-          </button>
+          <InsightCarousel cards={insightCards} />
         </section>
 
         {/* Recent activity */}

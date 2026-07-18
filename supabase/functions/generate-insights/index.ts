@@ -46,6 +46,8 @@ Deno.serve(async (req) => {
 
     const periodEnd = today()
     const periodStart = daysAgo(7)
+    const now = new Date()
+    const runAnnual = now.getUTCMonth() === 0 && now.getUTCDate() <= 7
 
     // Bounded fan-out instead of a strict one-at-a-time walk over every
     // wallet (audit finding: sequential runtime grows linearly with wallets
@@ -53,8 +55,19 @@ Deno.serve(async (req) => {
     // isolated — one bad wallet no longer sinks the whole weekly run.
     const results = await mapLimit(wallets ?? [], 5, async (wallet) => {
       try {
-        const result = await generateForWallet(supabase, wallet.id, wallet.base_currency, periodStart, periodEnd)
-        return { walletId: wallet.id, ...result }
+        const weekly = await generateForWallet(
+          supabase,
+          wallet.id,
+          wallet.base_currency,
+          periodStart,
+          periodEnd,
+        )
+        let annual: Record<string, unknown> | undefined
+        if (runAnnual) {
+          const year = now.getUTCFullYear() - 1
+          annual = await generateAnnualRecap(supabase, wallet.id, wallet.base_currency, year)
+        }
+        return { walletId: wallet.id, ...weekly, annual }
       } catch (error) {
         console.error(
           `Weekly digest failed for wallet ${wallet.id}:`,
@@ -64,7 +77,7 @@ Deno.serve(async (req) => {
       }
     })
 
-    return jsonResponse({ processed: results.length, results })
+    return jsonResponse({ processed: results.length, results, annual: runAnnual })
   } catch (error) {
     console.error(error)
     return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
@@ -184,6 +197,106 @@ async function generateForWallet(
   }
 
   return { totalSpentMinor, totalIncomeMinor, topCategories, digests: digestByKey.size, notified }
+}
+
+async function generateAnnualRecap(
+  supabase: SupabaseClient,
+  walletId: string,
+  currency: string,
+  year: number,
+) {
+  const periodStart = `${year}-01-01`
+  const periodEnd = `${year}-12-31`
+
+  const { data: members } = await supabase
+    .from('wallet_members')
+    .select('user_id')
+    .eq('wallet_id', walletId)
+  const memberIds = (members ?? []).map((m) => m.user_id)
+  if (memberIds.length === 0) return { skipped: 'no members' }
+
+  const { data: premiumRows } = await supabase
+    .from('entitlements')
+    .select('user_id')
+    .in('user_id', memberIds)
+    .eq('plan', 'premium')
+  const premiumIds = (premiumRows ?? []).map((r) => r.user_id)
+  if (premiumIds.length === 0) return { skipped: 'no premium members' }
+
+  const { data: transactions } = await supabase
+    .from('transactions')
+    .select('amount_minor, converted_amount_minor, type')
+    .eq('wallet_id', walletId)
+    .eq('user_confirmed', true)
+    .is('deleted_at', null)
+    .gte('transaction_date', periodStart)
+    .lte('transaction_date', periodEnd)
+
+  if (!transactions?.length) return { skipped: 'no transactions' }
+
+  let spent = 0
+  let income = 0
+  for (const t of transactions) {
+    const amt = Number(t.converted_amount_minor ?? t.amount_minor ?? 0)
+    if (t.type === 'expense') spent += amt
+    else if (t.type === 'income') income += amt
+  }
+
+  const body =
+    `Your ${year} in money: earned ${fmtMoney(income, currency)}, spent ${fmtMoney(spent, currency)}. ` +
+    `Net ${fmtMoney(income - spent, currency)}. Here's to a clearer ${year + 1}.`
+
+  let notified = 0
+  for (const userId of premiumIds) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('notification_prefs')
+      .eq('id', userId)
+      .maybeSingle()
+    const prefs = (profile?.notification_prefs ?? {}) as Record<string, unknown>
+    if (prefs.annual_recap === false) continue
+
+    await supabase.from('ai_insights').insert({
+      wallet_id: walletId,
+      user_id: userId,
+      type: 'weekly_digest',
+      content: {
+        text: body,
+        kind: 'annual_recap',
+        year,
+        total_spent_minor: spent,
+        total_income_minor: income,
+      },
+      period_start: periodStart,
+      period_end: periodEnd,
+    })
+
+    await notifyUser(supabase, {
+      userId,
+      walletId,
+      kind: 'insight',
+      title: `${year} year in review`,
+      body,
+      href: '/analytics',
+      dedupeKey: `annual:${walletId}:${year}`,
+      payload: { year },
+    })
+    notified++
+  }
+
+  return { year, spent, income, notified }
+}
+
+function fmtMoney(amountMinor: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('en', {
+      style: 'currency',
+      currency: currency || 'USD',
+      maximumFractionDigits: 0,
+    }).format(amountMinor / 100)
+  } catch {
+    return `${(amountMinor / 100).toFixed(0)} ${currency}`
+  }
 }
 
 interface InsightProfileContext {

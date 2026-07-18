@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Sparkle } from '@/components/icons/product'
 import {
   Dialog,
@@ -8,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { FEATURE_COPY, type PremiumFeature } from './types'
 
+const INTEREST_KEY = 'penda:premium-interest'
+
 interface PaywallSheetProps {
   feature: PremiumFeature | null
   onOpenChange: (open: boolean) => void
@@ -16,8 +19,25 @@ interface PaywallSheetProps {
 }
 
 export function PaywallSheet({ feature, onOpenChange, onPreviewOnce }: PaywallSheetProps) {
+  const [interested, setInterested] = useState(() => {
+    try {
+      return localStorage.getItem(INTEREST_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
   if (!feature) return null
   const copy = FEATURE_COPY[feature]
+
+  function notifyMe() {
+    try {
+      localStorage.setItem(INTEREST_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setInterested(true)
+  }
 
   return (
     <Dialog open={!!feature} onOpenChange={onOpenChange}>
@@ -43,8 +63,8 @@ export function PaywallSheet({ feature, onOpenChange, onPreviewOnce }: PaywallSh
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Try the magic once on your account — then Premium unlocks it for good. Purchase isn’t
-            live yet.
+            Checkout isn’t wired yet (needs Stripe keys). Leave your interest and we’ll unlock
+            purchase as soon as billing is live.
           </p>
 
           {feature === 'receipt-scan' && onPreviewOnce && (
@@ -56,6 +76,16 @@ export function PaywallSheet({ feature, onOpenChange, onPreviewOnce }: PaywallSh
               }}
             >
               Preview once
+            </Button>
+          )}
+
+          {interested ? (
+            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              You’re on the list — thanks.
+            </p>
+          ) : (
+            <Button variant="secondary" onClick={notifyMe}>
+              Notify me when purchase is live
             </Button>
           )}
 

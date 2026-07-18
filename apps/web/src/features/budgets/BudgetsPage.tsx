@@ -215,7 +215,7 @@ export function BudgetsPage() {
     const monthEnd = localMonthEnd(now)
     const spentMinor = transactions
       .filter((tx) => tx.type === 'expense' && tx.transaction_date >= monthStart)
-      .reduce((sum, tx) => sum + tx.amount_minor, 0)
+      .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
     const upcoming = upcomingFixedCosts(recurring, localDateStr(now), monthEnd)
     const goalReserve = totalMonthlyGoalReserve(goals, now)
     const safe = computeSafeToSpend({

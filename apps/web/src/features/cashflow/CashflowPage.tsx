@@ -48,7 +48,7 @@ export function CashflowPage() {
     from.setHours(0, 0, 0, 0)
 
     const balance = transactions.reduce(
-      (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
+      (sum, tx) => sum + (tx.type === 'income' ? (tx.converted_amount_minor ?? tx.amount_minor) : tx.type === 'expense' ? -(tx.converted_amount_minor ?? tx.amount_minor) : 0),
       0,
     )
 
@@ -57,7 +57,7 @@ export function CashflowPage() {
     const cutoffStr = localDateStr(cutoff)
     const discretionary = transactions
       .filter((tx) => tx.type === 'expense' && tx.source !== 'recurring' && tx.transaction_date >= cutoffStr)
-      .reduce((sum, tx) => sum + tx.amount_minor, 0)
+      .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 
     return projectCashflow({
       startingBalanceMinor: balance,

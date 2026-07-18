@@ -94,7 +94,7 @@ export function SpendingPlanCard({
 
   const spentMinor = transactions
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= month)
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
 
   // Fixed spend Penda has noticed on its own (rent, subscriptions) even where
   // no recurring rule was registered — so the assist can skip asking about it.
@@ -230,7 +230,7 @@ export function SpendingPlanCard({
   const prevMonthEnd = monthEndOf(new Date(`${prevMonth}T00:00:00Z`))
   const prevMonthSpentMinor = transactions
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= prevMonth && tx.transaction_date <= prevMonthEnd)
-    .reduce((sum, tx) => sum + tx.amount_minor, 0)
+    .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const vsLastMonthMinor = prevMonthSpentMinor - spentMinor
 
   return (

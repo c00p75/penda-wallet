@@ -2,17 +2,19 @@ import { useCallback, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createTransaction } from '@/features/transactions/api'
-import { sendChatMessage } from '@/features/chat/api'
+import { confirmAiAction, sendChatMessage } from '@/features/chat/api'
 import {
+  flushPendingAiConfirms,
   flushPendingChatMessages,
   flushPendingTransactions,
+  listPendingAiConfirms,
   listPendingChatMessages,
   listPendingTransactions,
 } from './offlineQueue'
 import { useOfflinePendingStore } from './offlinePendingStore'
 
 /**
- * Flushes queued offline transactions + chat on reconnect (and on app start).
+ * Flushes queued offline transactions + chat + AI confirms on reconnect (and on app start).
  * Mount once at the app root — AppHeader/Home only read the shared count.
  */
 export function useOfflineQueueSync() {
@@ -20,8 +22,12 @@ export function useOfflineQueueSync() {
   const setPendingCount = useOfflinePendingStore((s) => s.setPendingCount)
 
   const refreshCount = useCallback(async () => {
-    const [tx, chat] = await Promise.all([listPendingTransactions(), listPendingChatMessages()])
-    setPendingCount(tx.length + chat.length)
+    const [tx, chat, confirms] = await Promise.all([
+      listPendingTransactions(),
+      listPendingChatMessages(),
+      listPendingAiConfirms(),
+    ])
+    setPendingCount(tx.length + chat.length + confirms.length)
   }, [setPendingCount])
 
   const flush = useCallback(async () => {
@@ -35,6 +41,15 @@ export function useOfflineQueueSync() {
     )
     if (chatSynced > 0) {
       toast(`Sent ${chatSynced} queued chat message${chatSynced === 1 ? '' : 's'}.`)
+    }
+    const confirmSynced = await flushPendingAiConfirms((actionId, decision) =>
+      confirmAiAction(actionId, decision),
+    )
+    if (confirmSynced > 0) {
+      toast(`Applied ${confirmSynced} queued AI confirm${confirmSynced === 1 ? '' : 's'}.`)
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['budgets'] })
+      queryClient.invalidateQueries({ queryKey: ['goals'] })
     }
     await refreshCount()
   }, [queryClient, refreshCount])

@@ -4,26 +4,20 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-18 (rev 13)
+Last updated: 2026-07-18 (rev 15)
 
 ---
 
-## ✅ Recently shipped — integrity + roadmap surfaces pass
+## ✅ Recently shipped — chat trail + polish pass (rev 15)
 
-Bugfix + candidate backlog implementation (rev 13):
-
-- Chat: wallet-scoped remount, newest-40 history window, parallel context fetches,
-  6h session rotation, tool-progress broadcast, offline chat queue, confirm → View
-  deep link, screen-aware `pageContext`, AiInsight tap-to-ask, page chips
-- Money math: local calendar dates, burn-rate uses effective/rollover caps,
-  locale-safe balance split, unified safe-to-spend (plan math when present)
-- Trust: lock disable requires unlock, Teach Penda rules, AI consent controls,
-  AI action audit + undo, activity log, provenance badges, MoMo → reconcile
-- Modes: Business hub (profit / runway / AR / tax %), Family hub (household plan +
-  allowances), Missions, confidence score, ghost-leak detection, impulse pause,
-  buffer suggestion, split expenses, envelope remaining, blind budgeting,
-  round-up / pay-yourself-first settings, paywall one-shot receipt preview
-- Onboarding seeds a starter savings goal from primary goal
+- Chat ActionTrail: multi-step live progress, durable expandable rows, confirms in-trail
+- Deep-links for creates (goal/budget/debt/memory) + settle-up / journal / analytics hrefs
+- Teach Penda via chat (`teach_categorization`); habits contributions in the trail
+- In-chat Undo + hop to AI actions; expanded undo via `__before` snapshots
+- Home InsightCarousel + voice quick-log; ledger receipt scan
+- Habits empty-state + morning-minute helper; graduated trust banner
+- FX “rates as of” freshness; offline queue for AI confirms
+- Paywall interest waitlist (Stripe checkout still external)
 
 ---
 
@@ -35,11 +29,10 @@ Bugfix + candidate backlog implementation (rev 13):
 - **Not shipped:** Android native `READ_SMS` (needs device/signing). Ambient
   real-time SMS toasts on a native wrapper.
 
-### 2. Planning & Accountability Rituals · **the retention engine** — 🟡 partial
-- **Shipped:** Spending plan, reflection/retro, balance reconciliation, commitment
-  pacts, buffer suggestion on large cash-ins, impulse 24h pause, missions.
-- **Not shipped:** Pushed morning money-minute / adaptive cadence / annual recap
-  (needs engagement telemetry + cadence budget across nudges).
+### 2. Planning & Accountability Rituals · **the retention engine** — ✅ shipped
+- Spending plan, reflection/retro, balance reconciliation, commitment pacts, buffer
+  suggestion, impulse pause, missions, morning money-minute, adaptive cadence,
+  annual recap.
 
 ### 3–11. · **✅ shipped** (see prior revs)
 Profile modes, agentic CRUD + atomic borrow/lend, cashflow timeline, simulator,
@@ -55,31 +48,29 @@ persona starters).
 - Period profit, cash runway, AR from owed-to-me debts, tax set-aside % — `/business`
 - **Still open:** Mobile-money payment requests / invoices (external rails)
 
-### The Family Mode Wedge — ✅ shipped (lite)
-- Household plan snapshot + kids' allowance goals — `/family`
-- Shared-wallet invites already in wallet sheet; deeper shared-plan mapping later
+### The Family Mode Wedge — ✅ shipped
+- Household plan snapshot, member allocations, assigned allowances, settle-up link,
+  invite CTA — `/family`
 
 ### Onboarding Enrichment — ✅ shipped
 Primary goal, household/team size, notification ask, income range, gender,
 starter savings goal seed.
 
 ### Money in & Automations — 🟡 partial
-- Buffer suggestion, round-up + pay-yourself-first toggles, impulse pause — shipped
-- **Still open:** Bank sync API; automatic round-up posting engine (toggle is on;
-  auto-post on every expense can land next)
+- Buffer suggestion, round-up + PYF auto-post, impulse pause — shipped
+- **Still open:** Bank sync API (external)
 
-### Money management depth — 🟡 partial
-- Envelope remaining UX, split expenses sheet — shipped
-- **Still open:** Multi-currency FX conversion; full settle-up balances UI
+### Money management depth — ✅ shipped
+- Envelope remaining, splits, settle-up balances, multi-currency FX conversion + freshness UI
 
-### Intelligence & Trust — ✅ mostly shipped
-- AI consent, audit trail + undo, Teach Penda, screen-aware AI, session rotation,
-  ghost leaks, missions, blind budgeting, confidence score, live paywall preview
-- **Still open:** Local market intelligence (external data); graduated-trust
-  auto-loosening of confirmations
+### Intelligence & Trust — ✅ shipped (market feeds open)
+- AI consent, audit + undo (updates + deletes with snapshots), graduated trust,
+  Teach Penda (form + chat), screen-aware AI, session rotation, ghost leaks, missions,
+  blind budgeting, confidence score, paywall interest waitlist
+- **Still open:** Local market intelligence (external data); live Stripe purchase
 
 ### Chat performance — ✅ shipped (SSE deferred)
-- Parallel fetches, tool-progress Realtime cues, offline chat queue
+- Parallel fetches, tool-progress Realtime cues, ActionTrail, offline chat + confirm queue
 - **Still open:** Full SSE token streaming (lifecycle cues cover the gap for now)
 
 ### Security & Data Control — ✅ shipped
@@ -92,3 +83,4 @@ App lock, data export, account deletion.
 - Android / Capacitor `READ_SMS` ambient ingest
 - Live bank sync / MoMo invoicing rails
 - Local market price feeds
+- Live Stripe Premium checkout (needs account, price IDs, webhook secrets)

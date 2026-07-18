@@ -46,6 +46,9 @@ const AiActionsPage = lazy(() =>
 const FamilyHubPage = lazy(() =>
   import('@/features/family/FamilyHubPage').then((m) => ({ default: m.FamilyHubPage })),
 )
+const SettleUpPage = lazy(() =>
+  import('@/features/splits/SettleUpPage').then((m) => ({ default: m.SettleUpPage })),
+)
 const NotificationsPage = lazy(() =>
   import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
 )
@@ -80,6 +83,7 @@ function App() {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/ai-actions" element={<AiActionsPage />} />
           <Route path="/family" element={<FamilyHubPage />} />
+          <Route path="/settle-up" element={<SettleUpPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

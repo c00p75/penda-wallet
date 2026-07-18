@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
-import { Scissors } from '@/components/icons/product'
+import { Camera, Scissors } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DateChip } from '@/components/ui/date-chip'
@@ -16,14 +16,19 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
+import { useEntitlement } from '@/features/entitlements/hooks'
+import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
+import type { PremiumFeature } from '@/features/entitlements/types'
 import {
+  useConfirmReceiptItems,
   useCreateTransaction,
   useDeleteTransaction,
   useTransactions,
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
-import type { Transaction, TransactionInput } from '@/features/transactions/types'
+import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
+import { useUploadReceipt } from '@/features/receipts/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction, CoachingInsight } from '@/features/coaching/detectCoachingInsights'
 import { ReconcilePrompt } from '@/features/reconciliation/ReconcilePrompt'
@@ -146,17 +151,24 @@ export function LedgerPage() {
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
   const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const confirmReceiptItems = useConfirmReceiptItems(wallet?.id)
+  const uploadReceipt = useUploadReceipt(wallet?.id)
   const offlineQueue = useOfflinePending()
+
+  const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
+  const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
 
   const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [dismissedInsightIds, setDismissedInsightIds] = useState<Set<string>>(new Set())
   const [splitTx, setSplitTx] = useState<Transaction | null>(null)
   const [members, setMembers] = useState<{ user_id: string; label: string }[]>([])
   const [period, setPeriod] = useState<Period>('month')
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all')
+  const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!wallet?.id) return
@@ -185,6 +197,49 @@ export function LedgerPage() {
   function openEditForm(tx: Transaction) {
     setEditing(tx)
     setFormOpen(true)
+  }
+
+  function openReceiptPicker() {
+    receiptInputRef.current?.click()
+  }
+
+  function openScanReceipt() {
+    if (canScanReceipt) {
+      openReceiptPicker()
+      return
+    }
+    setPaywallFeature('receipt-scan')
+  }
+
+  async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const toastId = toast.loading('Scanning receipt…')
+    try {
+      const draft = await uploadReceipt.mutateAsync(file)
+      toast.dismiss(toastId)
+      setEditing(draft)
+      setFormOpen(true)
+    } catch (error) {
+      toast.dismiss(toastId)
+      toast.error(error instanceof Error ? error.message : 'Could not read that receipt.')
+    }
+  }
+
+  async function handleConfirmReceiptItems(input: ReceiptItemsConfirmInput) {
+    if (!editing) return
+    try {
+      await confirmReceiptItems.mutateAsync({ draft: editing, input })
+      toast(
+        input.items.length === 1
+          ? 'Receipt confirmed.'
+          : `${input.items.length} items logged from receipt.`,
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+      throw error
+    }
   }
 
   async function saveOffline(input: TransactionInput) {
@@ -261,7 +316,10 @@ export function LedgerPage() {
   const currency = wallet.base_currency
 
   const balanceMinor = transactions.reduce(
-    (sum, tx) => sum + (tx.type === 'income' ? tx.amount_minor : tx.type === 'expense' ? -tx.amount_minor : 0),
+    (sum, tx) => {
+      const amt = tx.converted_amount_minor ?? tx.amount_minor
+      return sum + (tx.type === 'income' ? amt : tx.type === 'expense' ? -amt : 0)
+    },
     0,
   )
 
@@ -305,20 +363,49 @@ export function LedgerPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))]">
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleReceiptSelected}
+      />
+
       <PageHeader
         title="Transactions"
         size="compact"
         trailing={
-          <button
-            type="button"
-            onClick={(e) => {
-              captureOverlayOrigin(e.currentTarget)
-              openAddForm()
-            }}
-            className="shrink-0 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-          >
-            + Add
-          </button>
+          <div className="flex items-center gap-3">
+            {members.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => navigate('/settle-up')}
+                className="shrink-0 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Settle up
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={openScanReceipt}
+              disabled={uploadReceipt.isPending}
+              aria-label="Scan receipt"
+              className="grid size-9 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              <Camera className="size-4" weight="fill" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                captureOverlayOrigin(e.currentTarget)
+                openAddForm()
+              }}
+              className="shrink-0 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+            >
+              + Add
+            </button>
+          </div>
         }
       />
 
@@ -470,8 +557,23 @@ export function LedgerPage() {
         transaction={editing}
         draft={null}
         onSubmit={handleSubmit}
+        onConfirmItems={
+          editing?.source === 'receipt' && !editing.user_confirmed
+            ? handleConfirmReceiptItems
+            : undefined
+        }
         onDelete={editing ? handleDelete : undefined}
-        isSubmitting={createTransaction.isPending || updateTransaction.isPending}
+        isSubmitting={
+          createTransaction.isPending ||
+          updateTransaction.isPending ||
+          confirmReceiptItems.isPending
+        }
+      />
+
+      <PaywallSheet
+        feature={paywallFeature}
+        onOpenChange={(open) => !open && setPaywallFeature(null)}
+        onPreviewOnce={openReceiptPicker}
       />
 
       {session && (

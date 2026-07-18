@@ -34,6 +34,18 @@ export const DEFAULT_AI_CONSENT: AiConsent = {
   unprompted_coaching: true,
 }
 
+export interface AiTrust {
+  confirmed_ok: number
+  confirmed_undone: number
+  auto_loose: boolean
+}
+
+export const DEFAULT_AI_TRUST: AiTrust = {
+  confirmed_ok: 0,
+  confirmed_undone: 0,
+  auto_loose: false,
+}
+
 export interface Profile {
   id: string
   display_name: string | null
@@ -48,10 +60,12 @@ export interface Profile {
   notification_opt_in: boolean
   notification_prefs: NotificationPrefs
   ai_consent: AiConsent
+  ai_trust: AiTrust
   blind_budgeting: boolean
   tax_reserve_pct: number
   round_up_enabled: boolean
   pay_yourself_first_pct: number
+  habits_goal_id: string | null
   created_at: string
 }
 
@@ -66,10 +80,12 @@ export interface ProfileInput {
   notification_opt_in?: boolean
   notification_prefs?: NotificationPrefs
   ai_consent?: AiConsent
+  ai_trust?: AiTrust
   blind_budgeting?: boolean
   tax_reserve_pct?: number
   round_up_enabled?: boolean
   pay_yourself_first_pct?: number
+  habits_goal_id?: string | null
 }
 
 export interface PersonalityMeta {

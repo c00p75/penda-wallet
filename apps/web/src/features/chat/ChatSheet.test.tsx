@@ -49,6 +49,7 @@ vi.mock('@/lib/supabase/client', () => ({
 }))
 vi.mock('@/pwa/offlineQueue', () => ({
   enqueueChatMessage: vi.fn(),
+  enqueueAiConfirm: vi.fn(),
 }))
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (sel: (s: { session: null }) => unknown) => sel({ session: null }),
@@ -74,6 +75,7 @@ async function send(text: string) {
 beforeEach(() => {
   sendMock.mockReset()
   confirmMock.mockReset()
+  localStorage.clear()
 })
 
 describe('ChatSheet currency in the UI', () => {
@@ -143,6 +145,39 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
   })
 })
 
+describe('ChatSheet action trail', () => {
+  it('renders durable action rows under the reply and expands details on tap', async () => {
+    sendMock.mockResolvedValue(
+      reply({
+        reply: 'Logged it.',
+        actions: [
+          {
+            id: 't1',
+            tool: 'create_transaction',
+            domain: 'transaction',
+            label: 'Logged expense',
+            summary: 'Coffee · K12.00',
+            status: 'done',
+            viewHref: '/transactions',
+            details: { Merchant: 'Coffee', Amount: 'K12.00' },
+          },
+        ],
+      }),
+    )
+    renderSheet('ZMW')
+
+    await send('spent K12 on coffee')
+
+    expect(await screen.findByText('Logged expense')).toBeInTheDocument()
+    expect(screen.getByText('Coffee · K12.00')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Logged expense/i }))
+    expect(await screen.findByText('Merchant')).toBeInTheDocument()
+    expect(screen.getByText('Coffee')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument()
+  })
+})
+
 describe('ChatSheet staged edit/delete confirmation', () => {
   const pending = {
     id: 'a1',
@@ -158,6 +193,7 @@ describe('ChatSheet staged edit/delete confirmation', () => {
     await send('actually it was K15 not K10')
 
     expect(await screen.findByText(pending.summary)).toBeInTheDocument()
+    expect(screen.getByText('Proposed update')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     // Nothing is applied until the user taps.

@@ -8,7 +8,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { PageHeader } from '@/components/PageHeader'
 import { useAuthStore } from '@/store/authStore'
-import { fetchAiPendingActions, undoSoftDeletedTransaction } from './api'
+import { canUndoAiAction, fetchAiPendingActions, undoAiAction } from './api'
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -33,11 +33,18 @@ export function AiActionsPage() {
 
   if (!session) return <Navigate to="/login" replace />
 
-  async function handleUndo(targetId: string) {
+  async function handleUndo(action: (typeof actions)[number]) {
+    if (!userId) return
     try {
-      await undoSoftDeletedTransaction(targetId)
-      toast('Transaction restored.')
+      await undoAiAction(action, userId)
+      toast('Undone. AI confirmations are required again.')
       await queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      await queryClient.invalidateQueries({ queryKey: ['budgets'] })
+      await queryClient.invalidateQueries({ queryKey: ['savings-goals'] })
+      await queryClient.invalidateQueries({ queryKey: ['debts'] })
+      await queryClient.invalidateQueries({ queryKey: ['categories'] })
+      await queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', userId] })
+      await queryClient.invalidateQueries({ queryKey: ['profile', userId] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not undo.')
     }
@@ -56,7 +63,7 @@ export function AiActionsPage() {
           <SectionHeader title="Recent actions" />
           <div className="flex flex-col gap-2.5">
             {actions.map((a) => {
-              const canUndo = a.status === 'confirmed' && a.kind === 'delete' && a.domain === 'transaction'
+              const canUndo = canUndoAiAction(a)
               return (
                 <ActivityRow
                   key={a.id}
@@ -85,7 +92,7 @@ export function AiActionsPage() {
                         size="sm"
                         variant="outline"
                         className="gap-1 rounded-full"
-                        onClick={() => handleUndo(a.target_id)}
+                        onClick={() => handleUndo(a)}
                       >
                         <ArrowCounterClockwise className="size-3.5" weight="bold" />
                         Undo

@@ -8,6 +8,8 @@ export type NotificationPrefs = {
   insights: boolean
   alerts: boolean
   updates: boolean
+  morning_minute: boolean
+  annual_recap: boolean
 }
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
@@ -16,6 +18,8 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   insights: true,
   alerts: true,
   updates: true,
+  morning_minute: true,
+  annual_recap: true,
 }
 
 const KIND_TO_PREF: Record<NotificationKind, keyof NotificationPrefs> = {
@@ -34,6 +38,8 @@ export function normalizeNotificationPrefs(raw: unknown): NotificationPrefs {
     insights: obj.insights !== false,
     alerts: obj.alerts !== false,
     updates: obj.updates !== false,
+    morning_minute: obj.morning_minute !== false,
+    annual_recap: obj.annual_recap !== false,
   }
 }
 

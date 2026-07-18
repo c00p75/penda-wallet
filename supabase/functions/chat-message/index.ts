@@ -10,6 +10,16 @@ import {
   PERSONALITY_NAMES,
   PERSONALITY_PROMPTS,
 } from '../_shared/personas.ts'
+import {
+  loadConsentAndTrust,
+  mayActWithoutConfirm,
+  normalizeAiConsent,
+  normalizeAiTrust,
+  persistTrustAfterConfirm,
+  type AiConsent,
+  type AiTrust,
+} from '../_shared/aiTrust.ts'
+import { executePendingAction } from '../_shared/executePendingAction.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -65,8 +75,10 @@ const ALLOWED_CHAT_PAGES = new Set([
   'business',
   'missions',
   'activity',
+  'notifications',
   'ai-actions',
   'family',
+  'settle-up',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -85,6 +97,23 @@ interface ChatRequestBody {
   conversationId?: string
   message: string
   pageContext?: PageContext
+  /** When true (or Accept: text/event-stream), reply as SSE token stream. */
+  stream?: boolean
+}
+
+interface ChatTurnResult {
+  conversationId: string
+  reply: string
+  transaction: Record<string, unknown> | null
+  pendingActions: PendingAction[]
+  actions: CompletedAction[]
+  autoApplied?: boolean
+}
+
+interface StreamHooks {
+  onToken?: (text: string) => void
+  /** Clear partial streamed text when a turn pivots into tool calls. */
+  onReset?: () => void
 }
 
 interface Category {
@@ -132,6 +161,19 @@ interface PendingAction {
   targetId: string
 }
 
+// Durable tool step for the chat action trail (creates, lookups, memories).
+// Staged update/delete stay on PendingAction cards instead.
+interface CompletedAction {
+  id: string
+  tool: string
+  domain: string
+  label: string
+  summary: string
+  status: 'done' | 'error'
+  targetId?: string
+  details?: Record<string, string>
+}
+
 // Everything a tool handler needs, so handlers take one ctx instead of a long
 // argument list. pendingActions is mutated in place by the staging handlers.
 interface ToolContext {
@@ -145,6 +187,13 @@ interface ToolContext {
   rules: CategorizationRule[]
   createdTransaction: Record<string, unknown> | null
   pendingActions: PendingAction[]
+  completedActions: CompletedAction[]
+  /** Latest create ids by domain for action-trail deep-links. */
+  createdIds: Partial<Record<string, string>>
+  autoApplied: boolean
+  /** Cached when checking auto-apply; avoids a second profile read. */
+  _consent?: AiConsent
+  _trust?: AiTrust
 }
 
 Deno.serve(async (req) => {
@@ -226,6 +275,9 @@ Deno.serve(async (req) => {
       rules,
       createdTransaction: null,
       pendingActions: [],
+      completedActions: [],
+      createdIds: {},
+      autoApplied: false,
     }
 
     // Progress channel for the chat UI — subscribed lazily on the FIRST tool
@@ -246,80 +298,146 @@ Deno.serve(async (req) => {
       return progressReady
     }
 
-    const turnStart = Date.now()
-    try {
-      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-        // Out of wall-clock budget — stop starting new model calls and fall
-        // through to the "try rephrasing" reply rather than risk a gateway
-        // timeout with nothing persisted for the client to show.
-        if (iteration > 0 && Date.now() - turnStart > TURN_BUDGET_MS) break
+    const wantsStream =
+      body.stream === true || (req.headers.get('Accept') ?? '').includes('text/event-stream')
 
-        const turn = await callModel(neutralHistory, systemInstruction, tools)
-
-        const assistantParts: NeutralPart[] = []
-        if (turn.text) assistantParts.push({ type: 'text', text: turn.text })
-        for (const call of turn.toolCalls) {
-          assistantParts.push({ type: 'tool_call', id: call.id, name: call.name, args: call.args })
-        }
-        const assistantMessage: NeutralMessage = { role: 'assistant', parts: assistantParts }
-        await insertMessage(supabase, conversationId, assistantMessage)
-        neutralHistory.push(assistantMessage)
-
-        if (turn.toolCalls.length === 0) {
-          return respond({
-            conversationId,
-            reply: turn.text,
-            transaction: ctx.createdTransaction,
-            pendingActions: ctx.pendingActions,
-          })
-        }
-
-        const toolResultParts: NeutralPart[] = []
-        for (const call of turn.toolCalls) {
-          try {
-            await ensureProgressChannel()
-            await progressChannel.send({
-              type: 'broadcast',
-              event: 'tool',
-              payload: { tool: call.name },
-            })
-          } catch {
-            /* degrade silently */
-          }
-          let summary: string
-          try {
-            summary = await dispatchTool(ctx, call.name, call.args)
-          } catch (err) {
-            // Agentic reliability: a tool that throws must never abort the whole
-            // turn or leave a chain half-applied. Feed the failure back so the
-            // model can recover or tell the user, and so every tool_call keeps a
-            // matching result (unbalanced pairs break the provider's next turn).
-            // Log only the message, never the raw error object — it can carry
-            // row data (e.g. a Postgres constraint error echoing values).
-            console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
-            summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
-          }
-          toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
-        }
-
-        const toolResultMessage: NeutralMessage = { role: 'user', parts: toolResultParts }
-        await insertMessage(supabase, conversationId, toolResultMessage)
-        neutralHistory.push(toolResultMessage)
-      }
-    } finally {
+    const runAgent = async (hooks?: StreamHooks): Promise<ChatTurnResult> => {
+      const turnStart = Date.now()
       try {
-        await supabase.removeChannel(progressChannel)
-      } catch {
-        /* ignore */
+        for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+          // Out of wall-clock budget — stop starting new model calls and fall
+          // through to the "try rephrasing" reply rather than risk a gateway
+          // timeout with nothing persisted for the client to show.
+          if (iteration > 0 && Date.now() - turnStart > TURN_BUDGET_MS) break
+
+          const turn = await callModel(neutralHistory, systemInstruction, tools, hooks?.onToken)
+
+          const assistantParts: NeutralPart[] = []
+          if (turn.text) assistantParts.push({ type: 'text', text: turn.text })
+          for (const call of turn.toolCalls) {
+            assistantParts.push({ type: 'tool_call', id: call.id, name: call.name, args: call.args })
+          }
+          const assistantMessage: NeutralMessage = { role: 'assistant', parts: assistantParts }
+          await insertMessage(supabase, conversationId, assistantMessage)
+          neutralHistory.push(assistantMessage)
+
+          if (turn.toolCalls.length === 0) {
+            return {
+              conversationId,
+              reply: turn.text,
+              transaction: ctx.createdTransaction,
+              pendingActions: ctx.pendingActions,
+              actions: ctx.completedActions,
+              autoApplied: ctx.autoApplied || undefined,
+            }
+          }
+
+          // Partial narration before tools isn't the final reply — clear the bubble.
+          if (turn.text) hooks?.onReset?.()
+
+          const toolResultParts: NeutralPart[] = []
+          for (const call of turn.toolCalls) {
+            try {
+              await ensureProgressChannel()
+              await progressChannel.send({
+                type: 'broadcast',
+                event: 'tool',
+                payload: { tool: call.name, id: call.id, status: 'running' },
+              })
+            } catch {
+              /* degrade silently */
+            }
+            let summary: string
+            let threw = false
+            try {
+              summary = await dispatchTool(ctx, call.name, call.args)
+            } catch (err) {
+              // Agentic reliability: a tool that throws must never abort the whole
+              // turn or leave a chain half-applied. Feed the failure back so the
+              // model can recover or tell the user, and so every tool_call keeps a
+              // matching result (unbalanced pairs break the provider's next turn).
+              // Log only the message, never the raw error object — it can carry
+              // row data (e.g. a Postgres constraint error echoing values).
+              console.error(`Tool ${call.name} threw:`, err instanceof Error ? err.message : String(err))
+              summary = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : 'unknown error'}. Nothing was saved for this step — do not claim it succeeded.`
+              threw = true
+            }
+            const action = buildCompletedAction(call, summary, ctx, threw)
+            if (action) ctx.completedActions.push(action)
+            try {
+              await ensureProgressChannel()
+              await progressChannel.send({
+                type: 'broadcast',
+                event: 'tool',
+                payload: {
+                  tool: call.name,
+                  id: call.id,
+                  status: action?.status === 'error' || threw ? 'error' : 'done',
+                  summary: action?.summary,
+                  label: action?.label,
+                },
+              })
+            } catch {
+              /* degrade silently */
+            }
+            toolResultParts.push({ type: 'tool_result', id: call.id, name: call.name, result: summary })
+          }
+
+          const toolResultMessage: NeutralMessage = { role: 'user', parts: toolResultParts }
+          await insertMessage(supabase, conversationId, toolResultMessage)
+          neutralHistory.push(toolResultMessage)
+        }
+      } finally {
+        try {
+          await supabase.removeChannel(progressChannel)
+        } catch {
+          /* ignore */
+        }
+      }
+
+      return {
+        conversationId,
+        reply: "Sorry, I'm having trouble completing that one — could you try rephrasing?",
+        transaction: ctx.createdTransaction,
+        pendingActions: ctx.pendingActions,
+        actions: ctx.completedActions,
+        autoApplied: ctx.autoApplied || undefined,
       }
     }
 
-    return respond({
-      conversationId,
-      reply: "Sorry, I'm having trouble completing that one — could you try rephrasing?",
-      transaction: ctx.createdTransaction,
-      pendingActions: ctx.pendingActions,
-    })
+    if (wantsStream) {
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder()
+          const send = (event: string, data: unknown) => {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          }
+          try {
+            send('meta', { conversationId })
+            const result = await runAgent({
+              onToken: (text) => send('token', { text }),
+              onReset: () => send('reset', {}),
+            })
+            send('done', result)
+          } catch (error) {
+            console.error(error instanceof Error ? error.message : String(error))
+            send('error', { error: 'Something went wrong on our side — please try again.' })
+          } finally {
+            controller.close()
+          }
+        },
+      })
+      return new Response(stream, {
+        headers: {
+          ...cors,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      })
+    }
+
+    return respond(await runAgent())
   } catch (error) {
     // Log the detail, return a generic message: a raw error (e.g. a Postgres
     // constraint failure) can echo schema names or row values to the client.
@@ -343,7 +461,27 @@ async function callModel(
   history: NeutralMessage[],
   systemInstruction: string,
   tools: ToolDefinition[],
+  onDelta?: (text: string) => void,
 ): Promise<ModelTurn> {
+  if (onDelta) {
+    try {
+      return await withTimeout(
+        callGeminiStream(history, systemInstruction, tools, onDelta),
+        MODEL_TIMEOUT_MS,
+        'Gemini',
+      )
+    } catch (error) {
+      console.error(
+        'Gemini stream failed, falling back to Groq stream:',
+        error instanceof Error ? error.message : String(error),
+      )
+      return await withTimeout(
+        callGroqStream(history, systemInstruction, tools, onDelta),
+        MODEL_TIMEOUT_MS,
+        'Groq',
+      )
+    }
+  }
   try {
     return await withTimeout(callGemini(history, systemInstruction, tools), MODEL_TIMEOUT_MS, 'Gemini')
   } catch (error) {
@@ -373,6 +511,42 @@ async function callGemini(
   }))
 
   return { text: response.text ?? '', toolCalls }
+}
+
+async function callGeminiStream(
+  history: NeutralMessage[],
+  systemInstruction: string,
+  tools: ToolDefinition[],
+  onDelta: (text: string) => void,
+): Promise<ModelTurn> {
+  const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
+  const stream = await genAI.models.generateContentStream({
+    model: GEMINI_MODEL,
+    contents: toGeminiContents(history),
+    config: { systemInstruction, tools: [{ functionDeclarations: tools }], maxOutputTokens: MAX_OUTPUT_TOKENS },
+  })
+
+  let text = ''
+  const toolById = new Map<string, { id: string; name: string; args: Record<string, unknown> }>()
+  let toolIndex = 0
+
+  for await (const chunk of stream) {
+    const piece = typeof chunk.text === 'string' ? chunk.text : ''
+    if (piece) {
+      text += piece
+      onDelta(piece)
+    }
+    for (const call of chunk.functionCalls ?? []) {
+      const id = call.id ?? `gemini-call-${toolIndex++}`
+      toolById.set(id, {
+        id,
+        name: call.name ?? '',
+        args: (call.args ?? {}) as Record<string, unknown>,
+      })
+    }
+  }
+
+  return { text, toolCalls: [...toolById.values()] }
 }
 
 async function callGroq(
@@ -417,6 +591,102 @@ async function callGroq(
   })
 
   return { text: message.content ?? '', toolCalls }
+}
+
+async function callGroqStream(
+  history: NeutralMessage[],
+  systemInstruction: string,
+  tools: ToolDefinition[],
+  onDelta: (text: string) => void,
+): Promise<ModelTurn> {
+  const messages = toGroqMessages(history, systemInstruction)
+  const groqTools = tools.map((tool) => ({
+    type: 'function',
+    function: { name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema },
+  }))
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+      tools: groqTools,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      stream: true,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Groq error ${res.status}: ${await res.text()}`)
+  }
+  if (!res.body) {
+    throw new Error('Groq stream returned an empty body')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let text = ''
+  const toolArgs: Record<number, { id: string; name: string; arguments: string }> = {}
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
+      if (!line.startsWith('data:')) continue
+      const payload = line.slice(5).trim()
+      if (!payload || payload === '[DONE]') continue
+      let chunk: {
+        choices?: Array<{
+          delta?: {
+            content?: string | null
+            tool_calls?: Array<{
+              index?: number
+              id?: string
+              function?: { name?: string; arguments?: string }
+            }>
+          }
+        }>
+      }
+      try {
+        chunk = JSON.parse(payload)
+      } catch {
+        continue
+      }
+      const delta = chunk.choices?.[0]?.delta
+      if (!delta) continue
+      if (typeof delta.content === 'string' && delta.content) {
+        text += delta.content
+        onDelta(delta.content)
+      }
+      for (const tc of delta.tool_calls ?? []) {
+        const index = tc.index ?? 0
+        const existing = toolArgs[index] ?? { id: tc.id ?? `groq-call-${index}`, name: '', arguments: '' }
+        if (tc.id) existing.id = tc.id
+        if (tc.function?.name) existing.name = tc.function.name
+        if (tc.function?.arguments) existing.arguments += tc.function.arguments
+        toolArgs[index] = existing
+      }
+    }
+  }
+
+  const toolCalls = Object.values(toolArgs).map((call) => {
+    let args: Record<string, unknown> = {}
+    try {
+      args = JSON.parse(call.arguments || '{}')
+    } catch {
+      console.error(`Groq stream returned malformed tool args for ${call.name}:`, call.arguments)
+    }
+    return { id: call.id, name: call.name, args }
+  })
+
+  return { text, toolCalls }
 }
 
 // --- Provider adapters ---------------------------------------------------
@@ -967,7 +1237,214 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         required: ['kind', 'content'],
       },
     },
+    {
+      name: 'teach_categorization',
+      description:
+        'Teach Penda a lasting categorization rule, e.g. "always categorize Uber as Transport". ' +
+        'Runs immediately. Use when the user explicitly teaches a merchant/phrase → category mapping.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          match_value: { type: 'string', description: 'Merchant or phrase to match (e.g. Uber).' },
+          category: { type: 'string', description: 'Existing category name.' },
+          match_type: {
+            type: 'string',
+            enum: ['merchant_contains', 'description_contains'],
+            description: 'Defaults to merchant_contains.',
+          },
+        },
+        required: ['match_value', 'category'],
+      },
+    },
   ]
+}
+
+// --- Action trail (UI) -----------------------------------------------------
+
+const STAGING_TOOLS = new Set(['update_record', 'delete_record'])
+
+const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
+  create_transaction: { domain: 'transaction', label: 'Logged transaction' },
+  create_debt: { domain: 'debt', label: 'Recorded debt' },
+  log_borrowed_or_lent_money: { domain: 'debt', label: 'Recorded loan' },
+  create_budget: { domain: 'budget', label: 'Created budget' },
+  create_goal: { domain: 'goal', label: 'Created goal' },
+  create_category: { domain: 'category', label: 'Created category' },
+  query_records: { domain: 'query', label: 'Looked that up' },
+  get_spending_summary: { domain: 'summary', label: 'Tallied spend' },
+  save_memory: { domain: 'memory', label: 'Remembered that' },
+  teach_categorization: { domain: 'memory', label: 'Taught Penda' },
+  money_habit: { domain: 'goal', label: 'Saved via habit' },
+}
+
+function toolFailed(result: string, threw: boolean): boolean {
+  if (threw) return true
+  return /^(Failed|Tool "|Amount must|Debt amount|Budget amount|Goal target|A category|A memory|I can't|I need|Nothing to|Unknown tool|Deleting )/i
+    .test(result)
+}
+
+function fmtAmount(amount: number, symbol: string): string {
+  if (!Number.isFinite(amount)) return String(amount)
+  return `${symbol}${amount.toFixed(2)}`
+}
+
+function buildCompletedAction(
+  call: { id: string; name: string; args: Record<string, unknown> },
+  result: string,
+  ctx: ToolContext,
+  threw: boolean,
+): CompletedAction | null {
+  // Confirm cards already cover staged update/delete — don't duplicate them.
+  if (STAGING_TOOLS.has(call.name)) return null
+
+  const meta = TOOL_TRAIL_META[call.name] ?? { domain: 'general', label: 'Did something' }
+  const failed = toolFailed(result, threw)
+  const args = call.args
+  let label = meta.label
+  let summary = result
+  let targetId: string | undefined
+  const details: Record<string, string> = {}
+
+  switch (call.name) {
+    case 'create_transaction': {
+      const type = String(args.type ?? 'expense')
+      label = type === 'income' ? 'Logged income' : type === 'transfer' ? 'Logged transfer' : 'Logged expense'
+      const amount = Number(args.amount)
+      const merchant = typeof args.merchant === 'string' ? args.merchant.trim() : ''
+      const category = typeof args.category === 'string' ? args.category.trim() : ''
+      summary = [merchant || null, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ') || (failed ? 'Couldn’t save that' : 'Saved')
+      if (merchant) details.Merchant = merchant
+      if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
+      if (category) details.Category = category
+      if (typeof args.transaction_date === 'string') details.Date = args.transaction_date
+      const tx = ctx.createdTransaction
+      if (tx && typeof tx.id === 'string') targetId = tx.id
+      break
+    }
+    case 'create_debt': {
+      const name = typeof args.name === 'string' ? args.name.trim() : ''
+      const amount = Number(args.amount)
+      const counterparty = typeof args.counterparty === 'string' ? args.counterparty.trim() : ''
+      summary = [name || 'Debt', Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ')
+      if (name) details.Name = name
+      if (counterparty) details.With = counterparty
+      if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
+      targetId = ctx.createdIds.debt
+      break
+    }
+    case 'log_borrowed_or_lent_money': {
+      const direction = args.direction === 'owed_to_me' ? 'Lent' : 'Borrowed'
+      label = direction === 'Lent' ? 'Recorded lending' : 'Recorded borrowing'
+      const amount = Number(args.amount)
+      const counterparty = typeof args.counterparty === 'string' ? args.counterparty.trim() : ''
+      summary = [direction, counterparty || null, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ')
+      if (counterparty) details.With = counterparty
+      if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
+      const tx = ctx.createdTransaction
+      if (tx && typeof tx.id === 'string') targetId = tx.id
+      break
+    }
+    case 'create_budget': {
+      const amount = Number(args.amount)
+      const period = args.period === 'weekly' ? 'weekly' : 'monthly'
+      const category = typeof args.category === 'string' ? args.category.trim() : ''
+      summary = [category || 'Budget', period, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ')
+      if (category) details.Category = category
+      details.Period = period
+      if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
+      targetId = ctx.createdIds.budget
+      break
+    }
+    case 'create_goal': {
+      const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim() : 'Savings goal'
+      const target = Number(args.target_amount)
+      label = 'Created goal'
+      summary = [name, Number.isFinite(target) && target > 0 ? fmtAmount(target, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ')
+      details.Name = name
+      if (Number.isFinite(target) && target > 0) details.Target = fmtAmount(target, ctx.symbol)
+      targetId = ctx.createdIds.goal
+      break
+    }
+    case 'create_category': {
+      const name = typeof args.name === 'string' ? args.name.trim() : ''
+      summary = name || (failed ? 'Couldn’t create category' : 'Category created')
+      if (name) details.Name = name
+      targetId = ctx.createdIds.category
+      break
+    }
+    case 'teach_categorization': {
+      const matchValue = typeof args.match_value === 'string' ? args.match_value.trim() : ''
+      const category = typeof args.category === 'string' ? args.category.trim() : ''
+      label = 'Taught Penda'
+      summary = matchValue && category ? `${matchValue} → ${category}` : result
+      if (matchValue) details.Match = matchValue
+      if (category) details.Category = category
+      break
+    }
+    case 'query_records': {
+      const domain = typeof args.domain === 'string' ? args.domain : 'records'
+      const search = typeof args.search === 'string' ? args.search.trim() : ''
+      label = 'Looked that up'
+      const match = /^Found (\d+)/.exec(result)
+      summary = match
+        ? `Found ${match[1]} ${domain}`
+        : result.startsWith('No ')
+          ? `No ${domain} matched`
+          : `Checked ${domain}`
+      details.Domain = domain
+      if (search) details.Search = search
+      break
+    }
+    case 'get_spending_summary': {
+      // Prefer the human sentence the tool already returns.
+      summary = result.length > 120 ? `${result.slice(0, 117)}…` : result
+      if (typeof args.since === 'string') details.From = args.since
+      if (typeof args.until === 'string') details.Until = args.until
+      break
+    }
+    case 'save_memory': {
+      const content = typeof args.content === 'string' ? args.content.trim() : ''
+      summary = content
+        ? content.length > 80
+          ? `${content.slice(0, 77)}…`
+          : content
+        : failed
+          ? 'Couldn’t save that'
+          : 'Saved'
+      if (typeof args.kind === 'string') details.Kind = args.kind
+      if (content) details.Note = content
+      targetId = ctx.createdIds.memory
+      break
+    }
+    default: {
+      summary = failed ? 'Something went wrong' : result.length > 100 ? `${result.slice(0, 97)}…` : result
+    }
+  }
+
+  if (failed && summary === result) {
+    summary = 'Something went wrong'
+  }
+
+  return {
+    id: call.id,
+    tool: call.name,
+    domain: meta.domain,
+    label,
+    summary,
+    status: failed ? 'error' : 'done',
+    targetId,
+    details: Object.keys(details).length ? details : undefined,
+  }
 }
 
 // --- Tool dispatch ---------------------------------------------------------
@@ -979,13 +1456,33 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
         ctx.supabase, ctx.walletId, ctx.userId, ctx.currency, ctx.categories, ctx.rules, args,
       )
       ctx.createdTransaction = result.transaction
+      for (const habit of result.habits ?? []) {
+        const label = habit.kind === 'round_up' ? 'Rounded up' : 'Paid yourself first'
+        ctx.completedActions.push({
+          id: crypto.randomUUID(),
+          tool: 'money_habit',
+          domain: 'goal',
+          label,
+          summary: `${fmt(habit.amount_minor, ctx.symbol)} → savings`,
+          status: 'done',
+          targetId: habit.goal_id,
+          details: {
+            Kind: habit.kind === 'round_up' ? 'Round-up' : 'Pay yourself first',
+            Amount: fmt(habit.amount_minor, ctx.symbol),
+          },
+        })
+      }
       return result.summary
     }
-    case 'create_debt':
-      return (await handleCreateDebt(ctx.supabase, ctx.walletId, args)).summary
+    case 'create_debt': {
+      const result = await handleCreateDebt(ctx.supabase, ctx.walletId, args)
+      if (result.id) ctx.createdIds.debt = result.id
+      return result.summary
+    }
     case 'log_borrowed_or_lent_money': {
       const result = await handleLogBorrowOrLend(ctx, args)
       ctx.createdTransaction = result.transaction
+      if (result.debtId) ctx.createdIds.debt = result.debtId
       return result.summary
     }
     case 'create_budget':
@@ -1004,6 +1501,8 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       return await stageDelete(ctx, args)
     case 'save_memory':
       return await handleSaveMemory(ctx, args)
+    case 'teach_categorization':
+      return await handleTeachCategorization(ctx, args)
     default:
       return `Unknown tool "${name}" — no action taken.`
   }
@@ -1017,7 +1516,11 @@ async function handleCreateTransaction(
   categories: Category[],
   rules: CategorizationRule[],
   input: Record<string, unknown>,
-): Promise<{ transaction: Record<string, unknown> | null; summary: string }> {
+): Promise<{
+  transaction: Record<string, unknown> | null
+  summary: string
+  habits?: Array<{ kind: string; amount_minor: number; goal_id?: string }>
+}> {
   const amount = Number(input.amount)
   if (!amount || amount <= 0) {
     return { transaction: null, summary: 'Amount must be a positive number.' }
@@ -1056,14 +1559,28 @@ async function handleCreateTransaction(
     return { transaction: null, summary: `Failed to save transaction: ${error.message}` }
   }
 
-  return { transaction: data, summary: `Saved: ${JSON.stringify(data)}` }
+  let habits: Array<{ kind: string; amount_minor: number; goal_id?: string }> | undefined
+  try {
+    const { data: habitRaw } = await supabase.rpc('apply_money_habits', { p_transaction_id: data.id })
+    const habitResult = habitRaw as {
+      applied?: boolean
+      contributions?: Array<{ kind: string; amount_minor: number; goal_id?: string }>
+    } | null
+    if (habitResult?.applied && habitResult.contributions?.length) {
+      habits = habitResult.contributions
+    }
+  } catch {
+    // Habits are additive; transaction already saved.
+  }
+
+  return { transaction: data, summary: `Saved: ${JSON.stringify(data)}`, habits }
 }
 
 async function handleCreateDebt(
   supabase: SupabaseClient,
   walletId: string,
   input: Record<string, unknown>,
-): Promise<{ summary: string }> {
+): Promise<{ summary: string; id?: string }> {
   const amount = Number(input.amount)
   if (!amount || amount <= 0) {
     return { summary: 'Debt amount must be a positive number.' }
@@ -1099,7 +1616,7 @@ async function handleCreateDebt(
     return { summary: `Failed to save debt: ${error.message}` }
   }
 
-  return { summary: `Saved debt: ${JSON.stringify(data)}` }
+  return { summary: `Saved debt: ${JSON.stringify(data)}`, id: data.id as string }
 }
 
 // Atomic multi-tool chain (roadmap bet #4): borrowing/lending needs a wallet
@@ -1110,7 +1627,7 @@ async function handleCreateDebt(
 async function handleLogBorrowOrLend(
   ctx: ToolContext,
   input: Record<string, unknown>,
-): Promise<{ transaction: Record<string, unknown> | null; summary: string }> {
+): Promise<{ transaction: Record<string, unknown> | null; summary: string; debtId?: string }> {
   const amount = Number(input.amount)
   if (!amount || amount <= 0) {
     return { transaction: null, summary: 'Amount must be a positive number.' }
@@ -1159,6 +1676,7 @@ async function handleLogBorrowOrLend(
   const withWhom = counterparty ? ` ${direction === 'i_owe' ? 'from' : 'to'} ${counterparty}` : ''
   return {
     transaction: { id: data.transaction_id, amount_minor: amountMinor, type: direction === 'i_owe' ? 'income' : 'expense' },
+    debtId: data.debt_id,
     summary:
       `${verb} ${fmt(amountMinor, ctx.symbol)}${withWhom} — recorded both the transaction ` +
       `(id ${data.transaction_id}) and the debt (id ${data.debt_id}) together.`,
@@ -1338,8 +1856,16 @@ async function loadTarget(ctx: ToolContext, cfg: DomainCfg, domain: string, id: 
 
 async function insertPendingAction(
   ctx: ToolContext,
-  input: { kind: 'update' | 'delete'; domain: string; targetId: string; patch: Record<string, unknown> | null; summary: string },
+  input: {
+    kind: 'update' | 'delete'
+    domain: string
+    targetId: string
+    patch: Record<string, unknown> | null
+    summary: string
+    status?: 'pending' | 'auto_applied'
+  },
 ): Promise<PendingAction> {
+  const status = input.status ?? 'pending'
   const { data, error } = await ctx.supabase
     .from('ai_pending_actions')
     .insert({
@@ -1351,6 +1877,8 @@ async function insertPendingAction(
       target_id: input.targetId,
       patch: input.patch,
       summary: input.summary,
+      status,
+      resolved_at: status === 'auto_applied' ? new Date().toISOString() : null,
     })
     .select('id')
     .single()
@@ -1363,6 +1891,53 @@ async function insertPendingAction(
     summary: input.summary,
     targetId: input.targetId,
   }
+}
+
+async function shouldAutoApply(ctx: ToolContext): Promise<boolean> {
+  const { consent, trust } = await loadConsentAndTrust(ctx.supabase, ctx.userId)
+  ctx._consent = consent
+  ctx._trust = trust
+  return mayActWithoutConfirm(consent, trust)
+}
+
+async function autoApplyAction(
+  ctx: ToolContext,
+  input: {
+    kind: 'update' | 'delete'
+    domain: string
+    targetId: string
+    patch: Record<string, unknown> | null
+    summary: string
+  },
+): Promise<string> {
+  const pending = await insertPendingAction(ctx, { ...input, status: 'auto_applied' })
+  try {
+    await executePendingAction(ctx.supabase, {
+      id: pending.id,
+      kind: input.kind,
+      domain: input.domain,
+      target_id: input.targetId,
+      patch: input.patch,
+      summary: input.summary,
+      status: 'auto_applied',
+    })
+  } catch (error) {
+    await ctx.supabase.from('ai_pending_actions').delete().eq('id', pending.id)
+    throw error
+  }
+  const consent = ctx._consent ?? normalizeAiConsent(null)
+  const trust = ctx._trust ?? normalizeAiTrust(null)
+  await persistTrustAfterConfirm(ctx.supabase, ctx.userId, consent, trust)
+  ctx.completedActions.push({
+    id: pending.id,
+    tool: input.kind === 'update' ? 'update_record' : 'delete_record',
+    domain: input.domain,
+    label: input.kind === 'update' ? 'Updated' : 'Deleted',
+    summary: input.summary,
+    status: 'done',
+    targetId: input.targetId,
+  })
+  return `Applied (no confirmation needed — user trust/consent allows it): ${input.summary} Tell the user it's done.`
 }
 
 async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
@@ -1383,8 +1958,18 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
     return `Nothing to change on ${cfg.describe(row, ctx.symbol)} — the values already match.`
   }
 
+  const before: Record<string, unknown> = {}
+  for (const key of Object.keys(patch)) before[key] = row[key]
+  const patchWithUndo = { ...patch, __before: before }
+
   const summary = `Update ${cfg.describe(row, ctx.symbol)} — ${diff.join('; ')}.`
-  ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'update', domain, targetId: id, patch, summary }))
+  if (await shouldAutoApply(ctx)) {
+    ctx.autoApplied = true
+    return await autoApplyAction(ctx, { kind: 'update', domain, targetId: id, patch: patchWithUndo, summary })
+  }
+  ctx.pendingActions.push(
+    await insertPendingAction(ctx, { kind: 'update', domain, targetId: id, patch: patchWithUndo, summary }),
+  )
   return `Staged, NOT applied: ${summary} The user must confirm it on the card. Ask them to confirm; do not say it's done.`
 }
 
@@ -1401,8 +1986,17 @@ async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Pro
   const guardMsg = cfg.guard?.(row)
   if (guardMsg) return guardMsg
 
+  // Snapshot for undo (soft-delete restore or hard-delete reinsert).
+  const before: Record<string, unknown> = { ...row }
+  delete before.category
+  const patch = { __before: before }
+
   const summary = `Delete ${cfg.describe(row, ctx.symbol)}.`
-  ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'delete', domain, targetId: id, patch: null, summary }))
+  if (await shouldAutoApply(ctx)) {
+    ctx.autoApplied = true
+    return await autoApplyAction(ctx, { kind: 'delete', domain, targetId: id, patch, summary })
+  }
+  ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'delete', domain, targetId: id, patch, summary }))
   return `Staged, NOT applied: ${summary} The user must confirm the deletion on the card. Ask them to confirm; do not say it's done.`
 }
 
@@ -1543,14 +2137,19 @@ async function handleCreateBudget(ctx: ToolContext, input: Record<string, unknow
   const period = input.period === 'weekly' ? 'weekly' : 'monthly'
   const categoryId = ctx.categories.find((c) => c.name === input.category)?.id ?? null
 
-  const { error } = await ctx.supabase.from('budgets').insert({
-    wallet_id: ctx.walletId,
-    category_id: categoryId,
-    amount_minor: Math.round(amount * 100),
-    period,
-    rollover: input.rollover === true,
-  })
+  const { data, error } = await ctx.supabase
+    .from('budgets')
+    .insert({
+      wallet_id: ctx.walletId,
+      category_id: categoryId,
+      amount_minor: Math.round(amount * 100),
+      period,
+      rollover: input.rollover === true,
+    })
+    .select('id')
+    .single()
   if (error) return `Failed to create budget: ${error.message}`
+  if (data?.id) ctx.createdIds.budget = data.id
   return `Created a ${period} budget of ${fmt(Math.round(amount * 100), ctx.symbol)}.`
 }
 
@@ -1560,14 +2159,19 @@ async function handleCreateGoal(ctx: ToolContext, input: Record<string, unknown>
   const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : 'Savings goal'
   const current = Number(input.current_amount)
 
-  const { error } = await ctx.supabase.from('savings_goals').insert({
-    wallet_id: ctx.walletId,
-    name,
-    target_amount_minor: Math.round(target * 100),
-    current_amount_minor: isFinite(current) && current > 0 ? Math.round(current * 100) : 0,
-    target_date: typeof input.target_date === 'string' ? input.target_date : null,
-  })
+  const { data, error } = await ctx.supabase
+    .from('savings_goals')
+    .insert({
+      wallet_id: ctx.walletId,
+      name,
+      target_amount_minor: Math.round(target * 100),
+      current_amount_minor: isFinite(current) && current > 0 ? Math.round(current * 100) : 0,
+      target_date: typeof input.target_date === 'string' ? input.target_date : null,
+    })
+    .select('id')
+    .single()
   if (error) return `Failed to create goal: ${error.message}`
+  if (data?.id) ctx.createdIds.goal = data.id
   return `Created the goal "${name}" targeting ${fmt(Math.round(target * 100), ctx.symbol)}.`
 }
 
@@ -1575,12 +2179,17 @@ async function handleCreateCategory(ctx: ToolContext, input: Record<string, unkn
   const name = typeof input.name === 'string' ? input.name.trim() : ''
   if (!name) return 'A category needs a name.'
 
-  const { error } = await ctx.supabase.from('categories').insert({
-    wallet_id: ctx.walletId,
-    name,
-    icon: typeof input.icon === 'string' ? input.icon : null,
-  })
+  const { data, error } = await ctx.supabase
+    .from('categories')
+    .insert({
+      wallet_id: ctx.walletId,
+      name,
+      icon: typeof input.icon === 'string' ? input.icon : null,
+    })
+    .select('id')
+    .single()
   if (error) return `Failed to create category: ${error.message}`
+  if (data?.id) ctx.createdIds.category = data.id
   return `Created the category "${name}".`
 }
 
@@ -1592,15 +2201,56 @@ async function handleSaveMemory(ctx: ToolContext, input: Record<string, unknown>
   if (!content) return 'A memory needs some content to save.'
   const mood = typeof input.mood === 'string' && input.mood.trim() ? input.mood.trim() : null
 
-  const { error } = await ctx.supabase.from('ai_memories').insert({
-    user_id: ctx.userId,
-    wallet_id: ctx.walletId,
-    kind,
-    content,
-    mood,
-  })
+  const { data, error } = await ctx.supabase
+    .from('ai_memories')
+    .insert({
+      user_id: ctx.userId,
+      wallet_id: ctx.walletId,
+      kind,
+      content,
+      mood,
+    })
+    .select('id')
+    .single()
   if (error) return `Failed to save that memory: ${error.message}`
+  if (data?.id) ctx.createdIds.memory = data.id
   return `Remembered: ${content}`
+}
+
+async function handleTeachCategorization(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const matchValue = typeof input.match_value === 'string' ? input.match_value.trim() : ''
+  const categoryName = typeof input.category === 'string' ? input.category.trim() : ''
+  if (!matchValue) return 'I need a merchant or phrase to learn.'
+  if (!categoryName) return 'I need a category name to teach.'
+  const category = ctx.categories.find((c) => c.name.toLowerCase() === categoryName.toLowerCase())
+  if (!category) return `No category named "${categoryName}". Create it first or pick an existing one.`
+
+  const matchType = input.match_type === 'description_contains' ? 'description_contains' : 'merchant_contains'
+  const { data: existing, error: selectError } = await ctx.supabase
+    .from('categorization_rules')
+    .select('id')
+    .eq('wallet_id', ctx.walletId)
+    .eq('match_type', matchType)
+    .eq('match_value', matchValue)
+    .maybeSingle()
+  if (selectError) return `Failed to save that rule: ${selectError.message}`
+
+  if (existing) {
+    const { error } = await ctx.supabase
+      .from('categorization_rules')
+      .update({ category_id: category.id })
+      .eq('id', existing.id)
+    if (error) return `Failed to save that rule: ${error.message}`
+  } else {
+    const { error } = await ctx.supabase.from('categorization_rules').insert({
+      wallet_id: ctx.walletId,
+      match_type: matchType,
+      match_value: matchValue,
+      category_id: category.id,
+    })
+    if (error) return `Failed to save that rule: ${error.message}`
+  }
+  return `I'll categorize "${matchValue}" as ${category.name} from now on.`
 }
 
 function today(): string {

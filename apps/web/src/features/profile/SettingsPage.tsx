@@ -47,6 +47,7 @@ import {
   useUnsubscribeFromPush,
 } from '@/features/notifications/hooks'
 import type { NotificationPrefs } from '@/features/notifications/prefs'
+import { useSavingsGoals } from '@/features/goals/hooks'
 import { useProfile, useUpdateProfile } from './hooks'
 import { PersonaAvatar } from './PersonaAvatar'
 import {
@@ -88,6 +89,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const install = useInstallPrompt()
   const { isPremium } = useEntitlement(userId)
   const { data: wallet } = useCurrentWallet()
+  const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const { exportAs, isExporting } = useExport(wallet?.id)
   const themeMode = useThemeStore((s) => s.mode)
   const setThemeMode = useThemeStore((s) => s.setMode)
@@ -106,6 +108,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [roundUp, setRoundUp] = useState(false)
   const [payYourselfFirst, setPayYourselfFirst] = useState('0')
   const [taxReserve, setTaxReserve] = useState('0')
+  const [habitsGoalId, setHabitsGoalId] = useState<string>('')
   const [setupLockOpen, setSetupLockOpen] = useState(false)
   const [disableLockOpen, setDisableLockOpen] = useState(false)
   const subscribeToPush = useSubscribeToPush()
@@ -124,6 +127,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     setRoundUp(profile.round_up_enabled)
     setPayYourselfFirst(String(profile.pay_yourself_first_pct ?? 0))
     setTaxReserve(String(profile.tax_reserve_pct ?? 0))
+    setHabitsGoalId(profile.habits_goal_id ?? '')
   }, [profile])
 
   if (!session) return <Navigate to="/login" replace />
@@ -140,6 +144,10 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
       return
     }
     try {
+      const trustPatch =
+        !aiConsent.act_without_confirm && profile?.ai_trust
+          ? { ...profile.ai_trust, auto_loose: false }
+          : undefined
       await updateProfile.mutateAsync({
         display_name: displayName.trim() || null,
         ai_personality: personality,
@@ -147,10 +155,12 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         notification_opt_in: notificationOptIn,
         notification_prefs: notificationPrefs,
         ai_consent: aiConsent,
+        ...(trustPatch ? { ai_trust: trustPatch } : {}),
         blind_budgeting: blindBudgeting,
         round_up_enabled: roundUp,
         pay_yourself_first_pct: pyf,
         tax_reserve_pct: tax,
+        habits_goal_id: habitsGoalId || null,
       })
       toast('Settings saved.')
     } catch (error) {
@@ -170,7 +180,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
       blindBudgeting !== profile.blind_budgeting ||
       roundUp !== profile.round_up_enabled ||
       payYourselfFirst !== String(profile.pay_yourself_first_pct ?? 0) ||
-      taxReserve !== String(profile.tax_reserve_pct ?? 0))
+      taxReserve !== String(profile.tax_reserve_pct ?? 0) ||
+      habitsGoalId !== (profile.habits_goal_id ?? ''))
 
   function patchConsent(key: keyof AiConsent, value: boolean) {
     setAiConsent((c) => ({ ...c, [key]: value }))
@@ -383,19 +394,28 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 [
                   ['reminders', 'Bill reminders'],
                   ['tips', 'Tips'],
+                  ['morning_minute', 'Morning money-minute'],
                   ['insights', 'Weekly insights'],
+                  ['annual_recap', 'Annual year-in-review'],
                   ['alerts', 'Budget alerts'],
                 ] as const
               ).map(([key, label]) => (
-                <div key={key} className="flex min-h-10 items-center justify-between gap-3">
-                  <p className="text-sm">{label}</p>
-                  <Switch
-                    checked={notificationPrefs[key]}
-                    onCheckedChange={(checked) =>
-                      setNotificationPrefs((p) => ({ ...p, [key]: checked }))
-                    }
-                    aria-label={label}
-                  />
+                <div key={key} className="flex flex-col gap-1">
+                  <div className="flex min-h-10 items-center justify-between gap-3">
+                    <p className="text-sm">{label}</p>
+                    <Switch
+                      checked={notificationPrefs[key]}
+                      onCheckedChange={(checked) =>
+                        setNotificationPrefs((p) => ({ ...p, [key]: checked }))
+                      }
+                      aria-label={label}
+                    />
+                  </div>
+                  {key === 'morning_minute' ? (
+                    <p className="text-xs text-muted-foreground">
+                      A short daily nudge with yesterday’s snapshot (needs Tips on).
+                    </p>
+                  ) : null}
                 </div>
               ))}
               <p className="text-xs text-muted-foreground">
@@ -428,7 +448,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 <div>
                   <p className="text-sm font-medium">Round-ups</p>
                   <p className="text-xs text-muted-foreground">
-                    Save spare change on expenses (coming soon)
+                    Save spare change to a goal on every expense
                   </p>
                 </div>
                 <Switch checked={roundUp} onCheckedChange={setRoundUp} aria-label="Round-ups" />
@@ -444,6 +464,39 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   value={payYourselfFirst}
                   onChange={(e) => setPayYourselfFirst(e.target.value)}
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="habits-goal">Habits destination goal</Label>
+                <select
+                  id="habits-goal"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={habitsGoalId}
+                  onChange={(e) => setHabitsGoalId(e.target.value)}
+                >
+                  <option value="">Auto — Round-ups &amp; savings</option>
+                  {goals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                {(roundUp || Number(payYourselfFirst) > 0) && goals.length === 0 ? (
+                  <div className="rounded-xl border border-border/70 bg-muted/40 px-3 py-2.5">
+                    <p className="text-xs text-muted-foreground">
+                      Create a savings goal so round-ups have a home
+                    </p>
+                    <Button asChild size="sm" variant="link" className="h-auto px-0 pt-1">
+                      <Link to="/goals">Create a goal</Link>
+                    </Button>
+                  </div>
+                ) : null}
+                {(roundUp || Number(payYourselfFirst) > 0) &&
+                goals.length > 0 &&
+                !habitsGoalId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Tip: pick a destination goal so round-ups land somewhere specific.
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="tax-reserve-pct">Tax reserve %</Label>
@@ -477,8 +530,26 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Plain-language controls for what Penda may do unprompted.
+                Plain-language controls for what Penda may do unprompted. After 10 confirmed
+                updates/deletes with no undo, Penda graduates to act without asking — undo
+                resets that trust.
               </p>
+              {profile?.ai_trust?.auto_loose && aiConsent.act_without_confirm ? (
+                <div
+                  className="rounded-xl border px-3 py-2.5 text-xs leading-snug"
+                  style={{
+                    borderColor: 'var(--iris)',
+                    background: 'color-mix(in srgb, var(--iris) 8%, var(--card))',
+                    color: 'var(--foreground)',
+                  }}
+                >
+                  Penda can act without asking — undo anytime in{' '}
+                  <Link to="/ai-actions" className="font-medium underline underline-offset-2">
+                    AI actions
+                  </Link>
+                  .
+                </div>
+              ) : null}
               {(
                 [
                   ['unprompted_coaching', 'Unprompted coaching nudges'],
@@ -486,7 +557,14 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 ] as const
               ).map(([key, label]) => (
                 <div key={key} className="flex min-h-12 items-center justify-between gap-3">
-                  <p className="text-sm font-medium">{label}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{label}</p>
+                    {key === 'act_without_confirm' && profile?.ai_trust?.auto_loose ? (
+                      <p className="text-xs text-muted-foreground">
+                        Graduated from confirmed actions — turn off anytime to require asks again
+                      </p>
+                    ) : null}
+                  </div>
                   <Switch
                     checked={aiConsent[key]}
                     onCheckedChange={(on) => patchConsent(key, on)}

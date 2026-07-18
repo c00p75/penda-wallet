@@ -1,0 +1,184 @@
+import type { Icon } from '@phosphor-icons/react'
+import {
+  Bank,
+  ChartBar,
+  ClipboardText,
+  Notebook,
+  PiggyBank,
+  Receipt,
+  Sparkle,
+  SquaresFour,
+  Wallet,
+} from '@/components/icons/product'
+import type { ChatAction, PendingAction } from './types'
+
+export interface ToolUiMeta {
+  domain: string
+  /** Short label shown in the collapsed trail row. */
+  label: string
+  icon: Icon
+  /** Progress copy while the tool is in flight. */
+  progress: string
+}
+
+const DEFAULT_META: ToolUiMeta = {
+  domain: 'general',
+  label: 'Working on it',
+  icon: Sparkle,
+  progress: 'Working on it…',
+}
+
+export const TOOL_UI: Record<string, ToolUiMeta> = {
+  create_transaction: {
+    domain: 'transaction',
+    label: 'Logged transaction',
+    icon: Receipt,
+    progress: 'Logging that…',
+  },
+  create_debt: {
+    domain: 'debt',
+    label: 'Recorded debt',
+    icon: Bank,
+    progress: 'Recording the debt…',
+  },
+  log_borrowed_or_lent_money: {
+    domain: 'debt',
+    label: 'Recorded loan',
+    icon: Bank,
+    progress: 'Recording the loan…',
+  },
+  create_budget: {
+    domain: 'budget',
+    label: 'Created budget',
+    icon: Wallet,
+    progress: 'Setting up a budget…',
+  },
+  create_goal: {
+    domain: 'goal',
+    label: 'Created goal',
+    icon: PiggyBank,
+    progress: 'Setting up a goal…',
+  },
+  create_category: {
+    domain: 'category',
+    label: 'Created category',
+    icon: SquaresFour,
+    progress: 'Adding a category…',
+  },
+  query_records: {
+    domain: 'query',
+    label: 'Looked that up',
+    icon: ClipboardText,
+    progress: 'Looking that up…',
+  },
+  get_spending_summary: {
+    domain: 'summary',
+    label: 'Tallied spend',
+    icon: ChartBar,
+    progress: 'Tallying your spend…',
+  },
+  update_record: {
+    domain: 'record',
+    label: 'Proposed update',
+    icon: Sparkle,
+    progress: 'Preparing an update…',
+  },
+  delete_record: {
+    domain: 'record',
+    label: 'Proposed deletion',
+    icon: Sparkle,
+    progress: 'Preparing a deletion…',
+  },
+  save_memory: {
+    domain: 'memory',
+    label: 'Remembered that',
+    icon: Notebook,
+    progress: 'Remembering that…',
+  },
+  teach_categorization: {
+    domain: 'memory',
+    label: 'Taught Penda',
+    icon: Sparkle,
+    progress: 'Learning that…',
+  },
+  money_habit: {
+    domain: 'goal',
+    label: 'Saved via habit',
+    icon: PiggyBank,
+    progress: 'Applying habits…',
+  },
+}
+
+export function toolUi(tool: string): ToolUiMeta {
+  return TOOL_UI[tool] ?? DEFAULT_META
+}
+
+export function viewHrefFor(domain: string, targetId?: string): string | undefined {
+  switch (domain) {
+    case 'transaction':
+      return '/transactions'
+    case 'budget':
+      return '/budgets'
+    case 'goal':
+      return targetId ? `/goals/${targetId}` : '/goals'
+    case 'debt':
+      return '/settle-up'
+    case 'memory':
+      return '/journal'
+    case 'summary':
+    case 'query':
+      return '/analytics'
+    default:
+      return undefined
+  }
+}
+
+/** Attach view links to actions that touch a navigable domain. */
+export function withViewHrefs(actions: ChatAction[]): ChatAction[] {
+  return actions.map((action) => {
+    if (action.status === 'error' || action.status === 'running') return action
+    const href = action.viewHref ?? viewHrefFor(action.domain, action.targetId)
+    return href ? { ...action, viewHref: href } : action
+  })
+}
+
+/** Turn a live/running step into a completed one when the turn finishes. */
+export function finalizeLiveActions(steps: ChatAction[]): ChatAction[] {
+  return withViewHrefs(
+    steps
+      .filter((s) => s.tool !== 'update_record' && s.tool !== 'delete_record')
+      .map((s) => (s.status === 'running' ? { ...s, status: 'done' as const } : s)),
+  )
+}
+
+/** Map staged pending actions into trail rows so confirms live in one composition. */
+export function pendingToTrailActions(
+  pending: PendingAction[],
+  statusMap: Record<string, 'confirmed' | 'cancelled'>,
+): ChatAction[] {
+  return pending.map((p) => {
+    const resolved = statusMap[p.id]
+    return {
+      id: p.id,
+      tool: p.kind === 'delete' ? 'delete_record' : 'update_record',
+      domain: p.domain,
+      label: p.kind === 'delete' ? 'Proposed deletion' : 'Proposed update',
+      summary: p.summary,
+      status: resolved ?? 'pending',
+      pendingKind: p.kind,
+      targetId: p.targetId,
+      viewHref: resolved === 'confirmed' ? viewHrefFor(p.domain, p.targetId) : undefined,
+    }
+  })
+}
+
+/** Merge completed tool steps with pending confirm rows (pending last). */
+export function mergeTrailActions(
+  actions: ChatAction[] | undefined,
+  pending: PendingAction[] | undefined,
+  statusMap: Record<string, 'confirmed' | 'cancelled'>,
+): ChatAction[] {
+  const completed = actions ?? []
+  const pendingRows = pending?.length ? pendingToTrailActions(pending, statusMap) : []
+  return [...completed, ...pendingRows]
+}

@@ -10,7 +10,7 @@ const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
   .filter(Boolean)
 
 const BASE_CORS_HEADERS = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   Vary: 'Origin',
 }

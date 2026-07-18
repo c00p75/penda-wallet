@@ -4,9 +4,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetClose }
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatMoney, toMinorUnits } from '@/lib/money'
+import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
 import { supabase } from '@/lib/supabase/client'
 import type { Transaction } from '@/features/transactions/types'
+import { fetchSplitForTransaction } from './api'
+import { sharesSumValid } from './balances'
 
 interface Member {
   user_id: string
@@ -38,16 +40,56 @@ export function SplitExpenseSheet({
 
   useEffect(() => {
     if (!open || !transaction) return
-    const even = transaction.amount_minor / Math.max(members.length, 1)
-    const next: Record<string, string> = {}
-    for (const m of members) {
-      next[m.user_id] = (even / 100).toFixed(2)
+    let cancelled = false
+
+    async function load() {
+      const existing = await fetchSplitForTransaction(transaction!.id)
+      if (cancelled) return
+      if (existing?.expense_split_shares?.length) {
+        const next: Record<string, string> = {}
+        for (const m of members) {
+          const share = (
+            existing.expense_split_shares as Array<{
+              member_user_id: string
+              share_minor: number
+            }>
+          ).find((s) => s.member_user_id === m.user_id)
+          next[m.user_id] = share
+            ? fromMinorUnits(share.share_minor).toFixed(2)
+            : '0.00'
+        }
+        setShares(next)
+        return
+      }
+      const even = transaction!.amount_minor / Math.max(members.length, 1)
+      const next: Record<string, string> = {}
+      for (const m of members) {
+        next[m.user_id] = fromMinorUnits(Math.round(even)).toFixed(2)
+      }
+      setShares(next)
     }
-    setShares(next)
+
+    void load().catch(() => {
+      const even = transaction!.amount_minor / Math.max(members.length, 1)
+      const next: Record<string, string> = {}
+      for (const m of members) {
+        next[m.user_id] = fromMinorUnits(Math.round(even)).toFixed(2)
+      }
+      setShares(next)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [open, transaction, members])
 
   async function save() {
     if (!transaction) return
+    const minors = members.map((m) => toMinorUnits(Number(shares[m.user_id]) || 0))
+    if (!sharesSumValid(minors, transaction.amount_minor)) {
+      toast.error(`Shares must add up to ${formatMoney(transaction.amount_minor, currency)}.`)
+      return
+    }
     setBusy(true)
     try {
       const { data: split, error } = await supabase
@@ -65,13 +107,14 @@ export function SplitExpenseSheet({
       if (error) throw error
 
       await supabase.from('expense_split_shares').delete().eq('split_id', split.id)
-      const rows = members.map((m) => ({
+      const payerId = transaction.created_by
+      const settledRows = members.map((m, i) => ({
         split_id: split.id,
         member_user_id: m.user_id,
-        share_minor: toMinorUnits(Number(shares[m.user_id]) || 0),
-        settled: m.user_id === currentUserId,
+        share_minor: minors[i],
+        settled: m.user_id === payerId,
       }))
-      const { error: shareError } = await supabase.from('expense_split_shares').insert(rows)
+      const { error: shareError } = await supabase.from('expense_split_shares').insert(settledRows)
       if (shareError) throw shareError
       toast('Split saved.')
       onOpenChange(false)
@@ -84,6 +127,11 @@ export function SplitExpenseSheet({
 
   if (!transaction) return null
 
+  const sumMinor = members.reduce(
+    (acc, m) => acc + toMinorUnits(Number(shares[m.user_id]) || 0),
+    0,
+  )
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
@@ -92,10 +140,14 @@ export function SplitExpenseSheet({
         </SheetHeader>
         <div className="flex flex-col gap-3 px-4 pb-4">
           <p className="rounded-2xl bg-secondary/30 px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50">
-            {transaction.merchant || 'Expense'} — edit each person’s share, then settle up later.
+            {transaction.merchant || 'Expense'} — edit each person’s share, then settle up from the
+            Settle up page.
           </p>
           {members.map((m) => (
-            <div key={m.user_id} className="flex flex-col gap-1.5 rounded-2xl bg-secondary/30 px-3.5 py-2.5 shadow-[var(--shadow-soft)] ring-1 ring-border/50">
+            <div
+              key={m.user_id}
+              className="flex flex-col gap-1.5 rounded-2xl bg-secondary/30 px-3.5 py-2.5 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+            >
               <Label htmlFor={`share-${m.user_id}`}>{m.label}</Label>
               <Input
                 id={`share-${m.user_id}`}
@@ -108,6 +160,15 @@ export function SplitExpenseSheet({
               />
             </div>
           ))}
+          <p
+            className={
+              sumMinor === transaction.amount_minor
+                ? 'text-xs text-muted-foreground'
+                : 'text-xs text-destructive'
+            }
+          >
+            Total {formatMoney(sumMinor, currency)} of {formatMoney(transaction.amount_minor, currency)}
+          </p>
           <SheetFooter className="flex-row gap-2 px-0">
             <SheetClose asChild>
               <Button type="button" variant="outline" className="flex-1">
