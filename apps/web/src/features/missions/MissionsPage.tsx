@@ -79,7 +79,7 @@ export function MissionsPage() {
         </div>
       </HeroCard>
 
-      <AiInsight>
+      <AiInsight featured>
         {active.length > 0
           ? `You're on ${active.length} active mission${active.length === 1 ? '' : 's'}. Small commitments compound.`
           : 'Missions are short, concrete challenges, five no-spend days, cook at home this week. Want one?'}

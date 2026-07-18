@@ -148,9 +148,9 @@ export function SimulatorPage() {
       </HeroCard>
 
       {verdict ? (
-        <AiInsight tone={verdict.tone}>{verdict.text}</AiInsight>
+        <AiInsight featured tone={verdict.tone}>{verdict.text}</AiInsight>
       ) : (
-        <AiInsight>Try me, put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
+        <AiInsight featured>Try me, put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
       )}
 
       <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">

@@ -161,7 +161,7 @@ export function ChallengesContent() {
                 })()
               : 'Your challenges have wrapped. Ready to start another?'
           return (
-            <AiInsight askText={text}>
+            <AiInsight featured askText={text}>
               {text}
             </AiInsight>
           )

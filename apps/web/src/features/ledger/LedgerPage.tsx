@@ -10,6 +10,8 @@ import { ActivityRow } from '@/components/ui/activity-row'
 import { AiMark } from '@/components/AiInsight'
 import { BottomNav } from '@/components/BottomNav'
 import { PageHeader } from '@/components/PageHeader'
+import { spectrumEdgeClass } from '@/components/ui/cardAccent'
+import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
@@ -48,19 +50,19 @@ function AiInsightActionCard({
   insight,
   onAction,
   onDismiss,
+  featured = false,
 }: {
   insight: CoachingInsight
   onAction: (action: CoachingAction) => void
   onDismiss: () => void
+  featured?: boolean
 }) {
   return (
     <div
-      className="relative rounded-[1.5rem] border-2 p-4"
-      style={{
-        borderColor: 'var(--iris)',
-        background: 'color-mix(in srgb, var(--iris) 8%, var(--card))',
-        boxShadow: 'var(--shadow-soft)',
-      }}
+      className={cn(
+        'relative rounded-[1.5rem] p-4 shadow-[var(--shadow-soft)]',
+        featured ? spectrumEdgeClass : 'bg-card ring-1 ring-border/50',
+      )}
     >
       <button
         type="button"
@@ -70,10 +72,7 @@ function AiInsightActionCard({
       >
         <X className="size-4" />
       </button>
-      <div
-        className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: 'var(--iris)' }}
-      >
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         <AiMark className="size-4 rounded-md" />
         AI Insight
       </div>
@@ -455,10 +454,11 @@ export function LedgerPage() {
 
       {coachingInsights.length > 0 && (
         <div className="flex flex-col gap-3">
-          {coachingInsights.map((insight) => (
+          {coachingInsights.map((insight, index) => (
             <AiInsightActionCard
               key={insight.id}
               insight={insight}
+              featured={index === 0}
               onAction={runInsightAction}
               onDismiss={() => dismissInsight(insight.id)}
             />

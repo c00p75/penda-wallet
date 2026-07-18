@@ -3,6 +3,9 @@ import { cn } from '@/lib/utils'
 /** Semantic edge colors from the brand accent family. */
 export type CardAccent = 'iris' | 'mint' | 'apricot' | 'rose' | 'sun'
 
+/** Multi-accent gradient rim for prominent feature cards. */
+export const spectrumEdgeClass = 'penda-spectrum-edge'
+
 /**
  * Soft colored ring for cards. Keeps fills neutral; color lives on the edge
  * so the UI feels warmer without purple-washing backgrounds.

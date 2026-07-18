@@ -154,6 +154,7 @@ export function FamilyHubPage() {
       <PageHeader title="Family hub" subtitle="Household plan & allowances" />
 
       <AiInsight
+        featured
         askText={
           familyTips[0]?.chatSeed ?? 'Help us stay on track as a household this month'
         }

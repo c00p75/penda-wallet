@@ -111,6 +111,7 @@ export function AnalyticsContent() {
   return (
     <>
       <AiInsight
+        featured
         tone={latestInsight?.type === 'anomaly' ? 'attention' : 'default'}
         askText={askText}
       >

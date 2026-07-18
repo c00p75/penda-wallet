@@ -120,7 +120,7 @@ export function BusinessHubPage() {
         </div>
       </HeroCard>
 
-      <AiInsight>{insight}</AiInsight>
+      <AiInsight featured>{insight}</AiInsight>
 
       <div className="grid grid-cols-2 gap-3">
         <IconTile

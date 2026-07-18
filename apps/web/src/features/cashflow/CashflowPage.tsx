@@ -131,7 +131,7 @@ export function CashflowPage() {
         </div>
       </HeroCard>
 
-      <AiInsight tone={insight.tone} askText={insight.text}>
+      <AiInsight featured tone={insight.tone} askText={insight.text}>
         {insight.text}
       </AiInsight>
 

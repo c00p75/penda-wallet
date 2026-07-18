@@ -185,7 +185,7 @@ export function GoalsPage() {
       </section>
 
       {insight && (
-        <AiInsight tone={insight.tone} askText={insight.text}>
+        <AiInsight featured tone={insight.tone} askText={insight.text}>
           {insight.text}
         </AiInsight>
       )}

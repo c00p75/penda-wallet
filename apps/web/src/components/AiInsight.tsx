@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
-import { accentFromInsightTone, cardAccentClass } from '@/components/ui/cardAccent'
+import { spectrumEdgeClass } from '@/components/ui/cardAccent'
 
 export type InsightTone = 'default' | 'warm' | 'attention'
 
@@ -39,6 +39,11 @@ interface AiInsightProps {
    * When omitted, the card is not tappable.
    */
   askText?: string
+  /**
+   * Multi-color spectrum rim. Use at most once per screen for the
+   * primary Penda card (never stack with another spectrum card).
+   */
+  featured?: boolean
 }
 
 /**
@@ -46,7 +51,14 @@ interface AiInsightProps {
  * beside a single sentence about the user. Sits at the top of a page.
  * When `askText` is set, tap opens chat with that sentence as the seed.
  */
-export function AiInsight({ children, tone = 'default', loading = false, className, askText }: AiInsightProps) {
+export function AiInsight({
+  children,
+  tone = 'default',
+  loading = false,
+  className,
+  askText,
+  featured = false,
+}: AiInsightProps) {
   const openChat = useChatStore((s) => s.openChat)
   const tappable = !!askText && !loading
 
@@ -65,11 +77,14 @@ export function AiInsight({ children, tone = 'default', loading = false, classNa
   )
 
   const sharedClass = cn(
-    'flex items-start gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)]',
-    cardAccentClass(accentFromInsightTone(tone)),
-    tone === 'warm' && 'bg-[var(--apricot-soft)]/25',
-    tone === 'attention' && 'bg-[var(--rose-soft)]/25',
-    tone === 'default' && 'bg-card',
+    'flex items-start gap-3 rounded-[1.5rem] p-4 text-left shadow-[var(--shadow-soft)]',
+    featured
+      ? spectrumEdgeClass
+      : cn(
+          'bg-card',
+          tone === 'warm' && 'bg-[var(--apricot-soft)]/25',
+          tone === 'attention' && 'bg-[var(--rose-soft)]/25',
+        ),
     tappable && 'cursor-pointer transition-all hover:shadow-[var(--shadow-card)] active:scale-[0.99]',
     className,
   )

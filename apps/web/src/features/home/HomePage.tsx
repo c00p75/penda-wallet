@@ -9,7 +9,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { AiMark } from '@/components/AiInsight'
 import { Microphone } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
-import { cardAccentClass } from '@/components/ui/cardAccent'
+import { cardAccentClass, spectrumEdgeClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
@@ -565,16 +565,11 @@ export function HomePage() {
         </section>
 
         {/* Daily briefing. AI speaks first */}
-        <section
-          className={cn(
-            'flex flex-col gap-3 rounded-[1.75rem] bg-card p-4 shadow-[var(--shadow-card)]',
-            cardAccentClass('iris'),
-          )}
-        >
+        <section className={cn(spectrumEdgeClass, 'flex flex-col gap-3 rounded-[1.75rem] p-4 shadow-[var(--shadow-card)]')}>
           <div className="flex items-start gap-3">
             <AiMark className="mt-0.5 size-9" />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold tracking-wide text-[var(--iris)] uppercase">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 Penda brief
               </p>
               <p className="mt-1 text-base font-medium leading-snug text-foreground">{briefPrimary}</p>

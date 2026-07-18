@@ -92,12 +92,12 @@ export function JournalPage() {
       <PageHeader title="Journal" subtitle="What money feels like, over time" />
 
       {oneYearAgo ? (
-        <AiInsight tone="warm">
+        <AiInsight featured tone="warm">
           One year ago you wrote: "{oneYearAgo.content}". Look how far you've come.
         </AiInsight>
       ) : (
         oldest && (
-          <AiInsight>
+          <AiInsight featured>
             {relativeTimeLabel(oldest.created_at)} you wrote: "{oldest.content}". Look how far you've come.
           </AiInsight>
         )

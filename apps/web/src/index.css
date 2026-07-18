@@ -256,6 +256,22 @@ body {
   --penda-edge: var(--sun);
 }
 
+/* Multi-accent rim for the single featured card on a screen. */
+.penda-spectrum-edge {
+  border: 1.5px solid transparent;
+  background-image:
+    linear-gradient(var(--card), var(--card)),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--mint) 72%, var(--border)) 0%,
+      color-mix(in srgb, var(--sun) 78%, var(--border)) 32%,
+      color-mix(in srgb, var(--apricot) 74%, var(--border)) 64%,
+      color-mix(in srgb, var(--iris) 58%, var(--border)) 100%
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
 /* Overlay enter: grow out of the trigger point (--overlay-ox / --overlay-oy) */
 @keyframes overlay-dialog-in {
   from {
