@@ -70,7 +70,7 @@ export function NotificationsPage() {
               size="sm"
               className="rounded-full text-xs"
               disabled={markRead.isPending}
-              onClick={() => markRead.mutate()}
+              onClick={() => markRead.mutate(undefined)}
             >
               Mark all read
             </Button>
