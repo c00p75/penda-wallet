@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { sendPush } from '../_shared/push.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { mapLimit } from '../_shared/concurrency.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -178,11 +179,20 @@ Deno.serve(async (req) => {
       .select('id, base_currency')
     if (walletsError) throw walletsError
 
-    const results = []
-    for (const wallet of wallets ?? []) {
-      const result = await nudgeForWallet(supabase, wallet.id, wallet.base_currency)
-      results.push({ walletId: wallet.id, ...result })
-    }
+    // Bounded fan-out with per-wallet failure isolation — the old sequential
+    // loop's runtime grew linearly with wallets and one throw sank the run.
+    const results = await mapLimit(wallets ?? [], 6, async (wallet) => {
+      try {
+        const result = await nudgeForWallet(supabase, wallet.id, wallet.base_currency)
+        return { walletId: wallet.id, ...result }
+      } catch (error) {
+        console.error(
+          `Burn-rate nudge failed for wallet ${wallet.id}:`,
+          error instanceof Error ? error.message : String(error),
+        )
+        return { walletId: wallet.id, error: 'failed' }
+      }
+    })
     return jsonResponse({ processed: results.length, results })
   } catch (error) {
     console.error(error)
@@ -191,6 +201,29 @@ Deno.serve(async (req) => {
 })
 
 async function nudgeForWallet(supabase: SupabaseClient, walletId: string, currency: string) {
+  // Premium members first (parity with the weekly digest — proactive coaching
+  // is a Premium surface): an all-free wallet skips the pace computation and
+  // coaching scan entirely. One entitlements query instead of an is_premium
+  // RPC per member (this runs on the service role client).
+  const { data: members, error: membersError } = await supabase
+    .from('wallet_members')
+    .select('user_id')
+    .eq('wallet_id', walletId)
+  if (membersError) throw membersError
+
+  const memberIds = (members ?? []).map((m) => m.user_id)
+  if (memberIds.length === 0) return { skipped: 'no members' }
+
+  const { data: premiumRows, error: premiumError } = await supabase
+    .from('entitlements')
+    .select('user_id')
+    .in('user_id', memberIds)
+    .eq('plan', 'premium')
+  if (premiumError) throw premiumError
+
+  const premiumIds = (premiumRows ?? []).map((r) => r.user_id)
+  if (premiumIds.length === 0) return { skipped: 'no premium members' }
+
   // Prefer effective caps (incl. rollover carry) — same source as the Budgets UI.
   const { data: progressRows, error: progressError } = await supabase.rpc('get_budget_progress', {
     p_wallet_id: walletId,
@@ -282,33 +315,32 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
     content = { text: body, kind: coaching.kind, ...coaching.meta }
   }
 
-  const { data: members, error: membersError } = await supabase
-    .from('wallet_members')
-    .select('user_id')
-    .eq('wallet_id', walletId)
-  if (membersError) throw membersError
-
   const day = toStr(now)
-  let notified = 0
-  for (const member of members ?? []) {
-    // Parity with the weekly digest: proactive coaching is a Premium surface.
-    const { data: isPremium } = await supabase.rpc('is_premium', { p_user_id: member.user_id })
-    if (!isPremium) continue
-
-    // At most one nudge per member per day — burn-rate or coaching, never both.
-    const { data: existing } = await supabase
+  // Batch the one-nudge-per-day check and the push opt-outs — the old loop
+  // made three round-trips per member.
+  const [existingRes, profilesRes] = await Promise.all([
+    supabase
       .from('ai_insights')
-      .select('id')
+      .select('user_id')
       .eq('wallet_id', walletId)
-      .eq('user_id', member.user_id)
+      .in('user_id', premiumIds)
       .eq('type', 'recommendation')
-      .eq('period_end', day)
-      .limit(1)
-    if (existing && existing.length > 0) continue
+      .eq('period_end', day),
+    supabase.from('profiles').select('id, notification_opt_in').in('id', premiumIds),
+  ])
+  const alreadyNudged = new Set((existingRes.data ?? []).map((r) => r.user_id))
+  const optedOut = new Set(
+    (profilesRes.data ?? []).filter((p) => p.notification_opt_in === false).map((p) => p.id),
+  )
+
+  let notified = 0
+  for (const userId of premiumIds) {
+    // At most one nudge per member per day — burn-rate or coaching, never both.
+    if (alreadyNudged.has(userId)) continue
 
     await supabase.from('ai_insights').insert({
       wallet_id: walletId,
-      user_id: member.user_id,
+      user_id: userId,
       type: 'recommendation',
       content,
       period_start: day,
@@ -317,13 +349,8 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
 
     // The insight itself always lands in-app (read via the analytics feed,
     // independent of push) — only the push send respects the opt-out.
-    const { data: profileRow } = await supabase
-      .from('profiles')
-      .select('notification_opt_in')
-      .eq('id', member.user_id)
-      .maybeSingle()
-    if (profileRow?.notification_opt_in !== false) {
-      await notifyMember(supabase, member.user_id, title, body, url)
+    if (!optedOut.has(userId)) {
+      await notifyMember(supabase, userId, title, body, url)
     }
     notified++
   }

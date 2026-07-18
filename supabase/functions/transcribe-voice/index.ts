@@ -67,14 +67,17 @@ Deno.serve(async (req) => {
     })
 
     if (!res.ok) {
-      return respond({ error: `Groq transcription error ${res.status}: ${await res.text()}` }, 502)
+      // Log the upstream detail, return a generic message — provider error
+      // bodies aren't for end users.
+      console.error(`Groq transcription error ${res.status}:`, await res.text())
+      return respond({ error: 'Transcription failed — please try again.' }, 502)
     }
 
     const data = await res.json()
     return respond({ transcript: data.text ?? '' })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
   }
 })
 

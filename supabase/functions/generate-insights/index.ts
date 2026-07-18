@@ -2,6 +2,8 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { sendPush } from '../_shared/push.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { mapLimit } from '../_shared/concurrency.ts'
+import { GENDER_LABELS, GOAL_LABELS, PERSONALITY_NAMES, PERSONALITY_PROMPTS } from '../_shared/personas.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -12,45 +14,8 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET')!
 const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 
-const PERSONALITY_PROMPTS: Record<string, string> = {
-  balanced_coach: 'Your tone is warm, encouraging, and balanced — a supportive financial coach.',
-  angry_mom: "Your tone is exasperated but loving, like a mom who's tired of seeing money wasted on takeout.",
-  wise_mentor: 'Your tone is calm and reflective, offering perspective rather than judgment.',
-  chill_friend: "Your tone is casual and easygoing, like a friend who's just keeping you honest.",
-  drill_sergeant: 'Your tone is blunt and no-nonsense, pushing for discipline and accountability.',
-  funny_comedian:
-    'Your tone is playful and funny — a quick joke or witty aside, then real, useful guidance. ' +
-    'Keep it light and never mean.',
-  gen_z:
-    'Your tone is a very-online Gen-Z best friend — high energy, casual slang, and genuine hype ' +
-    'when the user does well. Keep emoji sparing and never let the vibe blur the point.',
-  hustler:
-    'Your tone is that of an entrepreneurial hustler with a growth mindset — framing money as ' +
-    'something to grow, nudging toward earning more, while still respecting the budget.',
-  gogo:
-    'Your tone is that of a warm grandmother (gogo) — unhurried, wise, and frugal, fond of a short ' +
-    'proverb and a save-for-the-rainy-day mindset. Gentle, never nagging.',
-  analyst:
-    'Your tone is that of a precise financial analyst: cold, quantitative, and to the point. Lead ' +
-    'with the numbers and skip emotional framing. No fluff.',
-}
-
-// The character's given name — mirrors PERSONALITIES[].name in
-// apps/web/src/features/profile/types.ts (and PERSONALITY_NAMES in the
-// chat-message function). The digest is written in this persona's voice, so
-// it must refer to itself by name, not the app's.
-const PERSONALITY_NAMES: Record<string, string> = {
-  balanced_coach: 'Amara',
-  angry_mom: 'Mama Rose',
-  wise_mentor: 'Sena',
-  chill_friend: 'Kabwe',
-  drill_sergeant: 'Sarge',
-  funny_comedian: 'Bobo',
-  gen_z: 'Zee',
-  hustler: 'Musa',
-  gogo: 'Gogo',
-  analyst: 'Nomsa',
-}
+// Persona voice + profile-context fragments live in _shared/personas.ts —
+// previously duplicated here and already drifting from chat's versions.
 
 interface CategoryTotal {
   category: string
@@ -82,11 +47,22 @@ Deno.serve(async (req) => {
     const periodEnd = today()
     const periodStart = daysAgo(7)
 
-    const results = []
-    for (const wallet of wallets ?? []) {
-      const result = await generateForWallet(supabase, wallet.id, wallet.base_currency, periodStart, periodEnd)
-      results.push({ walletId: wallet.id, ...result })
-    }
+    // Bounded fan-out instead of a strict one-at-a-time walk over every
+    // wallet (audit finding: sequential runtime grows linearly with wallets
+    // and heads for the function execution limit). Per-wallet failures are
+    // isolated — one bad wallet no longer sinks the whole weekly run.
+    const results = await mapLimit(wallets ?? [], 5, async (wallet) => {
+      try {
+        const result = await generateForWallet(supabase, wallet.id, wallet.base_currency, periodStart, periodEnd)
+        return { walletId: wallet.id, ...result }
+      } catch (error) {
+        console.error(
+          `Weekly digest failed for wallet ${wallet.id}:`,
+          error instanceof Error ? error.message : String(error),
+        )
+        return { walletId: wallet.id, error: 'failed' }
+      }
+    })
 
     return jsonResponse({ processed: results.length, results })
   } catch (error) {
@@ -102,6 +78,32 @@ async function generateForWallet(
   periodStart: string,
   periodEnd: string,
 ) {
+  // Premium members FIRST (audit finding): the digest is a Premium feature,
+  // and the old order paid for an LLM generation before checking whether
+  // anyone in the wallet could see it — every all-free wallet burned a model
+  // call per week for content that was then thrown away.
+  const { data: members, error: membersError } = await supabase
+    .from('wallet_members')
+    .select('user_id')
+    .eq('wallet_id', walletId)
+  if (membersError) throw membersError
+
+  const memberIds = (members ?? []).map((m) => m.user_id)
+  if (memberIds.length === 0) return { skipped: 'no members' }
+
+  // One query instead of an is_premium RPC per member — this function runs on
+  // the service role client, so it can read entitlements directly (the same
+  // table is_premium consults).
+  const { data: premiumRows, error: premiumError } = await supabase
+    .from('entitlements')
+    .select('user_id')
+    .in('user_id', memberIds)
+    .eq('plan', 'premium')
+  if (premiumError) throw premiumError
+
+  const premiumIds = (premiumRows ?? []).map((r) => r.user_id)
+  if (premiumIds.length === 0) return { skipped: 'no premium members' }
+
   const { data: transactions, error: txError } = await supabase
     .from('transactions')
     .select('amount_minor, type, category:categories(name)')
@@ -134,42 +136,45 @@ async function generateForWallet(
     .sort((a, b) => b.amount_minor - a.amount_minor)
     .slice(0, 5)
 
-  const { data: members, error: membersError } = await supabase
-    .from('wallet_members')
-    .select('user_id')
-    .eq('wallet_id', walletId)
-  if (membersError) throw membersError
+  const stats = { totalSpentMinor, totalIncomeMinor, topCategories, currency }
 
-  const digestText = await generateDigestText(
-    { totalSpentMinor, totalIncomeMinor, topCategories, currency },
-    members?.[0]?.user_id
-      ? await fetchProfileContext(supabase, members[0].user_id)
-      : { personality: 'balanced_coach', primaryGoal: null, gender: 'prefer_not_to_say' },
-  )
+  // One digest per DISTINCT persona context, not one per wallet written in
+  // members[0]'s voice (audit finding: in a shared wallet, member B used to
+  // get a digest written in member A's chosen persona). Identical profiles
+  // share a single generation, so the common one-persona wallet still costs
+  // exactly one model call.
+  const profiles = await Promise.all(premiumIds.map((id) => fetchProfileContext(supabase, id)))
+  const profileKey = (p: InsightProfileContext) => `${p.personality}|${p.primaryGoal}|${p.gender}`
+  const digestByKey = new Map<string, string>()
+  for (const profile of profiles) {
+    const key = profileKey(profile)
+    if (!digestByKey.has(key)) {
+      digestByKey.set(key, await generateDigestText(stats, profile))
+    }
+  }
 
-  const content = { text: digestText, total_spent_minor: totalSpentMinor, total_income_minor: totalIncomeMinor, top_categories: topCategories }
-
-  // AI insights are a Premium feature — skip members on the free plan
-  // entirely rather than generating content they can't see.
   let notified = 0
-  for (const member of members ?? []) {
-    const { data: isPremium } = await supabase.rpc('is_premium', { p_user_id: member.user_id })
-    if (!isPremium) continue
-
+  for (let i = 0; i < premiumIds.length; i++) {
+    const digestText = digestByKey.get(profileKey(profiles[i]))!
     await supabase.from('ai_insights').insert({
       wallet_id: walletId,
-      user_id: member.user_id,
+      user_id: premiumIds[i],
       type: 'weekly_digest',
-      content,
+      content: {
+        text: digestText,
+        total_spent_minor: totalSpentMinor,
+        total_income_minor: totalIncomeMinor,
+        top_categories: topCategories,
+      },
       period_start: periodStart,
       period_end: periodEnd,
     })
 
-    await notifyMember(supabase, member.user_id, digestText)
+    await notifyMember(supabase, premiumIds[i], digestText)
     notified++
   }
 
-  return { totalSpentMinor, totalIncomeMinor, topCategories, digestText, notified }
+  return { totalSpentMinor, totalIncomeMinor, topCategories, digests: digestByKey.size, notified }
 }
 
 async function notifyMember(supabase: SupabaseClient, userId: string, digestText: string) {
@@ -193,22 +198,6 @@ interface InsightProfileContext {
   personality: string
   primaryGoal: string | null
   gender: string
-}
-
-// Kept in sync with the same maps in supabase/functions/chat-message/index.ts
-// (duplicated rather than shared — matches this codebase's existing
-// convention of copying MODE_AI_CONTEXT/PERSONALITY_PROMPTS per function).
-const GOAL_LABELS: Record<string, string> = {
-  build_emergency_fund: 'build an emergency fund',
-  pay_off_debt: 'pay off debt',
-  save_for_something: 'save for something specific',
-  track_spending: 'track their spending more closely',
-}
-
-const GENDER_LABELS: Record<string, string> = {
-  woman: 'a woman',
-  man: 'a man',
-  non_binary: 'non-binary',
 }
 
 async function fetchProfileContext(supabase: SupabaseClient, userId: string): Promise<InsightProfileContext> {

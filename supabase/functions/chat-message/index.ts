@@ -2,6 +2,14 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenAI, type Content, type Part } from 'npm:@google/genai@2.11.0'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import { checkRateLimits } from '../_shared/rateLimit.ts'
+import {
+  GENDER_LABELS,
+  GOAL_LABELS,
+  INCOME_RANGE_LABELS,
+  MODE_AI_CONTEXT,
+  PERSONALITY_NAMES,
+  PERSONALITY_PROMPTS,
+} from '../_shared/personas.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -12,7 +20,12 @@ const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ITERATIONS = 4
 const MAX_OUTPUT_TOKENS = 1024
-const MODEL_TIMEOUT_MS = 20_000
+const MODEL_TIMEOUT_MS = 12_000
+// Wall-clock ceiling for the whole agentic turn. Without it the worst case
+// stacked to ~160s (timeout × two providers × four iterations) before the
+// user saw anything; past this budget we stop iterating and return the
+// fallback reply instead of starting another model call.
+const TURN_BUDGET_MS = 40_000
 
 // Bounds cost/abuse from any single account: a tight burst window (keeps a
 // runaway client/loop from hammering the model) plus a loose daily cap.
@@ -29,63 +42,6 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   MAD: 'MAD', BRL: 'R$', MXN: '$', ARS: '$', SGD: '$', HKD: '$', AED: 'AED',
   SAR: 'SAR', ILS: '₪', TRY: '₺', RUB: '₽', KRW: '₩', IDR: 'Rp', MYR: 'RM',
   THB: '฿', PHP: '₱', VND: '₫', PLN: 'zł', SEK: 'kr', NOK: 'kr', DKK: 'kr', NZD: '$',
-}
-
-const PERSONALITY_PROMPTS: Record<string, string> = {
-  balanced_coach: 'Your tone is warm, encouraging, and balanced — a supportive financial coach.',
-  angry_mom: "Your tone is exasperated but loving, like a mom who's tired of seeing money wasted on takeout.",
-  wise_mentor: 'Your tone is calm and reflective, offering perspective rather than judgment.',
-  chill_friend: "Your tone is casual and easygoing, like a friend who's just keeping you honest.",
-  drill_sergeant: 'Your tone is blunt and no-nonsense, pushing for discipline and accountability.',
-  funny_comedian:
-    'Your tone is playful and funny — a stand-up comedian who lands a quick joke or witty aside, ' +
-    'then still gives real, useful guidance. Keep it light, never mean, and never let the joke ' +
-    'get in the way of logging the transaction correctly.',
-  gen_z:
-    'Your tone is a very-online Gen-Z best friend — high energy, casual slang, and genuine hype ' +
-    'when the user does well. Celebrate wins loudly and keep it real, but never let the vibe get ' +
-    'in the way of accurate, useful guidance. Emoji are fine; keep them sparing.',
-  hustler:
-    'Your tone is that of an entrepreneurial hustler with a growth mindset. You frame money as ' +
-    'something to grow, not just protect — nudging toward earning more, side income, and reinvesting, ' +
-    'while still respecting the budget. Motivating and pragmatic, never reckless.',
-  gogo:
-    'Your tone is that of a warm grandmother (gogo) — unhurried, wise, and frugal, fond of a short ' +
-    'proverb and a save-for-the-rainy-day mindset. Gentle and encouraging, never nagging.',
-  analyst:
-    'Your tone is that of a precise financial analyst: cold, quantitative, and to the point. Lead ' +
-    'with the numbers — figures, rates, and projections — and skip emotional framing. No fluff.',
-}
-
-// The character's given name — mirrors PERSONALITIES[].name in
-// apps/web/src/features/profile/types.ts. The model must introduce and refer
-// to itself by this name, not the app's — "Penda" is the product, not the
-// persona's identity.
-const PERSONALITY_NAMES: Record<string, string> = {
-  balanced_coach: 'Amara',
-  angry_mom: 'Mama Rose',
-  wise_mentor: 'Sena',
-  chill_friend: 'Kabwe',
-  drill_sergeant: 'Sarge',
-  funny_comedian: 'Bobo',
-  gen_z: 'Zee',
-  hustler: 'Musa',
-  gogo: 'Gogo',
-  analyst: 'Nomsa',
-}
-
-// Profile Modes (roadmap bet #3) — mirrors apps/web/src/features/profile/modes.ts'
-// MODE_CONFIG[mode].aiContext. Individual/Family/Business is a context layer
-// over the same engine: it changes how the AI frames things, not what it can do.
-const MODE_AI_CONTEXT: Record<string, string> = {
-  individual:
-    'This is a personal account. Frame guidance around personal goals, everyday spending, and peace of mind.',
-  family:
-    'This is a family account. Frame guidance around shared priorities, household bills (rent, school ' +
-    'fees, groceries), and coordinating between members.',
-  business:
-    'This is a small business / side-hustle account. Frame guidance around margins, cash runway, revenue ' +
-    'vs expenses, and setting money aside for tax.',
 }
 
 interface PageContext {
@@ -230,6 +186,15 @@ Deno.serve(async (req) => {
     if (!body.walletId || !body.message) {
       return respond({ error: 'walletId and message are required' }, 400)
     }
+    // walletId is interpolated into PostgREST .or() filters (categories,
+    // query_records) — RLS bounds the blast radius, but reject non-UUIDs at
+    // the door like sanitizePageContext already does for entityId.
+    if (!UUID_RE.test(body.walletId)) {
+      return respond({ error: 'walletId must be a UUID' }, 400)
+    }
+    if (body.conversationId != null && !UUID_RE.test(body.conversationId)) {
+      return respond({ error: 'conversationId must be a UUID' }, 400)
+    }
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
     // History needs the conversation id; the rest are independent reads — fan out.
@@ -263,10 +228,13 @@ Deno.serve(async (req) => {
       pendingActions: [],
     }
 
-    // Progress channel for the chat UI — subscribe once, broadcast per tool, then tear down.
+    // Progress channel for the chat UI — subscribed lazily on the FIRST tool
+    // broadcast, so a pure Q&A turn (no tools) never pays the subscribe
+    // handshake (up to 1500ms) it previously paid on every request.
     const progressChannel = supabase.channel(`chat:${conversationId}`)
-    try {
-      await new Promise<void>((resolve) => {
+    let progressReady: Promise<void> | null = null
+    const ensureProgressChannel = () => {
+      progressReady ??= new Promise<void>((resolve) => {
         const t = setTimeout(() => resolve(), 1500)
         progressChannel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
@@ -275,12 +243,17 @@ Deno.serve(async (req) => {
           }
         })
       })
-    } catch {
-      // Broadcast is best-effort; chat still works without cues.
+      return progressReady
     }
 
+    const turnStart = Date.now()
     try {
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+        // Out of wall-clock budget — stop starting new model calls and fall
+        // through to the "try rephrasing" reply rather than risk a gateway
+        // timeout with nothing persisted for the client to show.
+        if (iteration > 0 && Date.now() - turnStart > TURN_BUDGET_MS) break
+
         const turn = await callModel(neutralHistory, systemInstruction, tools)
 
         const assistantParts: NeutralPart[] = []
@@ -304,6 +277,7 @@ Deno.serve(async (req) => {
         const toolResultParts: NeutralPart[] = []
         for (const call of turn.toolCalls) {
           try {
+            await ensureProgressChannel()
             await progressChannel.send({
               type: 'broadcast',
               event: 'tool',
@@ -347,8 +321,10 @@ Deno.serve(async (req) => {
       pendingActions: ctx.pendingActions,
     })
   } catch (error) {
+    // Log the detail, return a generic message: a raw error (e.g. a Postgres
+    // constraint failure) can echo schema names or row values to the client.
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
   }
 })
 
@@ -635,27 +611,6 @@ async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<C
   }
 }
 
-// Third-person phrasing for the goal, kept separate from any user-facing UI
-// label since this is echoed straight into the system prompt.
-const GOAL_LABELS: Record<string, string> = {
-  build_emergency_fund: 'build an emergency fund',
-  pay_off_debt: 'pay off debt',
-  save_for_something: 'save for something specific',
-  track_spending: 'track their spending more closely',
-}
-
-const INCOME_RANGE_LABELS: Record<string, string> = {
-  tight: 'Tight',
-  stable: 'Stable',
-  comfortable: 'Comfortable',
-}
-
-const GENDER_LABELS: Record<string, string> = {
-  woman: 'a woman',
-  man: 'a man',
-  non_binary: 'non-binary',
-}
-
 // Onboarding-collected context, woven into the system prompt. The gender line
 // is a hard requirement, not a suggestion: it may only ever shape tone, never
 // financial advice, calculations, or any other logic — see migration
@@ -698,19 +653,33 @@ interface Memory {
   mood: string | null
 }
 
-// Most recent memories only — the Financial Journal (roadmap bet #10) can grow
-// unbounded, and the prompt only needs enough recent context to feel like
-// Penda remembers, not a full transcript of everything ever journaled.
+// A bounded slice of the Financial Journal (roadmap bet #10), which can grow
+// unbounded — the prompt only needs enough context to feel like Penda
+// remembers, not a full transcript. Durable kinds (preference/fact) are
+// prioritized over recency: a long-lived "never guilt-trip fast food"
+// preference must not get pushed out of the window by a burst of recent mood
+// notes (audit finding).
 const MAX_MEMORIES_IN_PROMPT = 20
+const MAX_DURABLE_MEMORIES = 12
+const MEMORY_FETCH_WINDOW = 60
 
 async function fetchMemories(supabase: SupabaseClient, userId: string): Promise<Memory[]> {
   const { data } = await supabase
     .from('ai_memories')
-    .select('kind, content, mood')
+    .select('kind, content, mood, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(MAX_MEMORIES_IN_PROMPT)
-  return data ?? []
+    .limit(MEMORY_FETCH_WINDOW)
+  const rows = data ?? []
+
+  const isDurable = (m: { kind: string }) => m.kind === 'preference' || m.kind === 'fact'
+  const durable = rows.filter(isDurable).slice(0, MAX_DURABLE_MEMORIES)
+  const durableSet = new Set(durable)
+  const rest = rows.filter((m) => !durableSet.has(m))
+
+  return [...durable, ...rest.slice(0, MAX_MEMORIES_IN_PROMPT - durable.length)]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) // prompt stays newest-first
+    .map(({ kind, content, mood }) => ({ kind, content, mood }))
 }
 
 async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): Promise<string> {
@@ -738,7 +707,7 @@ transactions by talking naturally — you are not a generic chatbot, you are the
 user records spending and income.
 
 ${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
-${screenLine}This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
+This wallet's currency is ${currency} (${symbol}). ALL amounts — in the transactions you log and in
 everything you say back — are in ${currency}. When you mention money, write it with "${symbol}"
 (e.g. ${symbol}12, ${symbol}2000). Never use "$" or any other currency's symbol unless "${symbol}"
 literally is "$". The user only ever types plain numbers; the currency is always ${currency}.
@@ -791,7 +760,11 @@ into your replies naturally — don't just list it back.${buildMemorySection(mem
 
   const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
-  return `${houseRules}\n\n${personalityFragment}\n\nToday's date is ${today()}.`
+  // Volatile context (current page, today's date) goes LAST: everything above
+  // it is stable across a user's requests, so Gemini's implicit prefix
+  // caching can reuse it. With the page line mid-prompt, every navigation
+  // invalidated the cached prefix from that point down (audit finding).
+  return `${houseRules}\n\n${personalityFragment}\n\n${screenLine}Today's date is ${today()}.`
 }
 
 function buildMemorySection(memories: Memory[]): string {
@@ -1539,40 +1512,27 @@ async function handleSpendingSummary(ctx: ToolContext, args: Record<string, unkn
   if (!since) return 'I need a start date to total spending.'
   const until = args.until ? String(args.until) : today()
 
-  const { data, error } = await ctx.supabase
-    .from('transactions')
-    .select('amount_minor, type, category:categories(name)')
-    .eq('wallet_id', ctx.walletId)
-    .is('deleted_at', null)
-    .gte('transaction_date', since)
-    .lte('transaction_date', until)
-    .limit(1000)
+  // Aggregated in SQL (migration 0036) — the old version pulled up to 1000
+  // raw rows into the function and summed in JS, silently under-reporting
+  // any range with more transactions than that.
+  const { data, error } = await ctx.supabase.rpc('get_wallet_spending_summary', {
+    p_wallet_id: ctx.walletId,
+    p_since: since,
+    p_until: until,
+  })
   if (error) throw new Error(error.message)
 
-  let expense = 0
-  let income = 0
-  let expenseCount = 0
-  const byCategory: Record<string, number> = {}
-  for (const r of (data ?? []) as Row[]) {
-    const amt = Number(r.amount_minor) || 0
-    if (r.type === 'expense') {
-      expense += amt
-      expenseCount += 1
-      const name = r.category?.name ?? 'Uncategorized'
-      byCategory[name] = (byCategory[name] ?? 0) + amt
-    } else if (r.type === 'income') {
-      income += amt
-    }
+  const summary = (data ?? {}) as {
+    expense_minor?: number
+    income_minor?: number
+    expense_count?: number
+    top_categories?: Array<{ name: string; amount_minor: number }>
   }
-
-  const top = Object.entries(byCategory)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name, amt]) => `${name} ${fmt(amt, ctx.symbol)}`)
+  const top = (summary.top_categories ?? []).map((c) => `${c.name} ${fmt(c.amount_minor, ctx.symbol)}`)
 
   return (
-    `From ${since} to ${until}: spent ${fmt(expense, ctx.symbol)} across ${expenseCount} transaction(s); ` +
-    `income ${fmt(income, ctx.symbol)}.` +
+    `From ${since} to ${until}: spent ${fmt(summary.expense_minor ?? 0, ctx.symbol)} across ` +
+    `${summary.expense_count ?? 0} transaction(s); income ${fmt(summary.income_minor ?? 0, ctx.symbol)}.` +
     (top.length ? ` Top spending: ${top.join(', ')}.` : '')
   )
 }

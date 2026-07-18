@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
-import { corsHeaders } from '../_shared/cors.ts'
+import { corsHeadersFor } from '../_shared/cors.ts'
+import { checkRateLimits } from '../_shared/rateLimit.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -9,6 +10,17 @@ const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 
 const GEMINI_MODEL = 'gemini-3.1-flash-lite'
 const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Vision is the most expensive per-call AI request in the app (image tokens),
+// and this endpoint previously relied on the premium gate alone — the one AI
+// endpoint with no per-user cap, so a single premium account (or a leaked
+// premium token) could run up unbounded spend (audit finding).
+const RECEIPT_RATE_LIMITS = {
+  burst: { maxRequests: 10, windowMinutes: 5 },
+  daily: { maxRequests: 100, windowMinutes: 60 * 24 },
+}
 
 interface RequestBody {
   walletId: string
@@ -47,14 +59,16 @@ const EXTRACTION_SCHEMA = {
 }
 
 Deno.serve(async (req) => {
+  const cors = corsHeadersFor(req)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: cors })
   }
+  const respond = (body: unknown, status = 200) => jsonResponse(body, cors, status)
 
   try {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return jsonResponse({ error: 'Missing Authorization header' }, 401)
+      return respond({ error: 'Missing Authorization header' }, 401)
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -68,7 +82,7 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
-      return jsonResponse({ error: 'Invalid or expired session' }, 401)
+      return respond({ error: 'Invalid or expired session' }, 401)
     }
 
     const { data: isPremium, error: entitlementError } = await supabase.rpc('is_premium', {
@@ -76,40 +90,48 @@ Deno.serve(async (req) => {
     })
     if (entitlementError) throw entitlementError
     if (!isPremium) {
-      return jsonResponse(
+      return respond(
         { error: 'premium_required', message: 'Receipt scanning is a Penda Premium feature.' },
         402,
       )
     }
 
-    const body = (await req.json()) as RequestBody
-    if (!body.walletId || !body.storagePath) {
-      return jsonResponse({ error: 'walletId and storagePath are required' }, 400)
+    // Cost guard on top of the premium gate — same pattern as chat/voice.
+    const limitMessage = await checkRateLimits(supabase, user.id, 'receipt-vision', RECEIPT_RATE_LIMITS)
+    if (limitMessage) {
+      return respond({ error: limitMessage }, 429)
     }
 
-    const { data: fileBlob, error: downloadError } = await supabase.storage
-      .from('receipts')
-      .download(body.storagePath)
+    const body = (await req.json()) as RequestBody
+    if (!body.walletId || !body.storagePath) {
+      return respond({ error: 'walletId and storagePath are required' }, 400)
+    }
+    if (!UUID_RE.test(body.walletId)) {
+      return respond({ error: 'walletId must be a UUID' }, 400)
+    }
+
+    // Independent reads — the image download and the three DB lookups all go
+    // out at once (previously four sequential round-trips).
+    const [download, categories, rules, walletRow] = await Promise.all([
+      supabase.storage.from('receipts').download(body.storagePath),
+      fetchCategories(supabase, body.walletId),
+      fetchCategorizationRules(supabase, body.walletId),
+      supabase.from('wallets').select('base_currency').eq('id', body.walletId).maybeSingle(),
+    ])
+
+    const { data: fileBlob, error: downloadError } = download
     if (downloadError || !fileBlob) {
-      return jsonResponse({ error: `Could not read receipt image: ${downloadError?.message}` }, 400)
+      return respond({ error: `Could not read receipt image: ${downloadError?.message}` }, 400)
     }
 
     const bytes = new Uint8Array(await fileBlob.arrayBuffer())
     const base64 = toBase64(bytes)
     const mimeType = fileBlob.type || 'image/jpeg'
 
-    const categories = await fetchCategories(supabase, body.walletId)
-    const rules = await fetchCategorizationRules(supabase, body.walletId)
-
     // The wallet is single-currency and the UI renders each transaction in its
     // own stored currency, so always store the wallet's currency — never the
     // symbol the model happened to read off the receipt.
-    const { data: walletRow } = await supabase
-      .from('wallets')
-      .select('base_currency')
-      .eq('id', body.walletId)
-      .maybeSingle()
-    const currency = walletRow?.base_currency ?? 'USD'
+    const currency = walletRow.data?.base_currency ?? 'USD'
 
     const extraction = await extractReceipt(base64, mimeType, categories)
 
@@ -149,13 +171,16 @@ Deno.serve(async (req) => {
       .single()
 
     if (insertError) {
-      return jsonResponse({ error: `Failed to save draft transaction: ${insertError.message}` }, 500)
+      // Log the detail, return a generic message — a Postgres error can echo
+      // schema names or row values to the client.
+      console.error('Failed to save draft transaction:', insertError.message)
+      return respond({ error: 'Failed to save the draft transaction — please try again.' }, 500)
     }
 
-    return jsonResponse({ transaction })
+    return respond({ transaction })
   } catch (error) {
-    console.error(error)
-    return jsonResponse({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    console.error(error instanceof Error ? error.message : String(error))
+    return respond({ error: 'Something went wrong on our side — please try again.' }, 500)
   }
 })
 
@@ -243,10 +268,10 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, cors: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   })
 }
 

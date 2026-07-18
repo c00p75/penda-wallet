@@ -143,8 +143,10 @@ Deno.serve(async (req) => {
       targetId: pending.target_id,
     })
   } catch (error) {
+    // Log the detail, return a generic message: execute()'s failures surface
+    // raw Postgres errors, which can echo schema names or row values.
     console.error(error instanceof Error ? error.message : String(error))
-    return respond({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    return respond({ error: "Couldn't apply that change — please try again." }, 500)
   }
 })
 
