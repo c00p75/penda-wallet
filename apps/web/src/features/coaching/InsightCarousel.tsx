@@ -93,7 +93,7 @@ export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
-        className="flex snap-x snap-mandatory items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-[0.5rem]"
       >
         {cards.map((card) => (
           <div key={card.id} className="w-full shrink-0 snap-center">
