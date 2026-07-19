@@ -259,10 +259,6 @@ export function ChatSheet({
   }, [open, initialInput, autoSend])
 
   const voice = useVoiceRecorder({
-    onLiveTranscript: (transcript) => {
-      const base = baseInputRef.current
-      setInput(base && transcript ? `${base} ${transcript}` : base || transcript)
-    },
     onError: (message) => {
       setRecordMode('idle')
       toast.error(message)
@@ -767,8 +763,7 @@ export function ChatSheet({
   }
 
   // Merge the just-finished recording's final transcript with whatever the user
-  // had typed beforehand. For the live path the input is already up to date; for
-  // the server-transcription fallback this is where the text first lands.
+  // had typed beforehand.
   function mergedTranscript(finalText: string) {
     const base = baseInputRef.current
     return base && finalText ? `${base} ${finalText}` : base || finalText
@@ -938,6 +933,9 @@ export function ChatSheet({
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
   }, [messages, busy])
 
+  const streamingMessage = streamingId ? messages.find((m) => m.id === streamingId) : undefined
+  const awaitingFirstToken = busy && (!streamingId || streamingMessage?.text === '')
+
   const isRecording = recordMode !== 'idle'
   const statusText =
     voice.state === 'transcribing'
@@ -1080,100 +1078,105 @@ export function ChatSheet({
               </div>
             )}
             <div className="flex flex-col gap-3 pb-4">
-              {messages.map((m) => (
-                <div key={m.id} className="flex flex-col gap-2">
-                  <div
-                    className={
-                      m.role === 'user'
-                        ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-xl bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
-                        : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
-                    }
-                  >
-                    <MessageBody text={m.text} />
-                    {m.retryText && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="mt-2"
-                        disabled={busy}
-                        onClick={() => retry(m)}
-                      >
-                        Retry
-                      </Button>
-                    )}
+              {messages.map((m) => {
+                // Waiting on the first token/action for this bubble: the
+                // Thinking indicator below covers this slot instead.
+                if (m.id === streamingId && m.text === '' && liveActions.length === 0) return null
+                return (
+                  <div key={m.id} className="flex flex-col gap-2">
+                    <div
+                      className={
+                        m.role === 'user'
+                          ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-xl bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
+                          : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
+                      }
+                    >
+                      <MessageBody text={m.text} />
+                      {m.retryText && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          disabled={busy}
+                          onClick={() => retry(m)}
+                        >
+                          Retry
+                        </Button>
+                      )}
+                    </div>
+                    {(() => {
+                      const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)
+                      const undoTargets = resolveUndoTargets(m)
+                      const showAudit =
+                        trail.length > 0 ||
+                        m.autoApplied ||
+                        undoTargets.length > 0 ||
+                        m.viewHref
+                      if (!showAudit) return null
+                      return (
+                        <ActionTrail
+                          actions={trail}
+                          onNavigateAway={() => onOpenChange(false)}
+                          busyActionId={resolvingId}
+                          resolveDisabled={resolvingId !== null}
+                          onResolvePending={resolveAction}
+                          footer={
+                            <>
+                              {m.viewHref && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2.5 text-xs"
+                                  onClick={() => {
+                                    onOpenChange(false)
+                                    navigate(m.viewHref!)
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              )}
+                              {undoTargets.length > 0 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2.5 text-xs"
+                                  onClick={() => void undoFromChat(undoTargets, m.id)}
+                                >
+                                  Undo
+                                </Button>
+                              )}
+                              {(trail.length > 0 || m.autoApplied) && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2.5 text-xs text-muted-foreground"
+                                  onClick={() => {
+                                    onOpenChange(false)
+                                    navigate('/ai-actions')
+                                  }}
+                                >
+                                  AI actions
+                                </Button>
+                              )}
+                            </>
+                          }
+                        />
+                      )
+                    })()}
                   </div>
-                  {(() => {
-                    const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)
-                    const undoTargets = resolveUndoTargets(m)
-                    const showAudit =
-                      trail.length > 0 ||
-                      m.autoApplied ||
-                      undoTargets.length > 0 ||
-                      m.viewHref
-                    if (!showAudit) return null
-                    return (
-                      <ActionTrail
-                        actions={trail}
-                        onNavigateAway={() => onOpenChange(false)}
-                        busyActionId={resolvingId}
-                        resolveDisabled={resolvingId !== null}
-                        onResolvePending={resolveAction}
-                        footer={
-                          <>
-                            {m.viewHref && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2.5 text-xs"
-                                onClick={() => {
-                                  onOpenChange(false)
-                                  navigate(m.viewHref!)
-                                }}
-                              >
-                                View
-                              </Button>
-                            )}
-                            {undoTargets.length > 0 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2.5 text-xs"
-                                onClick={() => void undoFromChat(undoTargets, m.id)}
-                              >
-                                Undo
-                              </Button>
-                            )}
-                            {(trail.length > 0 || m.autoApplied) && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2.5 text-xs text-muted-foreground"
-                                onClick={() => {
-                                  onOpenChange(false)
-                                  navigate('/ai-actions')
-                                }}
-                              >
-                                AI actions
-                              </Button>
-                            )}
-                          </>
-                        }
-                      />
-                    )
-                  })()}
-                </div>
-              ))}
+                )
+              })}
               {busy && liveActions.length > 0 && (
                 <ActionTrail
                   actions={liveActions}
                   className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
                 />
               )}
-              {busy && !streamingId && liveActions.length === 0 && (
+              {awaitingFirstToken && liveActions.length === 0 && (
                 <div className="mr-auto flex max-w-[80%] items-center gap-2.5 rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
                   <span className="sr-only">Thinking</span>
                   <span className="flex items-center gap-1" aria-hidden>

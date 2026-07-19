@@ -26,7 +26,7 @@ vi.mock('./api', async () => {
   }
 })
 vi.mock('./useVoiceRecorder', () => ({
-  useVoiceRecorder: () => ({ state: 'idle', supportsLive: false, start: vi.fn(), stop: vi.fn() }),
+  useVoiceRecorder: () => ({ state: 'idle', start: vi.fn(), stop: vi.fn() }),
 }))
 vi.mock('@/features/profile/hooks', () => ({
   useProfile: () => ({ data: undefined }),
