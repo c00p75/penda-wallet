@@ -8,11 +8,13 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "test:evals": "vitest run src/features/chat/evals src/features/transactions/momoParser.test.ts src/features/audit src/pwa/offlineQueueLogic.test.ts src/features/chat/actionMeta.test.ts",
     "test:watch": "vitest",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@penda/money-core": "*",
     "@ai-sdk/react": "^4.0.23",
     "@fontsource-variable/geist": "^5.2.9",
     "@hookform/resolvers": "^5.4.0",

@@ -12,7 +12,8 @@ import {
 } from '../_shared/personas.ts'
 import {
   loadConsentAndTrust,
-  mayActWithoutConfirm,
+  mayAutoApplyMutation,
+  patchIsHighImpact,
   normalizeAiConsent,
   normalizeAiTrust,
   persistTrustAfterConfirm,
@@ -79,6 +80,7 @@ const ALLOWED_CHAT_PAGES = new Set([
   'ai-actions',
   'family',
   'settle-up',
+  'radar',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -982,7 +984,7 @@ function moodPromptFragment(tone: 'stressed' | 'low' | 'ok' | 'up' | null): stri
     return `\nThe user has been feeling upbeat lately. Celebrate wins briefly; it's fine to lean into goals.`
   }
   if (tone === 'stressed') {
-    return `\nThe user has been feeling stressed about money. Prefer reassurance and buffer ideas over alerts. Ask fewer questions. Never guilt-trip.`
+    return `\nThe user has been feeling stressed about money. Prefer reassurance over alerts. Only suggest parking or buffering money when tools show cash remains. Ask fewer questions. Never guilt-trip.`
   }
   return `\nThe user has been feeling low. Keep replies short and kind. Skip optional tips unless they ask.`
 }
@@ -1009,6 +1011,10 @@ transactions by talking naturally. You are not a generic chatbot; you are the pr
 user records spending and income.
 
 Never use the em dash character (—) in replies or tool summaries. Prefer a period, comma, or colon.
+
+Before suggesting parking, saving, buffering, or splitting a cash-in, confirm remaining funds with
+tools (balance / recent income vs later spend). If the wallet is negative or that cash is already
+spent, say so and offer a catch-up plan instead of an allocate/park nudge.
 ${moodPromptFragment(moodTone)}
 ${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
 This wallet's currency is ${currency} (${symbol}). ALL amounts, in the transactions you log and in
@@ -1053,11 +1059,13 @@ You can also read, edit, and remove the user's data, not just create it:
   get its id, then call update_record or delete_record with that id. NEVER create a new record to
   "fix" an old one. That leaves a duplicate.
 
-Editing and deleting are special: update_record and delete_record do NOT take effect immediately.
-They stage the change and show the user a confirmation card they must tap. So when you edit or
-delete, DO NOT say it's done, phrase your reply as the pending question the card is asking (e.g.
-"Want me to change that to K15?" or "Delete the K10 tea entry?"). Only after the user confirms is it
-actually applied. If a tool result says a change was staged, treat it as pending, not complete.
+Editing and deleting are special:
+- create_* and reads apply immediately (the user just asked you to log or look something up).
+- update_record stages a change. Trusted users may get small edits applied automatically; large
+  amount changes always need a confirmation card. If staged, phrase your reply as the pending
+  question (e.g. "Want me to change that to K15?"). Do not say it's done until applied.
+- delete_record ALWAYS needs a confirmation card, even for trusted users. Never say a delete is
+  done until they confirm. Phrase as "Delete the K10 tea entry?"
 
 After a create or read result comes back, reply with a short, natural confirmation or answer. Do not
 restate every field back at the user like a receipt. Just confirm briefly in your own voice.
@@ -1227,12 +1235,12 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'update_record',
       description:
-        'Propose an edit to an existing record. Does NOT apply immediately, it stages the change and ' +
-        'asks the user to confirm on a card. Find the record id first with query_records. Editable ' +
-        'fields by domain: transaction {amount, type, category, merchant, description, transaction_date}; ' +
-        'debt {name, direction, counterparty, amount, due_date}; budget {amount, period, category, ' +
-        'rollover}; goal {name, target_amount, current_amount, target_date}; category {name, icon}; ' +
-        'wallet {name}. Amounts are decimals; category is a category name.',
+        'Edit an existing record. Usually stages a confirmation card; small edits may auto-apply for ' +
+        'trusted users, but large amount changes always ask. Find the record id first with ' +
+        'query_records. Editable fields by domain: transaction {amount, type, category, merchant, ' +
+        'description, transaction_date}; debt {name, direction, counterparty, amount, due_date}; ' +
+        'budget {amount, period, category, rollover}; goal {name, target_amount, current_amount, ' +
+        'target_date}; category {name, icon}; wallet {name}. Amounts are decimals; category is a name.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1249,9 +1257,9 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'delete_record',
       description:
-        'Propose deleting an existing record. Does NOT delete immediately, it stages the removal and ' +
-        'asks the user to confirm on a card. Find the record id first with query_records. Deleting a ' +
-        'wallet or bulk-deleting is not allowed.',
+        'Propose deleting an existing record. ALWAYS stages a confirmation card (never auto-deletes, ' +
+        'even for trusted users). Find the record id first with query_records. Deleting a wallet or ' +
+        'bulk-deleting is not allowed.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1945,28 +1953,34 @@ async function insertPendingAction(
   }
 }
 
-async function shouldAutoApply(ctx: ToolContext): Promise<boolean> {
+async function loadMutationTrust(ctx: ToolContext) {
   const { consent, trust } = await loadConsentAndTrust(ctx.supabase, ctx.userId)
   ctx._consent = consent
   ctx._trust = trust
-  return mayActWithoutConfirm(consent, trust)
+  return { consent, trust }
 }
 
-async function autoApplyAction(
+async function autoApplyUpdate(
   ctx: ToolContext,
   input: {
-    kind: 'update' | 'delete'
     domain: string
     targetId: string
-    patch: Record<string, unknown> | null
+    patch: Record<string, unknown>
     summary: string
   },
 ): Promise<string> {
-  const pending = await insertPendingAction(ctx, { ...input, status: 'auto_applied' })
+  const pending = await insertPendingAction(ctx, {
+    kind: 'update',
+    domain: input.domain,
+    targetId: input.targetId,
+    patch: input.patch,
+    summary: input.summary,
+    status: 'auto_applied',
+  })
   try {
     await executePendingAction(ctx.supabase, {
       id: pending.id,
-      kind: input.kind,
+      kind: 'update',
       domain: input.domain,
       target_id: input.targetId,
       patch: input.patch,
@@ -1982,14 +1996,14 @@ async function autoApplyAction(
   await persistTrustAfterConfirm(ctx.supabase, ctx.userId, consent, trust)
   ctx.completedActions.push({
     id: pending.id,
-    tool: input.kind === 'update' ? 'update_record' : 'delete_record',
+    tool: 'update_record',
     domain: input.domain,
-    label: input.kind === 'update' ? 'Updated' : 'Deleted',
+    label: 'Updated',
     summary: input.summary,
     status: 'done',
     targetId: input.targetId,
   })
-  return `Applied (no confirmation needed, user trust/consent allows it): ${input.summary} Tell the user it's done.`
+  return `Applied (no confirmation needed, user trust/consent allows small edits): ${input.summary} Tell the user it's done.`
 }
 
 async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
@@ -2013,16 +2027,26 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
   const before: Record<string, unknown> = {}
   for (const key of Object.keys(patch)) before[key] = row[key]
   const patchWithUndo = { ...patch, __before: before }
+  const highImpact = patchIsHighImpact(patch, before)
 
   const summary = `Update ${cfg.describe(row, ctx.symbol)}, ${diff.join('; ')}.`
-  if (await shouldAutoApply(ctx)) {
+  const { consent, trust } = await loadMutationTrust(ctx)
+  if (mayAutoApplyMutation('update', consent, trust, { highImpact })) {
     ctx.autoApplied = true
-    return await autoApplyAction(ctx, { kind: 'update', domain, targetId: id, patch: patchWithUndo, summary })
+    return await autoApplyUpdate(ctx, {
+      domain,
+      targetId: id,
+      patch: patchWithUndo,
+      summary,
+    })
   }
   ctx.pendingActions.push(
     await insertPendingAction(ctx, { kind: 'update', domain, targetId: id, patch: patchWithUndo, summary }),
   )
-  return `Staged, NOT applied: ${summary} The user must confirm it on the card. Ask them to confirm; do not say it's done.`
+  const reason = highImpact
+    ? 'This is a large or multi-field money change, so'
+    : 'The user must'
+  return `Staged, NOT applied: ${summary} ${reason} confirm it on the card. Ask them to confirm; do not say it's done.`
 }
 
 async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
@@ -2044,12 +2068,10 @@ async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Pro
   const patch = { __before: before }
 
   const summary = `Delete ${cfg.describe(row, ctx.symbol)}.`
-  if (await shouldAutoApply(ctx)) {
-    ctx.autoApplied = true
-    return await autoApplyAction(ctx, { kind: 'delete', domain, targetId: id, patch, summary })
-  }
+  // Deletes always require an explicit confirm, even with act_without_confirm / auto_loose.
+  await loadMutationTrust(ctx)
   ctx.pendingActions.push(await insertPendingAction(ctx, { kind: 'delete', domain, targetId: id, patch, summary }))
-  return `Staged, NOT applied: ${summary} The user must confirm the deletion on the card. Ask them to confirm; do not say it's done.`
+  return `Staged, NOT applied: ${summary} Deletes always need confirmation on the card. Ask them to confirm; do not say it's done.`
 }
 
 function sanitizeSearch(raw: unknown): string {

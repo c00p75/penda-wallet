@@ -5,6 +5,22 @@ export interface RateLimitWindow {
   windowMinutes: number
 }
 
+export const RATE_LIMIT_USER_MESSAGE =
+  "You're sending messages faster than I can keep up, give it a moment and try again."
+
+/** Build the DB endpoint key for a named window (burst/day/etc.). */
+export function rateLimitEndpointKey(endpoint: string, windowLabel: string): string {
+  return `${endpoint}:${windowLabel}`
+}
+
+/**
+ * Decide the user-facing 429 body when any window fails.
+ * Pure so tests cover copy + short-circuit without a DB.
+ */
+export function rateLimitExceededMessage(_windowLabel: string): string {
+  return RATE_LIMIT_USER_MESSAGE
+}
+
 /**
  * Checks a fixed-window quota via the check_rate_limit() DB function (see
  * migration 0029). Fails OPEN on a DB error, a broken rate limiter should
@@ -41,9 +57,9 @@ export async function checkRateLimits(
   windows: Record<string, RateLimitWindow>,
 ): Promise<string | null> {
   for (const [label, window] of Object.entries(windows)) {
-    const ok = await underLimit(supabase, userId, `${endpoint}:${label}`, window)
+    const ok = await underLimit(supabase, userId, rateLimitEndpointKey(endpoint, label), window)
     if (!ok) {
-      return "You're sending messages faster than I can keep up, give it a moment and try again."
+      return rateLimitExceededMessage(label)
     }
   }
   return null

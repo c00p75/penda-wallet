@@ -29,7 +29,9 @@ export function evidenceForInsight(
         ctx.weeklySpendMinor != null && ctx.baselineWeeklyMinor != null
           ? `This week vs usual weekly pace (${ctx.weeklySpendMinor} vs ~${Math.round(ctx.baselineWeeklyMinor)} minor units).`
           : 'This week’s spend was well below your recent weekly average.',
-        ctx.goalName ? `Suggested parking the difference toward “${ctx.goalName}”.` : 'No open goal, suggested stashing instead.',
+        ctx.goalName
+          ? `Suggested parking what still remains toward “${ctx.goalName}” (only when balance can cover it).`
+          : 'No open goal, suggested stashing what still remains (only when balance can cover it).',
       ],
     }
   }
@@ -89,8 +91,8 @@ export function evidenceForInsight(
   if (insightId.startsWith('family-')) {
     return {
       insightId,
-      summary: 'Household plan signal (Family mode).',
-      bullets: ['Allowances and settle-up balances from your family hub.'],
+      summary: 'Household / couple plan signal.',
+      bullets: ['Allowances, fair-share, and settle-up balances from your family or couple hub.'],
     }
   }
 
@@ -99,6 +101,61 @@ export function evidenceForInsight(
       insightId,
       summary: 'Your persona’s weekly narrative recap.',
       bullets: ['Built from this week’s income, spend, top category, and one next move.'],
+    }
+  }
+
+  if (insightId.startsWith('radar:')) {
+    return {
+      insightId,
+      summary: 'Bill and obligation radar for the next fortnight.',
+      bullets: [
+        'Pulls active recurring bills/income and debts with due dates in the window.',
+        'Crunch date is the soonest outflow so you can protect cash before it hits.',
+      ],
+    }
+  }
+
+  if (insightId.startsWith('protect-weekend:')) {
+    return {
+      insightId,
+      summary: 'Weekend protect autopilot.',
+      bullets: [
+        'Suggested Thu/Fri when a cash-light Fri–Sun window helps.',
+        'Daily cap is ~65% of your safe-to-spend-per-day so fun doesn’t crowd essentials.',
+      ],
+    }
+  }
+
+  if (insightId.startsWith('life-event:')) {
+    return {
+      insightId,
+      summary: 'Active life-event mode on your profile.',
+      bullets: ['Temporary coaching tone for travel, job change, newborn, wedding, or other.'],
+    }
+  }
+
+  if (
+    insightId.startsWith('price:') ||
+    insightId.startsWith('quiet:') ||
+    insightId.startsWith('sub:')
+  ) {
+    return {
+      insightId,
+      summary: 'Merchant / subscription pattern from your ledger.',
+      bullets: [
+        ctx.merchant
+          ? `Signal around “${ctx.merchant}”.`
+          : 'Grouped by merchant name across recent expenses.',
+        'Looks for monthly-ish repeats, price jumps, and quiet unused subs.',
+      ],
+    }
+  }
+
+  if (insightId === 'safe-to-spend') {
+    return {
+      insightId,
+      summary: 'Safe-to-spend from your month intention minus spend and fixed costs.',
+      bullets: ['Tap again after updating the plan or logging spend to refresh the breakdown.'],
     }
   }
 

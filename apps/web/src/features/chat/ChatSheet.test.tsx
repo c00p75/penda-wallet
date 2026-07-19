@@ -186,6 +186,48 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
     expect(screen.getByRole('textbox')).toHaveValue('I spent K12 on coffee')
     expect(streamMock).not.toHaveBeenCalled()
   })
+
+  it('does not leave the seed in the input after autoSend is consumed', async () => {
+    sendMock.mockResolvedValue(reply({ reply: 'On it.' }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const seed = 'That cash-in is large. Tell me more / what should I do?'
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w1"
+            currency="ZMW"
+            initialInput={seed}
+            autoSend
+            onAutoSendConsumed={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1))
+    // Simulate store after consumeAutoSend: autoSend false, prefill may still be set.
+    rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w1"
+            currency="ZMW"
+            initialInput={seed}
+            autoSend={false}
+            onAutoSendConsumed={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('textbox')).toHaveValue('')
+    expect(streamMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('ChatSheet action trail', () => {
@@ -218,6 +260,40 @@ describe('ChatSheet action trail', () => {
     expect(await screen.findByText('Merchant')).toBeInTheDocument()
     expect(screen.getByText('Coffee')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument()
+  })
+
+  it('shows Undo for creates and auto-applied updates in the trail footer', async () => {
+    sendMock.mockResolvedValue(
+      reply({
+        reply: 'Done — updated and logged.',
+        autoApplied: true,
+        actions: [
+          {
+            id: 'pending-auto-1',
+            tool: 'update_record',
+            domain: 'transaction',
+            label: 'Updated',
+            summary: 'Amount K10 → K12',
+            status: 'done',
+            targetId: 'tx1',
+          },
+          {
+            id: 't2',
+            tool: 'create_transaction',
+            domain: 'transaction',
+            label: 'Logged expense',
+            summary: 'Snack · K5.00',
+            status: 'done',
+            targetId: 'tx2',
+          },
+        ],
+      }),
+    )
+    renderSheet('ZMW')
+
+    await send('fix the amount and log a snack')
+
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
   })
 })
 
@@ -261,6 +337,7 @@ describe('ChatSheet staged edit/delete confirmation', () => {
     )
     expect(await screen.findByText('Applied')).toBeInTheDocument()
     expect(screen.getByText(/^Done\. /)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
   })
 
   it('does not apply the change when the user cancels', async () => {

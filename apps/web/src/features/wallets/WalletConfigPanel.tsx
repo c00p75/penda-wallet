@@ -180,7 +180,13 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             >
               <div className="min-w-0">
                 <p className="truncate">{member.display_name || member.email}</p>
-                <p className="text-xs text-muted-foreground">{member.role}</p>
+                <p className="text-xs text-muted-foreground">
+                  {member.role === 'viewer'
+                    ? 'Coach / advisor (view only)'
+                    : member.role === 'editor'
+                      ? 'Editor'
+                      : member.role}
+                </p>
               </div>
               {isOwner && member.user_id !== session?.user.id && (
                 <Button variant="ghost" size="sm" onClick={() => handleRemove(member.user_id)}>
@@ -215,8 +221,8 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="editor">Editor</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
+                    <SelectItem value="editor">Editor — can log & edit</SelectItem>
+                    <SelectItem value="viewer">Coach / advisor — view only</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

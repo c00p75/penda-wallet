@@ -51,4 +51,53 @@ describe('suggestBufferFromIncome', () => {
       ),
     ).toBeNull()
   })
+
+  it('returns null when the cash-in has already been spent', () => {
+    const now = new Date(2026, 6, 18)
+    expect(
+      suggestBufferFromIncome(
+        [
+          tx({ id: 'in', amount_minor: 50_000, type: 'income', transaction_date: '2026-07-10' }),
+          tx({ id: 'out1', amount_minor: 40_000, type: 'expense', transaction_date: '2026-07-12' }),
+          tx({ id: 'out2', amount_minor: 23_200, type: 'expense', transaction_date: '2026-07-15' }),
+        ],
+        { now },
+      ),
+    ).toBeNull()
+  })
+
+  it('returns null when wallet balance is negative', () => {
+    const now = new Date(2026, 6, 18)
+    expect(
+      suggestBufferFromIncome(
+        [tx({ amount_minor: 50_000, type: 'income', transaction_date: '2026-07-10' })],
+        { now, availableBalanceMinor: -13_200 },
+      ),
+    ).toBeNull()
+  })
+
+  it('caps the suggestion to what remains of the cash-in', () => {
+    const now = new Date(2026, 6, 18)
+    // Ideal park is 30% of 500k = 150k, but only 80k left after spending.
+    const result = suggestBufferFromIncome(
+      [
+        tx({ id: 'in', amount_minor: 500_000, type: 'income', transaction_date: '2026-07-01' }),
+        tx({ id: 'out', amount_minor: 420_000, type: 'expense', transaction_date: '2026-07-05' }),
+      ],
+      { now, availableBalanceMinor: 80_000 },
+    )
+    expect(result?.suggestMinor).toBe(80_000)
+  })
+
+  it('ignores expenses that happened before the cash-in', () => {
+    const now = new Date(2026, 6, 18)
+    const result = suggestBufferFromIncome(
+      [
+        tx({ id: 'old', amount_minor: 200_000, type: 'expense', transaction_date: '2026-07-01' }),
+        tx({ id: 'in', amount_minor: 500_000, type: 'income', transaction_date: '2026-07-10' }),
+      ],
+      { now, availableBalanceMinor: 300_000 },
+    )
+    expect(result?.suggestMinor).toBe(150_000)
+  })
 })

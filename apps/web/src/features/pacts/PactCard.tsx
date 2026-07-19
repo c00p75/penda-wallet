@@ -39,6 +39,16 @@ export function PactCard({ pact, transactions, category, currency, onDelete }: P
           {result.status === 'broken' && result.breakingTransaction && (
             <>, {formatMoney(result.breakingTransaction.amount_minor, currency)} on {result.breakingTransaction.transaction_date}</>
           )}
+          {pact.stake_kind && pact.stake_kind !== 'none' ? (
+            <>
+              {' '}
+              · Stake:{' '}
+              {pact.stake_amount_minor != null
+                ? formatMoney(pact.stake_amount_minor, currency)
+                : 'yes'}
+              {pact.stake_note ? ` → ${pact.stake_note}` : ''}
+            </>
+          ) : null}
         </p>
       </div>
       <button

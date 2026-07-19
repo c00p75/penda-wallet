@@ -58,7 +58,7 @@ export const useChatStore = create<ChatUiState>((set) => ({
         : { autoSend: false, startRecording: false, prefill: '', mode: 'full' as ChatMode }),
     }),
   setMode: (mode) => set({ mode }),
-  consumeAutoSend: () => set({ autoSend: false }),
+  consumeAutoSend: () => set({ autoSend: false, prefill: '' }),
   consumeStartRecording: () => set({ startRecording: false }),
   startNewTopic: () => set((s) => ({ newTopicNonce: s.newTopicNonce + 1 })),
 }))

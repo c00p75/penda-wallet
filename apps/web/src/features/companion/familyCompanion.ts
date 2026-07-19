@@ -22,7 +22,7 @@ export interface FamilyCompanionTip {
 }
 
 /**
- * Household-framed nudges for Family mode, allowance left, settle-up due.
+ * Household / couple-framed nudges — allowances left, settle-up due.
  */
 export function detectFamilyCompanionTips(opts: {
   mode: string
@@ -32,9 +32,10 @@ export function detectFamilyCompanionTips(opts: {
   enabled?: boolean
 }): FamilyCompanionTip[] {
   if (opts.enabled === false) return []
-  if (opts.mode !== 'family') return []
+  if (opts.mode !== 'family' && opts.mode !== 'couple') return []
 
   const tips: FamilyCompanionTip[] = []
+  const couple = opts.mode === 'couple'
 
   for (const a of opts.allowances) {
     if (a.target_amount_minor <= 0) continue
@@ -58,10 +59,23 @@ export function detectFamilyCompanionTips(opts: {
       id: `family-settle:${top.name}`,
       text:
         top.netMinor > 0
-          ? `${top.name} owes ${amt}, want a settle-up nudge?`
-          : `You owe ${top.name} ${amt}, ready to settle up?`,
-      chatSeed: `Help me settle up with ${top.name}.`,
+          ? couple
+            ? `${top.name} owes you ${amt} on the shared ledger — settle up?`
+            : `${top.name} owes ${amt}, want a settle-up nudge?`
+          : couple
+            ? `You owe ${top.name} ${amt} — fair-share settle?`
+            : `You owe ${top.name} ${amt}, ready to settle up?`,
+      chatSeed: couple
+        ? `Help us settle fairly with ${top.name}.`
+        : `Help me settle up with ${top.name}.`,
       href: '/settle-up',
+    })
+  } else if (couple) {
+    tips.push({
+      id: 'family-couple-os',
+      text: 'Couple mode: joint plan + private envelopes. Want a fair-share check this week?',
+      chatSeed: 'Help us set a fair-share rule and private envelopes.',
+      href: '/family',
     })
   }
 

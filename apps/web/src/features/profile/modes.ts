@@ -1,6 +1,6 @@
 import { Briefcase, User, Users, type Icon } from '@/components/icons/product'
 
-export type ProfileMode = 'individual' | 'family' | 'business'
+export type ProfileMode = 'individual' | 'family' | 'couple' | 'business'
 
 export interface ModeTerms {
   income: string
@@ -43,6 +43,20 @@ export const MODE_CONFIG: Record<ProfileMode, ModeConfig> = {
     aiContext:
       'This is a family account. Frame guidance around shared priorities, household bills (rent, school fees, groceries), and coordinating between members.',
   },
+  couple: {
+    value: 'couple',
+    label: 'Couple',
+    description: 'Shared plan, fair share, room for private envelopes.',
+    icon: Users,
+    terms: {
+      income: 'Our income',
+      expense: 'Our spending',
+      balance: 'Shared balance',
+      plan: 'Joint plan',
+    },
+    aiContext:
+      'This is a couple account. Frame guidance around fair-share rules, a joint plan, private envelopes when needed, and conflict-aware coaching — never take sides.',
+  },
   business: {
     value: 'business',
     label: 'Business',
@@ -54,7 +68,12 @@ export const MODE_CONFIG: Record<ProfileMode, ModeConfig> = {
   },
 }
 
-export const PROFILE_MODES: ModeConfig[] = [MODE_CONFIG.individual, MODE_CONFIG.family, MODE_CONFIG.business]
+export const PROFILE_MODES: ModeConfig[] = [
+  MODE_CONFIG.individual,
+  MODE_CONFIG.couple,
+  MODE_CONFIG.family,
+  MODE_CONFIG.business,
+]
 
 /** The right word for a concept in the user's chosen mode (falls back to individual). */
 export function termFor(mode: ProfileMode, key: keyof ModeTerms): string {

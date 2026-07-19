@@ -1,3 +1,10 @@
+/** Something applied in chat that the user can reverse from the trail footer. */
+export type ChatUndoTarget =
+  | { type: 'pending_action'; actionId: string }
+  | { type: 'soft_delete_transaction'; transactionId: string }
+  | { type: 'restore_soft_deleted_transaction'; transactionId: string }
+  | { type: 'delete_created'; domain: string; targetId: string }
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -12,8 +19,13 @@ export interface ChatMessage {
   queued?: boolean
   /** After confirm: deep-link to the touched entity. */
   viewHref?: string
-  /** Soft-deleted transaction id that can be undone from this bubble. */
+  /**
+   * @deprecated Prefer undoTargets. Kept so older persisted threads still show Undo
+   * for confirmed transaction deletes.
+   */
   undoTransactionId?: string
+  /** Applied creates / auto-applied or confirmed mutations reversible from this bubble. */
+  undoTargets?: ChatUndoTarget[]
   /** True when the turn auto-applied under graduated trust. */
   autoApplied?: boolean
 }

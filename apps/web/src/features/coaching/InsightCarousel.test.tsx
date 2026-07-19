@@ -51,6 +51,28 @@ describe('InsightCarousel', () => {
     expect(onTap).toHaveBeenCalledOnce()
   })
 
+  it('renders brief secondary copy and pill CTAs on the lead card', async () => {
+    const user = userEvent.setup()
+    const primary = vi.fn()
+    const secondary = vi.fn()
+    const cards: InsightCard[] = [
+      {
+        ...weekRead,
+        secondary: 'Cash is stretched. Let’s find the leak together.',
+        actions: [
+          { label: 'What should I do?', onTap: primary },
+          { label: 'Log a purchase', variant: 'outline', onTap: secondary },
+        ],
+      },
+    ]
+    render(<InsightCarousel cards={cards} />)
+    expect(screen.getByText(/Cash is stretched/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'What should I do?' }))
+    await user.click(screen.getByRole('button', { name: 'Log a purchase' }))
+    expect(primary).toHaveBeenCalledOnce()
+    expect(secondary).toHaveBeenCalledOnce()
+  })
+
   it('renders nothing when given no cards', () => {
     const { container } = render(<InsightCarousel cards={[]} />)
     expect(container).toBeEmptyDOMElement()

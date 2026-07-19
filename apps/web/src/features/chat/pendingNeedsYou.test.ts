@@ -55,4 +55,46 @@ describe('loadNeedsYou', () => {
     )
     expect(loadNeedsYou('w1')).toEqual([])
   })
+
+  it('skips cancelled actions and returns empty for missing wallet', () => {
+    expect(loadNeedsYou(undefined)).toEqual([])
+    localStorage.setItem(
+      'penda:chat:w1',
+      JSON.stringify({
+        messages: [
+          {
+            id: 'm1',
+            role: 'assistant',
+            text: 'Ok?',
+            pendingActions: [{ id: 'a1', kind: 'delete', domain: 'goal', summary: 'Remove goal' }],
+          },
+        ],
+        actionStatus: { a1: 'cancelled' },
+      }),
+    )
+    expect(loadNeedsYou('w1')).toEqual([])
+  })
+
+  it('caps at 5 pending items and uses a default preview', () => {
+    const pendingActions = Array.from({ length: 7 }, (_, i) => ({
+      id: `a${i}`,
+      kind: 'update' as const,
+      domain: 'transaction' as const,
+      summary: i === 0 ? '' : `Action ${i}`,
+    }))
+    localStorage.setItem(
+      'penda:chat:w1',
+      JSON.stringify({
+        messages: [{ id: 'm1', role: 'assistant', text: 'Ok?', pendingActions }],
+      }),
+    )
+    const items = loadNeedsYou('w1')
+    expect(items).toHaveLength(5)
+    expect(items[0]?.preview).toBe('Confirm a change')
+  })
+
+  it('returns empty on corrupt JSON', () => {
+    localStorage.setItem('penda:chat:w1', '{')
+    expect(loadNeedsYou('w1')).toEqual([])
+  })
 })

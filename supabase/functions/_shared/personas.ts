@@ -57,6 +57,9 @@ export const MODE_AI_CONTEXT: Record<string, string> = {
   family:
     'This is a family account. Frame guidance around shared priorities, household bills (rent, school ' +
     'fees, groceries), and coordinating between members.',
+  couple:
+    'This is a couple account. Frame guidance around fair-share rules, a joint plan, private envelopes ' +
+    'when needed, and conflict-aware coaching — never take sides.',
   business:
     'This is a small business / side-hustle account. Frame guidance around margins, cash runway, revenue ' +
     'vs expenses, and setting money aside for tax.',

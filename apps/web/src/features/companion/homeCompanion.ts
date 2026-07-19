@@ -9,9 +9,15 @@ import type { CompanionPrefs } from './companionPrefs'
 import { detectFamilyCompanionTips } from './familyCompanion'
 import { recentMoodTone, applyMoodToCoachingText } from './moodCoaching'
 import { detectPactFollowUps, impulseDueForFollowUp } from './pactFollowUp'
+import { walletBalanceMinor } from '@/features/planning/walletBalance'
 import { buildPaydayMessage, inferPaydayCadence, paydayPhase } from './paydayCycle'
 import { shouldQuietNudge } from './quietMode'
 import type { PausedImpulse } from '@/features/impulse/impulseStore'
+import { buildObligationRadar, radarCoachingLine } from '@/features/radar/obligationRadar'
+import { buildProtectWeekendPlan } from '@/features/radar/protectWeekend'
+import { detectMerchantSignals } from '@/features/merchants/subscriptionBrain'
+import { lifeEventActive, lifeEventCoachingLine, type LifeEvent } from '@/features/lifeEvents/types'
+import type { DebtDueLike } from '@/features/radar/obligationRadar'
 
 export interface CompanionHomeInput {
   prefs: CompanionPrefs
@@ -27,6 +33,9 @@ export interface CompanionHomeInput {
   freeBeforeNextIncomeMinor?: number | null
   settleBalances?: Array<{ name: string; netMinor: number }>
   weeklyLetterTeaser?: string | null
+  debts?: DebtDueLike[]
+  lifeEvent?: LifeEvent | null
+  safeDailyMinor?: number | null
   now?: Date
 }
 
@@ -125,6 +134,7 @@ export function buildCompanionHomeSignals(
         currency: input.currency,
         freeBeforePaydayMinor: input.freeBeforeNextIncomeMinor,
         typicalAmountMinor: cadence.typicalAmountMinor,
+        availableBalanceMinor: walletBalanceMinor(input.transactions),
       })
       cards.push({
         id: `payday:${phase}:${cadence.nextPayday}`,
@@ -132,10 +142,16 @@ export function buildCompanionHomeSignals(
         tone: 'warm',
         label: `${msg.title}:`,
         text: applyMoodToCoachingText(msg.body, moodTone),
-        action: {
-          label: 'Plan with AI',
-          onTap: () => actions.openChat(msg.chatSeed, { autoSend: true }),
-        },
+        action:
+          phase === 'day' || phase === 'post'
+            ? {
+                label: 'Salary plan',
+                onTap: () => actions.navigate('/radar'),
+              }
+            : {
+                label: 'Plan with AI',
+                onTap: () => actions.openChat(msg.chatSeed, { autoSend: true }),
+              },
       })
     }
   }
@@ -149,14 +165,16 @@ export function buildCompanionHomeSignals(
       settleBalances: input.settleBalances,
       enabled: true,
     })) {
+      const couple = input.mode === 'couple'
       cards.push({
         id: tip.id,
         variant: 'tip',
         tone: 'default',
-        label: 'Family:',
+        label: couple ? 'Couple:' : 'Family:',
         text: applyMoodToCoachingText(tip.text, moodTone),
         action: {
-          label: tip.href === '/settle-up' ? 'Settle up' : 'Family hub',
+          label:
+            tip.href === '/settle-up' ? 'Settle up' : couple ? 'Couple hub' : 'Family hub',
           onTap: () => actions.navigate(tip.href),
         },
       })
@@ -174,6 +192,81 @@ export function buildCompanionHomeSignals(
         label: 'Read with AI',
         onTap: () =>
           actions.openChat('I want to talk about my weekly letter.', { autoSend: true }),
+      },
+    })
+  }
+
+  const today = now.toISOString().slice(0, 10)
+  if (lifeEventActive(input.lifeEvent ?? null, today) && input.lifeEvent) {
+    const line = lifeEventCoachingLine(input.lifeEvent)
+    cards.push({
+      id: `life-event:${input.lifeEvent.kind}`,
+      variant: 'tip',
+      tone: 'warm',
+      label: 'Life moment:',
+      text: applyMoodToCoachingText(line, moodTone),
+      action: {
+        label: 'Talk it through',
+        onTap: () => actions.openChat(line, { autoSend: true }),
+      },
+    })
+  }
+
+  const radar = buildObligationRadar({
+    recurring: input.recurring,
+    debts: input.debts,
+    days: 14,
+    now,
+  })
+  if (radar.outflowTotalMinor > 0) {
+    const line = radarCoachingLine(radar, input.currency)
+    cards.push({
+      id: `radar:${radar.crunchDate ?? today}`,
+      variant: 'tip',
+      tone: radar.netPressureMinor < 0 ? 'default' : 'warm',
+      label: 'Radar:',
+      text: applyMoodToCoachingText(line, moodTone),
+      action: {
+        label: 'Open radar',
+        onTap: () => actions.navigate('/radar'),
+      },
+    })
+  }
+
+  const dow = now.getDay()
+  if (dow === 4 || dow === 5) {
+    const protect = buildProtectWeekendPlan({
+      safeToSpendDailyMinor: input.safeDailyMinor ?? 0,
+      currency: input.currency,
+      now,
+    })
+    cards.push({
+      id: `protect-weekend:${protect.startDate}`,
+      variant: 'tip',
+      tone: 'warm',
+      label: 'Weekend:',
+      text: applyMoodToCoachingText(
+        `${protect.description} Cap ~${Math.round(protect.dailyCapMinor / 100)}/day.`,
+        moodTone,
+      ),
+      action: {
+        label: 'Protect weekend',
+        onTap: () => actions.navigate('/radar'),
+      },
+    })
+  }
+
+  const merchant = detectMerchantSignals(input.transactions, { now })[0]
+  if (merchant) {
+    cards.push({
+      id: merchant.id,
+      variant: 'tip',
+      tone: merchant.kind === 'quiet_sub' ? 'default' : 'warm',
+      label: 'Merchant:',
+      text: applyMoodToCoachingText(merchant.summary, moodTone),
+      action: {
+        label: 'Review',
+        onTap: () => actions.navigate('/radar'),
       },
     })
   }

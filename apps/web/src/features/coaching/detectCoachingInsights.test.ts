@@ -55,6 +55,8 @@ const DATA = cat('data', 'Data & Airtime', '📱')
 describe('detectCoachingInsights', () => {
   it('spots an underspend opportunity and points it at a goal', () => {
     const txns = [
+      // Opening cash so park/stash has headroom
+      tx({ type: 'income', amount_minor: 200000, transaction_date: '2026-06-01' }),
       // ~K210/week baseline over the prior 4 weeks
       tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-15' }),
       tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-22' }),
@@ -128,5 +130,126 @@ describe('detectCoachingInsights', () => {
       now: NOW,
     })
     expect(insights).toEqual([])
+  })
+
+  it('underspend without a goal still offers a stash opportunity', () => {
+    const txns = [
+      tx({ type: 'income', amount_minor: 200000, transaction_date: '2026-06-01' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-15' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-22' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-29' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-07-06' }),
+      tx({ category: DATA, amount_minor: 10000, transaction_date: '2026-07-13' }),
+    ]
+    const insights = detectCoachingInsights({
+      transactions: txns,
+      budgets: [],
+      goals: [],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    const opp = insights.find((i) => i.kind === 'opportunity')
+    expect(opp?.action).toMatchObject({ kind: 'view-goals' })
+    expect(opp?.text).toMatch(/stash/i)
+  })
+
+  it('does not suggest parking underspend when balance is negative', () => {
+    const txns = [
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-15' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-22' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-29' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-07-06' }),
+      tx({ category: DATA, amount_minor: 10000, transaction_date: '2026-07-13' }),
+    ]
+    const insights = detectCoachingInsights({
+      transactions: txns,
+      budgets: [],
+      goals: [goal({ target_amount_minor: 500000, current_amount_minor: 100000 })],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    expect(insights.find((i) => i.kind === 'opportunity')).toBeUndefined()
+  })
+
+  it('caps parkable underspend to available balance', () => {
+    const txns = [
+      tx({ type: 'income', amount_minor: 200_000, transaction_date: '2026-06-01' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-15' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-22' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-29' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-07-06' }),
+      tx({ category: DATA, amount_minor: 10000, transaction_date: '2026-07-13' }),
+    ]
+    const insights = detectCoachingInsights({
+      transactions: txns,
+      budgets: [],
+      goals: [goal({ target_amount_minor: 500000, current_amount_minor: 100000 })],
+      currency: 'ZMW',
+      now: NOW,
+      availableBalanceMinor: 8_000,
+    })
+    const opp = insights.find((i) => i.kind === 'opportunity')
+    expect(opp?.amountMinor).toBe(8_000)
+  })
+
+  it('does not fire underspend when baseline is too small', () => {
+    const txns = [
+      tx({ category: DATA, amount_minor: 1000, transaction_date: '2026-06-15' }),
+      tx({ category: DATA, amount_minor: 1000, transaction_date: '2026-06-22' }),
+      tx({ category: DATA, amount_minor: 1000, transaction_date: '2026-06-29' }),
+      tx({ category: DATA, amount_minor: 1000, transaction_date: '2026-07-06' }),
+      tx({ category: DATA, amount_minor: 100, transaction_date: '2026-07-13' }),
+    ]
+    const insights = detectCoachingInsights({
+      transactions: txns,
+      budgets: [],
+      goals: [goal({ target_amount_minor: 500000, current_amount_minor: 0 })],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    expect(insights.find((i) => i.kind === 'opportunity')).toBeUndefined()
+  })
+
+  it('celebrates a fully funded goal', () => {
+    const insights = detectCoachingInsights({
+      transactions: [],
+      budgets: [],
+      goals: [goal({ name: 'Done', target_amount_minor: 100000, current_amount_minor: 100000 })],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    const celebration = insights.find((i) => i.kind === 'celebration')
+    expect(celebration?.text).toMatch(/fully funded/i)
+    expect(celebration?.amountMinor).toBe(0)
+  })
+
+  it('ignores goals below 80% funded for celebration', () => {
+    const insights = detectCoachingInsights({
+      transactions: [],
+      budgets: [],
+      goals: [goal({ target_amount_minor: 100000, current_amount_minor: 79000 })],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    expect(insights.find((i) => i.kind === 'celebration')).toBeUndefined()
+  })
+
+  it('ranks attention/opportunity above observability', () => {
+    const txns = [
+      tx({ type: 'income', amount_minor: 200000, transaction_date: '2026-06-01' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-15' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-22' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-06-29' }),
+      tx({ category: DATA, amount_minor: 21000, transaction_date: '2026-07-06' }),
+      tx({ category: DATA, amount_minor: 10000, transaction_date: '2026-07-13' }),
+    ]
+    const insights = detectCoachingInsights({
+      transactions: txns,
+      budgets: [],
+      goals: [goal({ target_amount_minor: 500000, current_amount_minor: 100000 })],
+      currency: 'ZMW',
+      now: NOW,
+    })
+    expect(insights[0]?.kind).toBe('opportunity')
   })
 })

@@ -3,7 +3,15 @@ import { ArrowRight } from 'lucide-react'
 import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
+import { spectrumEdgeClass } from '@/components/ui/cardAccent'
+import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { cn } from '@/lib/utils'
+
+export interface InsightCardAction {
+  label: string
+  variant?: 'default' | 'outline'
+  onTap: () => void
+}
 
 export interface InsightCard {
   id: string
@@ -13,62 +21,100 @@ export interface InsightCard {
   /** Bold prefix, e.g. "Pro tip:". */
   label?: string
   text: string
+  /** Supporting line under the primary read (brief-style cards). */
+  secondary?: string
+  /** Primary CTAs (solid / outline), used by the lead brief card. */
+  actions?: InsightCardAction[]
+  /** Ghost text action, e.g. "Ask Penda" on tip cards. */
   action?: { label: string; onTap: () => void }
   /** Trust affordance, explain what triggered this nudge. */
   onWhy?: () => void
 }
 
+function CardMark({ variant }: { variant: InsightCard['variant'] }) {
+  if (variant === 'tip') {
+    return (
+      <span
+        aria-hidden
+        className="float-left mr-2.5 mt-0.5 flex size-8 items-center justify-center rounded-2xl"
+        style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
+      >
+        <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--apricot)' }} />
+      </span>
+    )
+  }
+  return <AiMark className="float-left mr-2.5 mt-0.5 size-8" />
+}
+
 function InsightCardView({ card }: { card: InsightCard }) {
+  const hasPillActions = (card.actions?.length ?? 0) > 0
+
   return (
-    <div className="flex h-full items-start gap-3 rounded-2xl bg-card p-3.5 shadow-[var(--shadow-soft)]">
-      {card.variant === 'tip' ? (
-        <span
-          aria-hidden
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-2xl"
-          style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
-        >
-          <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--apricot)' }} />
-        </span>
-      ) : (
-        <AiMark className="mt-0.5 size-7" />
+    <div
+      className={cn(
+        spectrumEdgeClass,
+        'rounded-[1.75rem] p-4 shadow-[var(--shadow-card)]',
       )}
-      <div className="flex flex-1 flex-col gap-1.5">
-        <p className="text-sm leading-snug">
+    >
+      <div className="min-w-0">
+        <CardMark variant={card.variant} />
+        <p className="text-base font-medium leading-snug text-foreground">
           {card.label && <span className="font-semibold">{card.label} </span>}
           {card.text}
         </p>
-        <div className="flex flex-wrap items-center gap-3">
-          {card.action && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={card.action.onTap}
-              className="-mb-1 self-start px-0 text-primary hover:bg-transparent"
-            >
-              {card.action.label}
-              <ArrowRight className="size-4" />
-            </Button>
-          )}
-          {card.onWhy && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={card.onWhy}
-              className="-mb-1 self-start px-0 text-xs text-muted-foreground hover:bg-transparent"
-            >
-              Why this?
-            </Button>
-          )}
-        </div>
+        {card.secondary && (
+          <p className="mt-1.5 text-sm leading-snug text-muted-foreground">{card.secondary}</p>
+        )}
+        {(hasPillActions || card.action || card.onWhy) && (
+          <div className="mt-3 flex clear-both flex-wrap items-center gap-2">
+            {card.actions?.map((a) => (
+              <Button
+                key={a.label}
+                type="button"
+                size="sm"
+                variant={a.variant ?? 'default'}
+                onClick={(e) => {
+                  captureOverlayOrigin(e.currentTarget)
+                  a.onTap()
+                }}
+              >
+                {a.label}
+              </Button>
+            ))}
+            {card.action && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  captureOverlayOrigin(e.currentTarget)
+                  card.action!.onTap()
+                }}
+                className="-ml-1 h-auto px-1 py-0.5 text-primary hover:bg-transparent"
+              >
+                {card.action.label}
+                <ArrowRight className="size-4" />
+              </Button>
+            )}
+            {card.onWhy && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={card.onWhy}
+                className="h-auto px-1 py-0.5 text-xs text-muted-foreground hover:bg-transparent"
+              >
+                Why this?
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
 /**
- * The "AI speaks first" headline unit, upgraded to a swipeable deck: the grounded
- * weekly read leads, followed by proactive pro tips. One card shows at a time with
- * page dots; when there's only one card it reads exactly like the old single unit.
+ * Swipeable Penda insights: the grounded weekly brief leads, followed by
+ * companion signals and pro tips. One card shows at a time with page dots.
  */
 export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -89,14 +135,17 @@ export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
   if (cards.length === 0) return null
 
   return (
-    <section aria-label="Penda insights" className="flex flex-col gap-2">
+    <section aria-label="Penda insights" className="-mt-8 flex flex-col gap-2">
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
-        className="flex snap-x snap-mandatory items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pb-[0.5rem]"
+        className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {cards.map((card) => (
-          <div key={card.id} className="w-full shrink-0 snap-center">
+          <div
+            key={card.id}
+            className="w-[calc(100%-0.75rem)] min-w-[calc(100%-0.75rem)] shrink-0 snap-center"
+          >
             <InsightCardView card={card} />
           </div>
         ))}

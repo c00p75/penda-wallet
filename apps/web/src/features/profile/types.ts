@@ -1,5 +1,6 @@
 import type { ProfileMode } from './modes'
 import type { Gender, IncomeRange, PrimaryGoal } from './onboardingOptions'
+import type { LifeEvent } from '@/features/lifeEvents/types'
 import {
   DEFAULT_NOTIFICATION_PREFS,
   type NotificationPrefs,
@@ -71,6 +72,7 @@ export interface Profile {
   round_up_enabled: boolean
   pay_yourself_first_pct: number
   habits_goal_id: string | null
+  life_event: LifeEvent | null
   created_at: string
 }
 
@@ -92,6 +94,7 @@ export interface ProfileInput {
   round_up_enabled?: boolean
   pay_yourself_first_pct?: number
   habits_goal_id?: string | null
+  life_event?: LifeEvent | null
 }
 
 export interface PersonalityMeta {

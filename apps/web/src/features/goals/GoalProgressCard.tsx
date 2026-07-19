@@ -1,4 +1,5 @@
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { HeroBlob } from '@/components/ui/hero-blob'
 import type { HeroTone } from '@/components/ui/hero-card'
 import type { SavingsContribution, SavingsGoal } from './types'
@@ -46,14 +47,15 @@ export function GoalProgressCard({
   const reached = pct >= 1
   const activeTone: HeroTone = reached ? 'mint' : tone
   const ringPct = Math.round(Math.min(pct, 1) * 100)
+  const remaining = Math.max(0, goal.target_amount_minor - goal.current_amount_minor)
 
   const forecastLine =
     forecast.kind === 'reached'
-      ? 'Reached 🎉'
+      ? 'Goal reached'
       : forecast.kind === 'projected'
         ? `On pace · done by ${formatDate(forecast.projectedDate!)}`
         : forecast.kind === 'not-saving'
-          ? 'Paused, add funds to get moving'
+          ? 'Paused. Add funds to get moving'
           : 'Add funds to start tracking your pace'
 
   return (
@@ -79,23 +81,46 @@ export function GoalProgressCard({
             {goal.icon && <span aria-hidden>{goal.icon}</span>}
             <span className="truncate">{goal.name}</span>
           </p>
-          <p className="mt-1 text-sm tabular-nums text-white/85">
-            {formatMoney(goal.current_amount_minor, currency)} of {formatMoney(goal.target_amount_minor, currency)}
+          <p className="mt-1 text-sm tabular-nums text-white/90">
+            <HiddenAmount>{formatMoney(goal.current_amount_minor, currency)}</HiddenAmount>
+            <span className="text-white/70">
+              {' of '}
+              <HiddenAmount>{formatMoney(goal.target_amount_minor, currency)}</HiddenAmount>
+            </span>
           </p>
           <p className="mt-1 text-xs font-medium text-white/75">
-            {forecastLine}
-            {goal.target_date && <> · target {formatDate(goal.target_date)}</>}
+            {reached ? (
+              'Goal reached'
+            ) : (
+              <>
+                <HiddenAmount>{formatMoney(remaining, currency)}</HiddenAmount>
+                {' to go'}
+                {goal.target_date && <> · target {formatDate(goal.target_date)}</>}
+              </>
+            )}
           </p>
+          {!reached && (
+            <p className="mt-0.5 text-xs text-white/65">{forecastLine}</p>
+          )}
         </div>
       </button>
 
-      <button
-        type="button"
-        onClick={onAddFunds}
-        className="relative z-10 mt-4 rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30"
-      >
-        Add / withdraw funds
-      </button>
+      <div className="relative z-10 mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onAddFunds}
+          className="rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30"
+        >
+          Add funds
+        </button>
+        <button
+          type="button"
+          onClick={onSelect}
+          className="rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-sm hover:bg-white/20"
+        >
+          Details
+        </button>
+      </div>
     </div>
   )
 }

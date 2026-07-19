@@ -3,7 +3,8 @@ import type { Transaction } from '@/features/transactions/types'
 import { formatMoney } from '@/lib/money'
 import type { CoachingInsight } from './detectCoachingInsights'
 
-const FEE_PATTERN = /fee|charge|transfer fee|service fee/i
+/** Word-bounded so merchants like "Coffee" do not match the "fee" substring. */
+const FEE_PATTERN = /\b(fees?|charges?|transfer fees?|service fees?)\b/i
 
 /** Small P2P-style amounts (under ~K20) that repeat to the same merchant. */
 const SMALL_P2P_MAX_MINOR = 2000

@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
+import { useTransactions } from '@/features/transactions/hooks'
 import { ChatSheet } from './ChatSheet'
 import { useChatStore } from './chatStore'
 import { pageContextFromPathname } from './pageContext'
@@ -14,6 +15,7 @@ export function AmbientChat() {
   const session = useAuthStore((s) => s.session)
   const location = useLocation()
   const { data: wallet } = useCurrentWallet()
+  const { data: transactions = [] } = useTransactions(wallet?.id)
 
   const open = useChatStore((s) => s.open)
   const prefill = useChatStore((s) => s.prefill)
@@ -30,6 +32,7 @@ export function AmbientChat() {
   if (!session || !wallet || location.pathname === '/login') return null
 
   const pageContext = pageContextFromPathname(location.pathname)
+  const isFirstRun = transactions.length === 0
 
   return (
     <ChatSheet
@@ -49,6 +52,7 @@ export function AmbientChat() {
       onNewTopic={startNewTopic}
       currency={wallet.base_currency}
       pageContext={pageContext}
+      isFirstRun={isFirstRun}
     />
   )
 }

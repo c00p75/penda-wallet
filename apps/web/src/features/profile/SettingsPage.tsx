@@ -60,6 +60,12 @@ import {
   type CompanionPrefs,
 } from './types'
 import { PROFILE_MODES, type ProfileMode } from './modes'
+import {
+  LIFE_EVENT_OPTIONS,
+  type LifeEvent,
+  type LifeEventKind,
+} from '@/features/lifeEvents/types'
+import { localDateStr } from '@/lib/dates'
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: Icon }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -112,6 +118,9 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [payYourselfFirst, setPayYourselfFirst] = useState('0')
   const [taxReserve, setTaxReserve] = useState('0')
   const [habitsGoalId, setHabitsGoalId] = useState<string>('')
+  const [lifeEventKind, setLifeEventKind] = useState<LifeEventKind | ''>('')
+  const [lifeEventLabel, setLifeEventLabel] = useState('')
+  const [lifeEventEnds, setLifeEventEnds] = useState('')
   const [setupLockOpen, setSetupLockOpen] = useState(false)
   const [disableLockOpen, setDisableLockOpen] = useState(false)
   const subscribeToPush = useSubscribeToPush()
@@ -132,7 +141,21 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     setPayYourselfFirst(String(profile.pay_yourself_first_pct ?? 0))
     setTaxReserve(String(profile.tax_reserve_pct ?? 0))
     setHabitsGoalId(profile.habits_goal_id ?? '')
+    setLifeEventKind(profile.life_event?.kind ?? '')
+    setLifeEventLabel(profile.life_event?.label ?? '')
+    setLifeEventEnds(profile.life_event?.ends_on ?? '')
   }, [profile])
+
+  function buildLifeEventPatch(): LifeEvent | null {
+    if (!lifeEventKind) return null
+    const opt = LIFE_EVENT_OPTIONS.find((o) => o.value === lifeEventKind)
+    return {
+      kind: lifeEventKind,
+      label: lifeEventLabel.trim() || opt?.label || lifeEventKind,
+      starts_on: profile?.life_event?.starts_on ?? localDateStr(),
+      ends_on: lifeEventEnds.trim() || null,
+    }
+  }
 
   if (!session) return <Navigate to="/login" replace />
 
@@ -166,6 +189,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         pay_yourself_first_pct: pyf,
         tax_reserve_pct: tax,
         habits_goal_id: habitsGoalId || null,
+        life_event: buildLifeEventPatch(),
       })
       toast('Settings saved.')
     } catch (error) {
@@ -188,7 +212,10 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
       roundUp !== profile.round_up_enabled ||
       payYourselfFirst !== String(profile.pay_yourself_first_pct ?? 0) ||
       taxReserve !== String(profile.tax_reserve_pct ?? 0) ||
-      habitsGoalId !== (profile.habits_goal_id ?? ''))
+      habitsGoalId !== (profile.habits_goal_id ?? '') ||
+      lifeEventKind !== (profile.life_event?.kind ?? '') ||
+      lifeEventLabel !== (profile.life_event?.label ?? '') ||
+      lifeEventEnds !== (profile.life_event?.ends_on ?? ''))
 
   function patchConsent(key: keyof AiConsent, value: boolean) {
     setAiConsent((c) => ({ ...c, [key]: value }))
@@ -262,7 +289,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               <p className="text-sm text-muted-foreground">
                 Changes the wording and how Penda frames advice, the same money, seen your way.
               </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {PROFILE_MODES.map((m) => {
                   const active = mode === m.value
                   return (
@@ -294,6 +321,70 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               <p className="text-xs text-muted-foreground">
                 {PROFILE_MODES.find((m) => m.value === mode)?.description}
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Life event</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Temporarily shifts coaching tone (travel, job change, newborn, wedding).
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="life-event-kind">Active mode</Label>
+                <select
+                  id="life-event-kind"
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={lifeEventKind}
+                  onChange={(e) => {
+                    const v = e.target.value as LifeEventKind | ''
+                    setLifeEventKind(v)
+                    if (v && !lifeEventLabel) {
+                      setLifeEventLabel(LIFE_EVENT_OPTIONS.find((o) => o.value === v)?.label ?? '')
+                    }
+                    if (!v) {
+                      setLifeEventLabel('')
+                      setLifeEventEnds('')
+                    }
+                  }}
+                >
+                  <option value="">None</option>
+                  {LIFE_EVENT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {lifeEventKind ? (
+                  <p className="text-xs text-muted-foreground">
+                    {LIFE_EVENT_OPTIONS.find((o) => o.value === lifeEventKind)?.hint}
+                  </p>
+                ) : null}
+              </div>
+              {lifeEventKind ? (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="life-event-label">Label</Label>
+                    <Input
+                      id="life-event-label"
+                      value={lifeEventLabel}
+                      onChange={(e) => setLifeEventLabel(e.target.value)}
+                      placeholder="e.g. Cape Town trip"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="life-event-ends">Ends on (optional)</Label>
+                    <Input
+                      id="life-event-ends"
+                      type="date"
+                      value={lifeEventEnds}
+                      onChange={(e) => setLifeEventEnds(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -548,7 +639,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   ['pact_follow_up', 'Pact & impulse follow-ups'],
                   ['payday_companion', 'Payday companion'],
                   ['weekly_letter', 'Weekly letter from my persona'],
-                  ['family_nudges', 'Family-mode household nudges'],
+                  ['family_nudges', 'Family / couple household nudges'],
                 ] as const
               ).map(([key, label]) => (
                 <div key={key} className="flex min-h-12 items-center justify-between gap-3">
@@ -570,8 +661,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
             <CardContent className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
                 Plain-language controls for what Penda may do unprompted. After 10 confirmed
-                updates/deletes with no undo, Penda graduates to act without asking, undo
-                resets that trust.
+                edits with no undo, Penda may apply small updates without asking. Deletes and
+                large amount changes always ask. Undo resets that trust.
               </p>
               {profile?.ai_trust?.auto_loose && aiConsent.act_without_confirm ? (
                 <div
@@ -582,7 +673,8 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                     color: 'var(--foreground)',
                   }}
                 >
-                  Penda can act without asking, undo anytime in{' '}
+                  Penda can apply small edits without asking. Deletes still need a yes. Undo anytime
+                  in{' '}
                   <Link to="/ai-actions" className="font-medium underline underline-offset-2">
                     AI actions
                   </Link>
@@ -592,15 +684,17 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               {(
                 [
                   ['unprompted_coaching', 'Unprompted coaching nudges'],
-                  ['act_without_confirm', 'Act without confirming (updates/deletes)'],
+                  ['act_without_confirm', 'Act without confirming (small edits only)'],
                 ] as const
               ).map(([key, label]) => (
                 <div key={key} className="flex min-h-12 items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{label}</p>
-                    {key === 'act_without_confirm' && profile?.ai_trust?.auto_loose ? (
+                    {key === 'act_without_confirm' ? (
                       <p className="text-xs text-muted-foreground">
-                        Graduated from confirmed actions, turn off anytime to require asks again
+                        {profile?.ai_trust?.auto_loose
+                          ? 'Graduated from confirmed edits. Deletes and large changes still ask.'
+                          : 'When on, small edits skip the yes/no card. Deletes always ask.'}
                       </p>
                     ) : null}
                   </div>
@@ -680,8 +774,9 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   { to: '/activity', label: 'Activity log', icon: ClockCounterClockwise },
                   { to: '/ai-actions', label: 'AI action audit', icon: ClipboardText },
                   { to: '/missions', label: 'Missions', icon: Path },
+                  { to: '/radar', label: 'Money radar', icon: Path },
                   { to: '/business', label: 'Business hub', icon: Briefcase },
-                  { to: '/family', label: 'Family hub', icon: Users },
+                  { to: '/family', label: 'Family / couple hub', icon: Users },
                 ] as const
               ).map(({ to, label, icon: Icon }) => (
                 <Link

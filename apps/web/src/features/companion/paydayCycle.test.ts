@@ -46,4 +46,24 @@ describe('buildPaydayMessage', () => {
     expect(msg.body).toMatch(/short/)
     expect(msg.chatSeed).toMatch(/payday/)
   })
+
+  it('offers catch-up instead of allocate when day balance is gone', () => {
+    const msg = buildPaydayMessage({
+      phase: 'day',
+      currency: 'ZMW',
+      typicalAmountMinor: 500_000,
+      availableBalanceMinor: -13_200,
+    })
+    expect(msg.body).toMatch(/spent already|catch-up/i)
+    expect(msg.chatSeed).toMatch(/catch up/i)
+  })
+
+  it('offers catch-up on post-payday when balance is gone', () => {
+    const msg = buildPaydayMessage({
+      phase: 'post',
+      currency: 'ZMW',
+      availableBalanceMinor: 0,
+    })
+    expect(msg.body).toMatch(/spent down|catch-up/i)
+  })
 })

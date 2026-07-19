@@ -10,6 +10,11 @@ describe('evidenceForInsight', () => {
 
   it('explains family tips', () => {
     const ev = evidenceForInsight('family-allowance-low:a1')
-    expect(ev.summary).toMatch(/Household/)
+    expect(ev.summary).toMatch(/Household|couple/i)
+  })
+
+  it('explains radar and merchant signals', () => {
+    expect(evidenceForInsight('radar:2026-07-20').summary).toMatch(/radar/i)
+    expect(evidenceForInsight('quiet:netflix').summary).toMatch(/subscription|Merchant/i)
   })
 })

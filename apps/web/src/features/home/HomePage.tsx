@@ -9,7 +9,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { AiMark } from '@/components/AiInsight'
 import { Microphone } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
-import { cardAccentClass, spectrumEdgeClass } from '@/components/ui/cardAccent'
+import { cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
@@ -50,9 +50,11 @@ import { computeSafeToSpend } from '@/features/planning/spendingPlan'
 import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
 import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
+import { useDebts } from '@/features/debts/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { PERSONALITIES, DEFAULT_COMPANION_PREFS } from '@/features/profile/types'
 import { upsertCoachingNotification } from '@/features/notifications/api'
+import { explainSafeToSpend } from '@/features/planning/safeToSpendExplain'
 import { ImpulsePauseSheet } from '@/features/impulse/ImpulsePauseSheet'
 import { IMPULSE_THRESHOLD_MINOR, useImpulseStore } from '@/features/impulse/impulseStore'
 import { usePacts } from '@/features/pacts/hooks'
@@ -68,6 +70,20 @@ import {
   useRespondToCheckin,
 } from '@/features/companion/hooks'
 import { projectCashflow } from '@/features/cashflow/projection'
+import { useLatestReconciliation } from '@/features/reconciliation/hooks'
+import { GettingStartedCard } from '@/features/onboarding/GettingStartedCard'
+import {
+  buildGettingStartedSteps,
+  isDayZero,
+  isGettingStartedComplete,
+  isWalkthroughActive,
+  loadGettingStarted,
+  patchGettingStarted,
+  type GettingStartedState,
+  type GettingStartedStepId,
+} from '@/features/onboarding/gettingStarted'
+import { useOnboardingStore } from '@/features/onboarding/onboardingStore'
+import { currencySymbol } from '@/lib/currencies'
 
 /** Split a formatted currency string into whole and decimal parts for big-number display. */
 function splitBalance(amountMinor: number, currency: string): { whole: string; decimal: string; symbol: string } {
@@ -118,6 +134,7 @@ export function HomePage() {
   const { data: budgetProgress = [] } = useBudgetProgress(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
+  const { data: debts = [] } = useDebts(wallet?.id)
   const { data: plan } = useSpendingPlan(wallet?.id, localMonthStart())
 
   const createTransaction = useCreateTransaction(wallet?.id)
@@ -139,6 +156,7 @@ export function HomePage() {
   const { data: companionCheckins = [] } = useCompanionCheckins(wallet?.id)
   const { data: weeklyLetter } = useLatestWeeklyLetter(wallet?.id)
   const respondCheckin = useRespondToCheckin(wallet?.id)
+  const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -146,7 +164,10 @@ export function HomePage() {
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const [needsYouTick, setNeedsYouTick] = useState(0)
   const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
+  const [gettingStarted, setGettingStarted] = useState<GettingStartedState | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
+  const walkthroughActive = useOnboardingStore((s) => s.walkthroughActive)
+  const setWalkthroughActive = useOnboardingStore((s) => s.setWalkthroughActive)
 
   useWalletRealtime(wallet?.id)
   const offlineQueue = useOfflinePending()
@@ -156,6 +177,32 @@ export function HomePage() {
   useEffect(() => {
     if (!chatOpen) setNeedsYouTick((n) => n + 1)
   }, [chatOpen])
+
+  useEffect(() => {
+    if (!wallet?.id) {
+      setGettingStarted(null)
+      return
+    }
+    setGettingStarted(loadGettingStarted(wallet.id))
+    if (isWalkthroughActive(wallet.id)) setWalkthroughActive(true)
+  }, [wallet?.id, setWalkthroughActive])
+
+  // Auto-hide residual checklist when every leftover step is done.
+  useEffect(() => {
+    if (!wallet?.id || !gettingStarted || gettingStarted.dismissed) return
+    const steps = buildGettingStartedSteps({
+      state: gettingStarted,
+      hasTransactions: transactions.length > 0,
+      hasReconciled: !!latestReconciliation,
+    })
+    if (!isGettingStartedComplete(steps)) return
+    setGettingStarted(patchGettingStarted(wallet.id, { dismissed: true }))
+  }, [
+    wallet?.id,
+    gettingStarted,
+    transactions.length,
+    latestReconciliation,
+  ])
 
   function openVoiceCapture(el?: HTMLElement | null) {
     if (el) captureOverlayOrigin(el)
@@ -199,6 +246,23 @@ export function HomePage() {
     currency: wallet?.base_currency ?? 'USD',
   })
   // Hooks below must stay unconditional, companion signals use the same data.
+  const companionSafeDailyMinor = (() => {
+    if (!plan) return null
+    const now = new Date()
+    const monthSpent = transactions
+      .filter((tx) => tx.type === 'expense' && tx.transaction_date.startsWith(localMonthPrefix(now)))
+      .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
+    return computeSafeToSpend({
+      intendedMinor: plan.intended_amount_minor,
+      spentMinor: monthSpent,
+      upcomingFixedMinor:
+        upcomingFixedCosts(recurring, localDateStr(now), localMonthEnd(now)).totalMinor +
+        totalMonthlyGoalReserve(goals, now),
+      monthStart: localMonthStart(now),
+      now,
+    }).perDayMinor
+  })()
+
   const companionSignals = buildCompanionHomeSignals(
     {
       prefs: profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS,
@@ -234,6 +298,9 @@ export function HomePage() {
       weeklyLetterTeaser: weeklyLetter
         ? `${weeklyLetter.title}: ${weeklyLetter.body.slice(0, 120)}…`
         : null,
+      debts,
+      lifeEvent: profile?.life_event ?? null,
+      safeDailyMinor: companionSafeDailyMinor,
     },
     {
       openChat: (seed, opts) => openChat(seed, { autoSend: opts?.autoSend, mode: 'full' }),
@@ -351,7 +418,13 @@ export function HomePage() {
   if (isAuthLoading) return null
   if (!session) return <Navigate to="/login" replace />
   if (isWalletLoading) return null
-  if (wallets.length === 0) return <OnboardingScreen />
+  if (
+    wallets.length === 0 ||
+    walkthroughActive ||
+    (!!wallet && isWalkthroughActive(wallet.id))
+  ) {
+    return <OnboardingScreen />
+  }
   if (!wallet) return null
 
   const currency = wallet.base_currency
@@ -415,7 +488,12 @@ export function HomePage() {
   const last7Spent = transactions
     .filter((tx) => tx.type === 'expense' && tx.transaction_date >= weekCutoffStr)
     .reduce((sum, tx) => sum + tx.amount_minor, 0)
-  const buffer = suggestBufferFromIncome(transactions)
+  const buffer = suggestBufferFromIncome(transactions, {
+    availableBalanceMinor: balanceMinor,
+  })
+  const dayZero = isDayZero(transactions.length)
+  const sym = currencySymbol(currency)
+
   const weekInsight =
     buffer != null
       ? `That ${formatMoney(buffer.incomeTx.amount_minor, currency)} cash-in is large. Move ${formatMoney(buffer.suggestMinor, currency)} to a buffer for next month?`
@@ -425,6 +503,33 @@ export function HomePage() {
 
   function askAboutInsight(text: string) {
     openChat(`${text}. Tell me more / what should I do?`, { autoSend: true, mode: 'full' })
+  }
+
+  const gettingStartedSteps = buildGettingStartedSteps({
+    state: gettingStarted ?? { dismissed: false, balanceTouched: false, planPeeked: false },
+    hasTransactions: transactions.length > 0,
+    hasReconciled: !!latestReconciliation,
+  })
+  const residualSteps = gettingStartedSteps.filter((s) => !s.done)
+  const showGettingStarted =
+    !!gettingStarted &&
+    !gettingStarted.dismissed &&
+    residualSteps.length > 0 &&
+    !isGettingStartedComplete(gettingStartedSteps)
+
+  function handleGettingStartedStep(id: GettingStartedStepId) {
+    if (!wallet) return
+    if (id === 'log') {
+      openChat(`I spent ${sym}`, { mode: 'quick' })
+      return
+    }
+    if (id === 'balance') {
+      setGettingStarted(patchGettingStarted(wallet.id, { balanceTouched: true }))
+      openChat(`My balance is ${sym}`, { mode: 'full' })
+      return
+    }
+    setGettingStarted(patchGettingStarted(wallet.id, { planPeeked: true }))
+    navigate('/budgets')
   }
 
   function runInsightAction(insightText: string, action: CoachingAction) {
@@ -438,51 +543,85 @@ export function HomePage() {
     openChat(followUp, { autoSend: true, mode: 'full' })
   }
 
-  const insightCards: InsightCard[] = [
-    {
-      id: 'week-read',
-      variant: 'read',
-      tone: buffer != null ? 'warm' : 'default',
-      text: weekInsight,
-      action: { label: 'Ask Penda', onTap: () => askAboutInsight(weekInsight) },
-      onWhy: () => setWhyInsightId('week-read'),
-    },
-    ...companionSignals.cards.map((card) => ({
-      ...card,
-      onWhy: () => setWhyInsightId(card.id),
-    })),
-    ...(companionSignals.quiet
-      ? []
-      : coachingInsights.map((insight) => ({
-          id: insight.id,
-          variant: 'tip' as const,
-          tone: insight.tone,
-          label: 'Pro tip:',
-          text: applyMoodToCoachingText(insight.text, companionSignals.moodTone),
-          action: insight.action
-            ? {
-                label: insight.action.label,
-                onTap: () => runInsightAction(insight.text, insight.action!),
-              }
-            : { label: 'Ask Penda', onTap: () => askAboutInsight(insight.text) },
-          onWhy: () => setWhyInsightId(insight.id),
-        }))),
-  ]
-
   const needsYou = loadNeedsYou(wallet.id)
   // Touch needsYouTick so the list refreshes after chat closes.
   void needsYouTick
 
-  const auraLabel =
-    balanceMinor > monthSpending ? 'Comfortable' : balanceMinor > 0 ? 'Tight' : 'Stretched'
+  const auraLabel = dayZero
+    ? 'Getting started'
+    : balanceMinor > monthSpending
+      ? 'Comfortable'
+      : balanceMinor > 0
+        ? 'Tight'
+        : 'Stretched'
 
-  const briefPrimary = weekInsight
-  const briefSecondary =
-    auraLabel === 'Comfortable'
+  const briefPrimary = dayZero
+    ? "Your wallet is ready. Log one purchase and I'll start building your picture."
+    : weekInsight
+  const briefSecondary = dayZero
+    ? 'You can also tell me your current balance, or peek at the starter plan I set up.'
+    : auraLabel === 'Comfortable'
       ? "You're in good shape. Ask me before a big buy if you want a second opinion."
       : auraLabel === 'Tight'
         ? 'Things are tight. I can help you pick what to pause.'
         : "Cash is stretched. Let's find the leak together."
+
+  const insightCards: InsightCard[] = [
+    {
+      id: 'week-read',
+      variant: 'read',
+      tone: dayZero || buffer != null ? 'warm' : 'default',
+      text: briefPrimary,
+      secondary: briefSecondary,
+      actions: [
+        {
+          label: dayZero ? 'Log a purchase' : 'What should I do?',
+          onTap: () =>
+            openChat(dayZero ? `I spent ${sym}` : `${briefPrimary}. Tell me more / what should I do?`, {
+              mode: dayZero ? 'quick' : 'full',
+              autoSend: !dayZero,
+            }),
+        },
+        {
+          label: dayZero ? 'Set my balance' : 'Log a purchase',
+          variant: 'outline',
+          onTap: () => {
+            if (dayZero) {
+              setGettingStarted(patchGettingStarted(wallet.id, { balanceTouched: true }))
+              openChat(`My balance is ${sym}`, { mode: 'full' })
+              return
+            }
+            openChat('I spent ', { mode: 'quick' })
+          },
+        },
+      ],
+      onWhy: dayZero ? undefined : () => setWhyInsightId('week-read'),
+    },
+    ...(dayZero
+      ? []
+      : [
+          ...companionSignals.cards.map((card) => ({
+            ...card,
+            onWhy: () => setWhyInsightId(card.id),
+          })),
+          ...(companionSignals.quiet
+            ? []
+            : coachingInsights.map((insight) => ({
+                id: insight.id,
+                variant: 'tip' as const,
+                tone: insight.tone,
+                label: 'Pro tip:',
+                text: applyMoodToCoachingText(insight.text, companionSignals.moodTone),
+                action: insight.action
+                  ? {
+                      label: insight.action.label,
+                      onTap: () => runInsightAction(insight.text, insight.action!),
+                    }
+                  : { label: 'Ask Penda', onTap: () => askAboutInsight(insight.text) },
+                onWhy: () => setWhyInsightId(insight.id),
+              }))),
+        ]),
+  ]
 
   const upcoming = (() => {
     const today = localDateStr(now)
@@ -543,11 +682,13 @@ export function HomePage() {
               <span
                 style={{
                   color:
-                    auraLabel === 'Comfortable'
+                    auraLabel === 'Getting started'
                       ? 'var(--mint)'
-                      : auraLabel === 'Tight'
-                        ? 'var(--apricot)'
-                        : 'var(--rose)',
+                      : auraLabel === 'Comfortable'
+                        ? 'var(--mint)'
+                        : auraLabel === 'Tight'
+                          ? 'var(--apricot)'
+                          : 'var(--rose)',
                 }}
               >
                 {auraLabel}
@@ -564,45 +705,18 @@ export function HomePage() {
           </button>
         </section>
 
-        {/* Daily briefing. AI speaks first */}
-        <section className={cn(spectrumEdgeClass, 'flex flex-col gap-3 rounded-[1.75rem] p-4 shadow-[var(--shadow-card)]')}>
-          <div className="flex items-start gap-3">
-            <AiMark className="mt-0.5 size-9" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Penda brief
-              </p>
-              <p className="mt-1 text-base font-medium leading-snug text-foreground">{briefPrimary}</p>
-              <p className="mt-1.5 text-sm text-muted-foreground">{briefSecondary}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={(e) => {
-                captureOverlayOrigin(e.currentTarget)
-                askAboutInsight(briefPrimary)
-              }}
-            >
-              What should I do?
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                captureOverlayOrigin(e.currentTarget)
-                openChat('I spent ', { mode: 'quick' })
-              }}
-            >
-              Log a purchase
-            </Button>
-          </div>
-        </section>
+        {showGettingStarted && (
+          <GettingStartedCard
+            steps={residualSteps}
+            onDismiss={() =>
+              setGettingStarted(patchGettingStarted(wallet.id, { dismissed: true }))
+            }
+            onStep={handleGettingStartedStep}
+          />
+        )}
 
         {/* Pending confirms. ActionTrail continuity */}
-        {needsYou.length > 0 && (
+        {!dayZero && needsYou.length > 0 && (
           <section>
             <SectionHeader title="Penda needs you" />
             <div className="flex flex-col gap-2">
@@ -630,7 +744,7 @@ export function HomePage() {
           </section>
         )}
 
-        {companionCheckins.length > 0 && (
+        {!dayZero && companionCheckins.length > 0 && (
           <section>
             <SectionHeader title="Check-ins" />
             <div className="flex flex-col gap-2">
@@ -651,38 +765,52 @@ export function HomePage() {
           </section>
         )}
 
-        {/* Primary number, demoted carousel */}
-        <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none]">
+        {/* Primary number, demoted carousel. Day zero: balance only. */}
+        <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-8 -mt-4">
           <div className="flex w-max gap-3 px-4 snap-x snap-mandatory pb-[3rem]">
             <HeroCard
               tone="iris"
               className="snap-start"
-              label={blindBudgeting ? 'Status' : hasBudgets ? 'Safe to spend' : 'Balance'}
+              onClick={
+                !dayZero && hasBudgets && !blindBudgeting && planSafe
+                  ? () => setWhyInsightId('safe-to-spend')
+                  : undefined
+              }
+              label={
+                dayZero
+                  ? 'Balance'
+                  : blindBudgeting
+                    ? 'Status'
+                    : hasBudgets
+                      ? 'Safe to spend'
+                      : 'Balance'
+              }
               value={
-                blindBudgeting ? (
-                  auraLabel
-                ) : hasBudgets ? (
-                  <HiddenAmount>
-                    <span>
-                      {formatMoney(safeToSpendPerDayMinor, currency)}
-                      <span className="text-base font-medium opacity-80"> /day</span>
-                    </span>
-                  </HiddenAmount>
-                ) : (
+                dayZero || (!hasBudgets && !blindBudgeting) ? (
                   <HiddenAmount>
                     <span>
                       {isNegative ? '−' : ''}
                       {balanceParts.symbol}
+                      {balanceParts.symbol.endsWith(' ') ? '' : '\u00A0'}
                       {balanceParts.whole}
                       {balanceParts.decimal && (
-                        <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
+                        <span className="text-lg font-semibold opacity-80">{balanceParts.decimal}</span>
                       )}
+                    </span>
+                  </HiddenAmount>
+                ) : blindBudgeting ? (
+                  auraLabel
+                ) : (
+                  <HiddenAmount>
+                    <span>
+                      {formatMoney(safeToSpendPerDayMinor, currency)}
+                      <span className="text-sm font-medium opacity-80">{'\u00A0'}/day</span>
                     </span>
                   </HiddenAmount>
                 )
               }
             />
-            {hasBudgets && (
+            {!dayZero && hasBudgets && (
               <HeroCard
                 tone="mint"
                 className="snap-start"
@@ -692,16 +820,17 @@ export function HomePage() {
                     <span>
                       {isNegative ? '−' : ''}
                       {balanceParts.symbol}
+                      {balanceParts.symbol.endsWith(' ') ? '' : '\u00A0'}
                       {balanceParts.whole}
                       {balanceParts.decimal && (
-                        <span className="text-xl font-semibold opacity-80">{balanceParts.decimal}</span>
+                        <span className="text-lg font-semibold opacity-80">{balanceParts.decimal}</span>
                       )}
                     </span>
                   </HiddenAmount>
                 }
               />
             )}
-            {topGoal && (
+            {!dayZero && topGoal && (
               <HeroCard
                 tone="apricot"
                 className="snap-start"
@@ -711,29 +840,33 @@ export function HomePage() {
                   <HiddenAmount>
                     <span>
                       {topGoalPct ?? 0}
-                      <span className="text-xl font-semibold opacity-80">%</span>
+                      <span className="text-lg font-semibold opacity-80">%</span>
                     </span>
                   </HiddenAmount>
                 }
               />
             )}
-            <HeroCard
-              tone="sun"
-              className="snap-start"
-              onClick={() => navigate('/transactions')}
-              label="This month"
-              value={
-                blindBudgeting ? (
-                  '···'
-                ) : (
-                  <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
-                )
-              }
-            />
+            {!dayZero && (
+              <HeroCard
+                tone="sun"
+                className="snap-start"
+                onClick={() => navigate('/transactions')}
+                label="This month"
+                value={
+                  blindBudgeting ? (
+                    '···'
+                  ) : (
+                    <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
+                  )
+                }
+              />
+            )}
           </div>
         </div>
 
-        {upcoming && (
+        <InsightCarousel cards={insightCards} />
+
+        {!dayZero && upcoming && (
           <section>
             <SectionHeader title="Upcoming" actionLabel="See all" actionTo="/cashflow" />
             <button
@@ -769,13 +902,6 @@ export function HomePage() {
                 </div>
               </div>
             </button>
-          </section>
-        )}
-
-        {insightCards.length > 1 && (
-          <section className="-mt-4">
-            <SectionHeader title="More from Penda" />
-            <InsightCarousel cards={insightCards.slice(1)} />
           </section>
         )}
 
@@ -921,7 +1047,26 @@ export function HomePage() {
       <WhyNudgeSheet
         open={!!whyInsightId}
         onOpenChange={(open) => !open && setWhyInsightId(null)}
-        evidence={whyInsightId ? evidenceForInsight(whyInsightId) : null}
+        evidence={
+          whyInsightId === 'safe-to-spend' && planSafe
+            ? {
+                insightId: 'safe-to-spend',
+                ...explainSafeToSpend(
+                  {
+                    intendedMinor: plan!.intended_amount_minor,
+                    spentMinor: monthSpentForPlan,
+                    upcomingFixedMinor: planSafe.reservedFixedMinor,
+                    daysLeftInMonth: planSafe.daysLeftInclusive,
+                    safeDailyMinor: planSafe.perDayMinor,
+                    safeTotalMinor: planSafe.discretionaryRemainingMinor,
+                  },
+                  (m) => formatMoney(m, currency),
+                ),
+              }
+            : whyInsightId
+              ? evidenceForInsight(whyInsightId)
+              : null
+        }
       />
 
       <BottomNav />

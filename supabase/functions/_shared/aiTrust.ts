@@ -21,6 +21,18 @@ export const DEFAULT_AI_TRUST: AiTrust = {
 
 export const GRADUATE_THRESHOLD = 10
 
+/** Money-field delta that always requires a confirm card (aligned with impulse pause). */
+export const HIGH_IMPACT_AMOUNT_MINOR = 100_000
+
+export type MutationKind = 'update' | 'delete'
+
+export const DEFAULT_AI_CONSENT: AiConsent = {
+  auto_log_sms: true,
+  act_without_confirm: false,
+  parse_clipboard: true,
+  unprompted_coaching: true,
+}
+
 export function normalizeAiTrust(raw: unknown): AiTrust {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_AI_TRUST }
   const o = raw as Record<string, unknown>
@@ -41,9 +53,46 @@ export function normalizeAiConsent(raw: unknown): AiConsent {
   }
 }
 
-/** Manual consent or graduated auto_loose, skip Yes/No card. */
+/** Manual consent or graduated auto_loose. Does not by itself authorize deletes. */
 export function mayActWithoutConfirm(consent: AiConsent, trust: AiTrust): boolean {
   return consent.act_without_confirm || trust.auto_loose
+}
+
+/**
+ * Whether a staged mutation may skip the Yes/No card.
+ * - Deletes always require confirm.
+ * - High-impact money edits always require confirm.
+ * - Other updates may auto-apply when consent/trust allows.
+ */
+export function mayAutoApplyMutation(
+  kind: MutationKind,
+  consent: AiConsent,
+  trust: AiTrust,
+  opts?: { highImpact?: boolean },
+): boolean {
+  if (kind === 'delete') return false
+  if (opts?.highImpact) return false
+  return mayActWithoutConfirm(consent, trust)
+}
+
+/** True when any money column in the patch moves by the high-impact threshold. */
+export function patchIsHighImpact(
+  patch: Record<string, unknown>,
+  before: Record<string, unknown>,
+  thresholdMinor = HIGH_IMPACT_AMOUNT_MINOR,
+): boolean {
+  let moneyFieldsChanged = 0
+  for (const [key, raw] of Object.entries(patch)) {
+    if (key === '__before' || !key.endsWith('_minor')) continue
+    moneyFieldsChanged += 1
+    const after = Number(raw)
+    const prev = Number(before[key])
+    if (!Number.isFinite(after)) continue
+    const prevSafe = Number.isFinite(prev) ? prev : 0
+    if (Math.abs(after - prevSafe) >= thresholdMinor) return true
+  }
+  // Changing multiple money fields at once is high-impact even if each delta is smaller.
+  return moneyFieldsChanged >= 2
 }
 
 export function withSuccessfulConfirm(trust: AiTrust): { trust: AiTrust; graduated: boolean } {

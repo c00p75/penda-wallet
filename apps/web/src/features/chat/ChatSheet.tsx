@@ -4,7 +4,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Maximize2, Send, X } from 'lucide-react'
 import { Camera, Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
-import { undoSoftDeletedTransaction } from '@/features/audit/api'
+import {
+  fetchAiPendingAction,
+  softDeleteCreatedTransaction,
+  undoAiAction,
+  undoCreatedEntity,
+  undoSoftDeletedTransaction,
+} from '@/features/audit/api'
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -44,7 +50,8 @@ import { invalidateAfterChatResponse, useConfirmAiAction, useSendChatMessage } f
 import { suggestedPromptsFor } from './suggestedPrompts'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
-import type { ChatAction, ChatMessage, PendingAction } from './types'
+import { resolveUndoTargets } from './chatUndo'
+import type { ChatAction, ChatMessage, ChatUndoTarget, PendingAction } from './types'
 import { useMemories } from '@/features/memory/hooks'
 import { usePacts } from '@/features/pacts/hooks'
 import { buildContinuityOpener } from '@/features/companion/continuity'
@@ -76,6 +83,8 @@ interface ChatSheetProps {
   onNewTopic?: () => void
   currency?: string
   pageContext?: PageContext
+  /** Zero-history wallet: setup-oriented empty prompts and copy. */
+  isFirstRun?: boolean
 }
 
 // A press shorter than this counts as a tap (hands-free record); longer counts
@@ -133,6 +142,7 @@ export function ChatSheet({
   onNewTopic,
   currency = 'USD',
   pageContext,
+  isFirstRun = false,
 }: ChatSheetProps) {
   const navigate = useNavigate()
   const sym = currencySymbol(currency)
@@ -237,7 +247,11 @@ export function ChatSheet({
       autoSentRef.current = true
       onAutoSendConsumed?.()
       submitText(initialInput)
-    } else if (!autoSend) {
+      return
+    }
+    // Prefill only when not auto-sending. After auto-send, consumeAutoSend flips
+    // autoSend→false while prefill may still be set; don't re-fill the input.
+    if (!autoSend && !autoSentRef.current) {
       setInput(initialInput)
     }
     // submitText is a stable closure over state we intentionally read at fire time.
@@ -335,7 +349,7 @@ export function ChatSheet({
     if (hasPending || liveActions.length > 0) onModeChange?.('full')
   }, [mode, messages, actionStatus, liveActions, onModeChange])
 
-  const emptyPrompts = suggestedPromptsFor(pageContext, currency)
+  const emptyPrompts = suggestedPromptsFor(pageContext, currency, { isFirstRun })
 
   // Appends a message, keeping the list capped to what we're willing to persist.
   function pushMessage(message: ChatMessage) {
@@ -440,12 +454,14 @@ export function ChatSheet({
       result.actions && result.actions.length > 0
         ? withViewHrefs(result.actions)
         : finalizeLiveActions(liveActionsRef.current)
+    const undoTargets = resolveUndoTargets({ actions })
     const reply: ChatMessage = {
       id: bubbleId,
       role: 'assistant',
       text: result.reply,
       pendingActions: result.pendingActions?.length ? result.pendingActions : undefined,
       actions: actions.length > 0 ? actions : undefined,
+      undoTargets: undoTargets.length > 0 ? undoTargets : undefined,
       autoApplied: result.autoApplied || undefined,
     }
     replaceMessage(bubbleId, reply)
@@ -645,11 +661,23 @@ export function ChatSheet({
       const res = await confirmAction.mutateAsync({ actionId: action.id, decision })
       setActionStatus((prev) => ({ ...prev, [action.id]: res.status }))
       const targetId = res.targetId ?? action.targetId
-      const canUndoDelete =
-        decision === 'confirm' &&
-        (res.kind ?? action.kind) === 'delete' &&
-        res.domain === 'transaction' &&
-        !!targetId
+      const confirmedActions =
+        decision === 'confirm'
+          ? withViewHrefs([
+              {
+                // Keep the pending-action id so Undo can call undoAiAction.
+                id: action.id,
+                tool: action.kind === 'delete' ? 'delete_record' : 'update_record',
+                domain: res.domain,
+                label: action.kind === 'delete' ? 'Deleted' : 'Updated',
+                summary: res.summary,
+                status: 'done' as const,
+                targetId,
+              },
+            ])
+          : undefined
+      const undoTargets =
+        decision === 'confirm' ? resolveUndoTargets({ actions: confirmedActions }) : []
       pushMessage({
         id: nextId(),
         role: 'assistant',
@@ -659,20 +687,8 @@ export function ChatSheet({
             : 'No worries. I left it as it was.',
         viewHref:
           decision === 'confirm' ? viewHrefFor(res.domain, targetId) : undefined,
-        undoTransactionId: canUndoDelete ? targetId : undefined,
-        actions: decision === 'confirm'
-          ? withViewHrefs([
-              {
-                id: nextId(),
-                tool: action.kind === 'delete' ? 'delete_record' : 'update_record',
-                domain: res.domain,
-                label: action.kind === 'delete' ? 'Deleted' : 'Updated',
-                summary: res.summary,
-                status: 'done',
-                targetId,
-              },
-            ])
-          : undefined,
+        undoTargets: undoTargets.length > 0 ? undoTargets : undefined,
+        actions: confirmedActions,
       })
     } catch (error) {
       const networkFail =
@@ -697,18 +713,54 @@ export function ChatSheet({
     }
   }
 
-  async function undoFromChat(transactionId: string, messageId: string) {
-    if (!session?.user.id) return
+  async function undoTarget(target: ChatUndoTarget, userId: string): Promise<void> {
+    switch (target.type) {
+      case 'pending_action': {
+        const action = await fetchAiPendingAction(target.actionId)
+        if (!action) throw new Error('That change is no longer available to undo.')
+        await undoAiAction(action, userId)
+        return
+      }
+      case 'soft_delete_transaction':
+        await softDeleteCreatedTransaction(target.transactionId, userId)
+        return
+      case 'restore_soft_deleted_transaction':
+        await undoSoftDeletedTransaction(target.transactionId, userId)
+        return
+      case 'delete_created':
+        await undoCreatedEntity(target.domain, target.targetId, userId)
+        return
+    }
+  }
+
+  async function undoFromChat(targets: ChatUndoTarget[], messageId: string) {
+    if (!session?.user.id || targets.length === 0) return
     try {
-      await undoSoftDeletedTransaction(transactionId, session.user.id)
-      toast('Transaction restored. AI confirmations are required again.')
+      for (const target of targets) {
+        await undoTarget(target, session.user.id)
+      }
+      toast('Undone. AI confirmations are required again.')
       setMessages((prev) =>
         prev.map((m) =>
           m.id === messageId
-            ? { ...m, undoTransactionId: undefined, text: `${m.text}\n\n(Undone.)` }
+            ? {
+                ...m,
+                undoTransactionId: undefined,
+                undoTargets: undefined,
+                text: `${m.text}\n\n(Undone.)`,
+              }
             : m,
         ),
       )
+      const userId = session.user.id
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+      void queryClient.invalidateQueries({ queryKey: ['savings-goals'] })
+      void queryClient.invalidateQueries({ queryKey: ['debts'] })
+      void queryClient.invalidateQueries({ queryKey: ['categories'] })
+      void queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', userId] })
+      void queryClient.invalidateQueries({ queryKey: ['profile', userId] })
+      void queryClient.invalidateQueries({ queryKey: ['insights', walletId] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not undo.')
     }
@@ -996,11 +1048,15 @@ export function ChatSheet({
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  {isQuick
-                    ? `Say or type a purchase like "spent ${sym}12 on coffee" and I'll log it.`
-                    : pageContext?.page && pageContext.page !== 'home'
-                      ? `Ask me anything about this screen, or hold the mic to talk.`
-                      : `Tell me about a purchase or payment like "spent ${sym}12 on coffee", or hold the mic to say it.`}
+                  {isFirstRun
+                    ? isQuick
+                      ? `Let's log your first purchase. Try "spent ${sym}12 on coffee", or tell me your balance.`
+                      : `Your wallet is new. Log a purchase, share your balance, or ask me to set a simple budget.`
+                    : isQuick
+                      ? `Say or type a purchase like "spent ${sym}12 on coffee" and I'll log it.`
+                      : pageContext?.page && pageContext.page !== 'home'
+                        ? `Ask me anything about this screen, or hold the mic to talk.`
+                        : `Tell me about a purchase or payment like "spent ${sym}12 on coffee", or hold the mic to say it.`}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {emptyPrompts.map((prompt) => (
@@ -1049,8 +1105,12 @@ export function ChatSheet({
                   </div>
                   {(() => {
                     const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)
+                    const undoTargets = resolveUndoTargets(m)
                     const showAudit =
-                      trail.length > 0 || m.autoApplied || m.undoTransactionId || m.viewHref
+                      trail.length > 0 ||
+                      m.autoApplied ||
+                      undoTargets.length > 0 ||
+                      m.viewHref
                     if (!showAudit) return null
                     return (
                       <ActionTrail
@@ -1075,13 +1135,13 @@ export function ChatSheet({
                                 View
                               </Button>
                             )}
-                            {m.undoTransactionId && (
+                            {undoTargets.length > 0 && (
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 className="h-7 px-2.5 text-xs"
-                                onClick={() => void undoFromChat(m.undoTransactionId!, m.id)}
+                                onClick={() => void undoFromChat(undoTargets, m.id)}
                               >
                                 Undo
                               </Button>

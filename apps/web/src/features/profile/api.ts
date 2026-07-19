@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { normalizeNotificationPrefs } from '@/features/notifications/prefs'
 import { normalizeCompanionPrefs } from '@/features/companion/companionPrefs'
+import { normalizeLifeEvent } from '@/features/lifeEvents/types'
 import {
   DEFAULT_AI_CONSENT,
   DEFAULT_AI_TRUST,
@@ -35,6 +36,7 @@ function normalizeProfile(row: Record<string, unknown>): Profile {
     round_up_enabled: Boolean(row.round_up_enabled),
     pay_yourself_first_pct: Number(row.pay_yourself_first_pct ?? 0),
     habits_goal_id: (row.habits_goal_id as string | null) ?? null,
+    life_event: normalizeLifeEvent(row.life_event),
   }
 }
 

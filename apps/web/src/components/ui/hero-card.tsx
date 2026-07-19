@@ -49,7 +49,7 @@ export function HeroCard({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={cn(
-        'relative isolate min-h-[9.5rem] w-[11.5rem] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
+        'relative isolate min-h-[9.5rem] w-[13rem] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
         onClick && 'transition-transform active:scale-[0.98]',
         className,
       )}
@@ -59,12 +59,14 @@ export function HeroCard({
       }}
     >
       {blob && <HeroBlob tone={tone} className="-right-4 -bottom-6 size-28 rotate-12" />}
-      <div className="relative z-10 flex h-full flex-col justify-between gap-3">
+      <div className="relative z-10 flex h-full min-w-0 flex-col justify-between gap-3">
         {label != null && (
           <p className="text-sm font-medium text-white/85">{label}</p>
         )}
         {value != null && (
-          <p className="text-3xl font-bold leading-none tracking-tight tabular-nums">{value}</p>
+          <p className="whitespace-nowrap text-2xl font-bold leading-none tracking-tight tabular-nums">
+            {value}
+          </p>
         )}
         {children}
       </div>

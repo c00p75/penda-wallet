@@ -4,7 +4,11 @@ import type { Budget } from '@/features/budgets/types'
 import type { SavingsGoal } from '@/features/goals/types'
 import { formatMoney } from '@/lib/money'
 import { suggestBudgets } from '@/features/budgets/suggestBudgets'
+import { walletBalanceMinor } from '@/features/planning/walletBalance'
 import { detectGhostLeaks } from './detectGhostLeaks'
+
+/** Don't suggest parking/stashing below this (e.g. ZMW 50). */
+const MIN_PARK_MINOR = 5_000
 
 export type CoachingKind = 'attention' | 'opportunity' | 'celebration' | 'observability'
 
@@ -31,6 +35,8 @@ export interface CoachingContext {
   goals: SavingsGoal[]
   currency: string
   now?: Date
+  /** When set, overrides ledger-derived balance for park/stash gates. */
+  availableBalanceMinor?: number
 }
 
 const PRIORITY: Record<CoachingKind, number> = {
@@ -67,24 +73,30 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
   const insights: CoachingInsight[] = []
 
   // Opportunity, spent noticeably less than usual this week.
+  // Only suggest parking when cash is still there to move.
   const last7 = sumExpenseBetween(transactions, offsetStr(now, -7), offsetStr(now, 0))
   const priorFourWeeks = sumExpenseBetween(transactions, offsetStr(now, -35), offsetStr(now, -7))
   const baselineWeekly = priorFourWeeks / 4
+  const balance =
+    ctx.availableBalanceMinor ?? walletBalanceMinor(transactions)
   if (baselineWeekly >= 20000 && last7 <= baselineWeekly * 0.7) {
     const diff = Math.round(baselineWeekly - last7)
-    const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
-    insights.push({
-      id: 'opportunity:underspend',
-      kind: 'opportunity',
-      tone: 'warm',
-      amountMinor: diff,
-      text: goal
-        ? `You spent ${formatMoney(diff, currency)} less than usual this week, want to move it toward "${goal.name}"?`
-        : `You spent ${formatMoney(diff, currency)} less than usual this week. A great moment to stash it.`,
-      action: goal
-        ? { label: `Fund ${goal.name}`, kind: 'fund-goal', goalId: goal.id }
-        : { label: 'See goals', kind: 'view-goals' },
-    })
+    const parkable = Math.min(diff, Math.max(0, balance))
+    if (parkable >= MIN_PARK_MINOR) {
+      const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
+      insights.push({
+        id: 'opportunity:underspend',
+        kind: 'opportunity',
+        tone: 'warm',
+        amountMinor: parkable,
+        text: goal
+          ? `You spent ${formatMoney(diff, currency)} less than usual this week, want to move ${formatMoney(parkable, currency)} toward "${goal.name}"?`
+          : `You spent ${formatMoney(diff, currency)} less than usual this week. A great moment to stash ${formatMoney(parkable, currency)}.`,
+        action: goal
+          ? { label: `Fund ${goal.name}`, kind: 'fund-goal', goalId: goal.id }
+          : { label: 'See goals', kind: 'view-goals' },
+      })
+    }
   }
 
   // Observability, a category with a clear pattern but no budget.

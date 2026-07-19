@@ -4,11 +4,20 @@ Penda is an AI-first money companion, not a budgeting app with a chatbot. The
 guiding question for everything below: does it make Penda feel more like *an
 intelligence that manages your money* and less like *a ledger you operate*?
 
-Last updated: 2026-07-18 (rev 19)
+Last updated: 2026-07-19 (rev 20)
 
 ---
 
-## ✅ Recently shipped: mobile secondary surfaces + SMS + EAS (rev 19)
+## ✅ Recently shipped: advanced companion surfaces (rev 20)
+
+- Money radar (`/radar`): 14-day bill/debt/income obligations, salary-day split plan,
+  protect-this-weekend mission, merchant/subscription signals, soft income-band benchmarks
+- Life-event modes (Settings) + couple mode + Family/Couple hub copy
+- Pact stakes (charity / friend honor system); coach/advisor seat label for viewers
+- Business hub AR aging + top customers; safe-to-spend explainability (tap hero → Why)
+- Home companion cards for radar / weekend / merchants / life events / salary plan
+
+## ✅ Previously shipped: mobile secondary surfaces + SMS + EAS (rev 19)
 
 - Native screens: cashflow, journal, simulator, business, family, challenges,
   missions, settle-up, activity log, AI actions audit
@@ -80,9 +89,13 @@ persona starters).
 - Period profit, cash runway, AR from owed-to-me debts, tax set-aside %: `/business`
 - **Still open:** Mobile-money payment requests / invoices (external rails)
 
-### The Family Mode Wedge: ✅ shipped
+### The Family / Couple Mode Wedge: ✅ shipped
 - Household plan snapshot, member allocations, assigned allowances, settle-up link,
   invite CTA: `/family`
+- Couple mode: joint plan + private envelopes framing on the same hub
+
+### Money radar & autopilots: ✅ shipped
+- Obligation radar, salary-day orchestrator, protect weekend, merchant brain, peer benchmarks lite
 
 ### Onboarding Enrichment: ✅ shipped
 Primary goal, household/team size, notification ask, income range, gender,

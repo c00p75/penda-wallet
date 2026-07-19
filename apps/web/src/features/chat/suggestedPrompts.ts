@@ -7,6 +7,11 @@ export type PromptSeed = {
   autoSend?: boolean
 }
 
+export type SuggestedPromptOpts = {
+  /** Zero-history wallet: offer setup prompts instead of data-dependent ones. */
+  isFirstRun?: boolean
+}
+
 /**
  * Screen-aware empty-state prompts so chat feels like a companion that already
  * knows where the user is, not a generic chatbot.
@@ -14,8 +19,18 @@ export type PromptSeed = {
 export function suggestedPromptsFor(
   pageContext: PageContext | undefined,
   currency = 'USD',
+  opts: SuggestedPromptOpts = {},
 ): PromptSeed[] {
   const sym = currencySymbol(currency)
+
+  if (opts.isFirstRun) {
+    return [
+      { label: `I spent ${sym}`, autoSend: false },
+      { label: `My balance is ${sym}`, autoSend: false },
+      { label: 'I get paid on ', autoSend: false },
+      { label: 'Help me set a simple budget', autoSend: true },
+    ]
+  }
 
   switch (pageContext?.page) {
     case 'budgets':

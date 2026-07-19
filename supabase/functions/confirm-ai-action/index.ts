@@ -66,7 +66,22 @@ Deno.serve(async (req) => {
     const newStatus = body.decision === 'cancel' ? 'cancelled' : 'confirmed'
     const claimed = await claim(supabase, pending.id, newStatus)
     if (!claimed) {
-      return respond({ error: 'That action was already resolved, please refresh.' }, 409)
+      // Lost race with another tab/flush: return the winner's terminal status
+      // so offline queues can drop the item instead of retrying forever.
+      const { data: latest } = await supabase
+        .from('ai_pending_actions')
+        .select('status, domain, summary, target_id, kind')
+        .eq('id', pending.id)
+        .maybeSingle()
+      if (!latest) return respond({ error: 'That action no longer exists.' }, 404)
+      return respond({
+        ok: latest.status === 'confirmed' || latest.status === 'auto_applied',
+        status: latest.status,
+        domain: latest.domain,
+        summary: latest.summary,
+        targetId: latest.target_id,
+        kind: latest.kind,
+      })
     }
 
     if (body.decision === 'cancel') {

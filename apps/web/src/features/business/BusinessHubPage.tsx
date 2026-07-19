@@ -59,6 +59,23 @@ export function BusinessHubPage() {
 
   const receivables = debts.filter((d) => d.direction === 'owed_to_me' && d.balance_minor > 0)
   const arTotal = receivables.reduce((s, d) => s + d.balance_minor, 0)
+  const today = localDateStr(now)
+  function arBucket(due: string | null): 'current' | 'due_soon' | 'overdue' {
+    if (!due) return 'current'
+    if (due < today) return 'overdue'
+    const soon = new Date(now)
+    soon.setDate(soon.getDate() + 7)
+    if (due <= localDateStr(soon)) return 'due_soon'
+    return 'current'
+  }
+  const arAging = {
+    current: receivables.filter((d) => arBucket(d.due_date) === 'current'),
+    due_soon: receivables.filter((d) => arBucket(d.due_date) === 'due_soon'),
+    overdue: receivables.filter((d) => arBucket(d.due_date) === 'overdue'),
+  }
+  const topCustomers = [...receivables]
+    .sort((a, b) => b.balance_minor - a.balance_minor)
+    .slice(0, 5)
 
   const reservePct = profile?.tax_reserve_pct ?? 0
   const taxSetAside = Math.round((monthIncome * Number(reservePct)) / 100)
@@ -149,19 +166,57 @@ export function BusinessHubPage() {
         {receivables.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing owed to you right now.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {receivables.map((d) => (
-              <li
-                key={d.id}
-                className="flex items-center justify-between gap-2 rounded-2xl bg-muted/40 px-3 py-2 text-sm"
-              >
-                <span className="truncate">{d.counterparty || d.name}</span>
-                <span className="shrink-0 font-medium tabular-nums">
-                  <HiddenAmount>{formatMoney(d.balance_minor, currency)}</HiddenAmount>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {(
+                [
+                  ['current', 'Current', arAging.current],
+                  ['due_soon', '≤7d', arAging.due_soon],
+                  ['overdue', 'Overdue', arAging.overdue],
+                ] as const
+              ).map(([key, label, rows]) => (
+                <div key={key} className="rounded-2xl bg-muted/40 px-2 py-2">
+                  <p className="text-[11px] text-muted-foreground">{label}</p>
+                  <p className="text-sm font-semibold tabular-nums">
+                    <HiddenAmount>
+                      {formatMoney(
+                        rows.reduce((s, d) => s + d.balance_minor, 0),
+                        currency,
+                      )}
+                    </HiddenAmount>
+                  </p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs font-medium text-muted-foreground">Top customers</p>
+            <ul className="flex flex-col gap-2">
+              {topCustomers.map((d) => {
+                const bucket = arBucket(d.due_date)
+                return (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between gap-2 rounded-2xl bg-muted/40 px-3 py-2 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <span className="truncate block">{d.counterparty || d.name}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {bucket === 'overdue'
+                          ? 'Overdue'
+                          : bucket === 'due_soon'
+                            ? `Due ${d.due_date}`
+                            : d.due_date
+                              ? `Due ${d.due_date}`
+                              : 'No due date'}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-medium tabular-nums">
+                      <HiddenAmount>{formatMoney(d.balance_minor, currency)}</HiddenAmount>
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </section>
 

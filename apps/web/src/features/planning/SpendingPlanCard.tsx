@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { currencySymbol } from '@/lib/currencies'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { localMonthEnd, localMonthStart } from '@/lib/dates'
 import type { Transaction } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
@@ -23,6 +26,36 @@ const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> 
   'on-track': { label: 'On track', className: 'text-primary' },
   'over-pace': { label: 'Spending fast', className: 'text-amber-600 dark:text-amber-400' },
   over: { label: 'Over plan', className: 'text-rose-600 dark:text-rose-400' },
+}
+
+const PACE_CHIP: Record<
+  SpendingPlanPace,
+  { bg: string; fg: string; iconBg: string; iconFg: string }
+> = {
+  ahead: {
+    bg: 'var(--mint-soft)',
+    fg: 'var(--mint)',
+    iconBg: 'color-mix(in srgb, var(--mint) 18%, transparent)',
+    iconFg: 'var(--mint)',
+  },
+  'on-track': {
+    bg: 'var(--iris-soft)',
+    fg: 'var(--iris)',
+    iconBg: 'color-mix(in srgb, var(--iris) 18%, transparent)',
+    iconFg: 'var(--iris)',
+  },
+  'over-pace': {
+    bg: 'var(--apricot-soft)',
+    fg: 'var(--apricot)',
+    iconBg: 'color-mix(in srgb, var(--apricot) 18%, transparent)',
+    iconFg: 'var(--apricot)',
+  },
+  over: {
+    bg: 'var(--rose-soft)',
+    fg: 'var(--rose)',
+    iconBg: 'color-mix(in srgb, var(--rose) 18%, transparent)',
+    iconFg: 'var(--rose)',
+  },
 }
 
 function monthStartOf(now: Date): string {
@@ -68,10 +101,13 @@ export function SpendingPlanCard({
   walletId,
   currency,
   transactions,
+  /** `compact` = one-line plan summary for the steer journey (edit expands in place). */
+  variant = 'default',
 }: {
   walletId: string
   currency: string
   transactions: Transaction[]
+  variant?: 'default' | 'compact'
 }) {
   const now = new Date()
   const month = monthStartOf(now)
@@ -87,6 +123,7 @@ export function SpendingPlanCard({
   const [editing, setEditing] = useState(false)
   const [amount, setAmount] = useState('')
   const [reflection, setReflection] = useState('')
+  const sym = currencySymbol(currency)
 
   useEffect(() => {
     setReflection(plan?.reflection ?? '')
@@ -99,6 +136,13 @@ export function SpendingPlanCard({
   // Fixed spend Penda has noticed on its own (rent, subscriptions) even where
   // no recurring rule was registered, so the assist can skip asking about it.
   const detected = detectRecurringSpend(transactions, { now })
+
+  function startEditing() {
+    if (plan) {
+      setAmount(String(fromMinorUnits(plan.intended_amount_minor)))
+    }
+    setEditing(true)
+  }
 
   async function saveIntention() {
     const value = Number(amount)
@@ -161,14 +205,42 @@ export function SpendingPlanCard({
   const seedAmountMinor =
     incomeBaseline?.isIrregular ? incomeBaseline.conservativeMinor : (retroSeedMinor ?? incomeBaseline?.conservativeMinor ?? null)
 
+  // Prefill new-plan form when a seed is available and the field is still empty.
+  useEffect(() => {
+    if (plan || editing || amount) return
+    if (seedAmountMinor != null) setAmount(String(fromMinorUnits(seedAmountMinor)))
+  }, [plan, editing, amount, seedAmountMinor])
+
   // Empty / editing state, set the intention.
   if (!plan || editing) {
+    const isEdit = !!plan && editing
+    const seedPlaceholder = seedAmountMinor
+      ? fromMinorUnits(seedAmountMinor).toString()
+      : '12000'
+
     return (
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <Target className="size-5 text-primary" weight="duotone" />
-          <p className="font-medium">This month, I intend to spend…</p>
+      <div
+        className={cn(
+          'flex flex-col gap-3.5 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-soft)]',
+          cardAccentClass(isEdit ? 'iris' : undefined),
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
+            <Target className="size-5" weight="duotone" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold leading-tight">
+              {isEdit ? `Edit ${monthLabel} plan` : 'This month, I intend to spend…'}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {isEdit
+                ? 'Change your total intention. Envelopes stay as they are until you adjust them.'
+                : `One number for ${monthLabel}. Next you’ll split it into envelopes.`}
+            </p>
+          </div>
         </div>
+
         {retro && (
           <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{prevMonthLabel} recap: </span>
@@ -188,7 +260,9 @@ export function SpendingPlanCard({
             out.
           </div>
         )}
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-2 rounded-2xl bg-muted/40 px-3 py-2 ring-1 ring-border/60 focus-within:ring-primary/40">
+          <span className="shrink-0 text-sm font-semibold text-muted-foreground">{sym}</span>
           <Input
             type="number"
             inputMode="decimal"
@@ -196,22 +270,35 @@ export function SpendingPlanCard({
             autoFocus
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={
-              plan
-                ? fromMinorUnits(plan.intended_amount_minor).toString()
-                : seedAmountMinor
-                  ? fromMinorUnits(seedAmountMinor).toString()
-                  : '12000'
-            }
+            onFocus={(e) => e.currentTarget.select()}
+            placeholder={isEdit ? undefined : seedPlaceholder}
+            className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
           />
-          <Button onClick={saveIntention} disabled={upsert.isPending}>
-            Set plan
+        </div>
+
+        <div className="flex gap-2">
+          {isEdit && (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setEditing(false)
+                setAmount('')
+              }}
+            >
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="button"
+            className="flex-1"
+            onClick={saveIntention}
+            disabled={upsert.isPending || !amount || Number(amount) <= 0}
+          >
+            {isEdit ? 'Save plan' : 'Set plan'}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          A single intention for {monthLabel}. Penda paces you against it. Amounts in {currency}.
-          Set it and Penda will help you break it into budgets (or skip and do it yourself).
-        </p>
       </div>
     )
   }
@@ -233,74 +320,205 @@ export function SpendingPlanCard({
     .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const vsLastMonthMinor = prevMonthSpentMinor - spentMinor
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1 px-1">
-        <p className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Current overview
-        </p>
-        <div className="flex items-baseline justify-between">
-          <p className="text-sm font-medium">{monthLabel} plan</p>
-          <button type="button" onClick={() => setEditing(true)} className="text-sm font-semibold text-primary">
-            {pct}% used
-          </button>
-        </div>
-      </div>
+  const remainingMinor = plan.intended_amount_minor - spentMinor
+  const paceAccent =
+    status.pace === 'over' || status.pace === 'over-pace'
+      ? 'rose'
+      : status.pace === 'ahead'
+        ? 'mint'
+        : 'iris'
 
-      <div className="rounded-3xl border bg-card p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-3xl font-bold leading-none tracking-tight text-primary">
-              {formatMoney(spentMinor, currency)}
+  // Steer journey: same three-band structure as edit (header → amount → actions).
+  if (variant === 'compact') {
+    const chip = PACE_CHIP[status.pace]
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className={cn(
+          'flex w-full flex-col gap-3.5 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+          cardAccentClass(paceAccent),
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden
+            className="grid size-10 shrink-0 place-items-center rounded-2xl"
+            style={{ background: chip.iconBg, color: chip.iconFg }}
+          >
+            <Target className="size-5" weight="duotone" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="font-semibold leading-tight">{monthLabel} plan</p>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={{ background: chip.bg, color: chip.fg }}
+              >
+                {pace.label}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+              {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
+              {' · '}
+              {pct}% used
+              {prevMonthSpentMinor > 0 && (
+                <>
+                  {' · '}
+                  <HiddenAmount>{formatMoney(Math.abs(vsLastMonthMinor), currency)}</HiddenAmount>
+                  {vsLastMonthMinor >= 0 ? ' less' : ' more'} than {prevMonthLabel}
+                </>
+              )}
             </p>
-            <p className="mt-1.5 text-sm text-muted-foreground">Spent so far</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-sm font-semibold">{formatMoney(plan.intended_amount_minor, currency)}</p>
-            <p className="text-xs text-muted-foreground">Total budget</p>
           </div>
         </div>
 
-        <Progress value={pct} className="mt-4 h-2" />
+        <div className="rounded-2xl bg-muted/40 px-3 py-2.5 ring-1 ring-border/60">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                {remainingMinor >= 0 ? 'Left in plan' : 'Over plan'}
+              </p>
+              <p className="mt-0.5 text-xl font-bold leading-none tracking-tight tabular-nums">
+                <HiddenAmount>{formatMoney(Math.abs(remainingMinor), currency)}</HiddenAmount>
+              </p>
+            </div>
+            <div className="min-w-0 text-right">
+              <p className="text-[11px] font-medium text-muted-foreground">Intention</p>
+              <p className="mt-0.5 text-sm font-semibold leading-none tabular-nums">
+                <HiddenAmount>{formatMoney(plan.intended_amount_minor, currency)}</HiddenAmount>
+              </p>
+            </div>
+          </div>
+          <Progress value={pct} className="mt-2.5 h-1.5" />
+        </div>
+
+        <div className="flex gap-2">
+          <span className="flex h-9 min-w-0 flex-1 items-center justify-center truncate rounded-full border border-border/70 px-3 text-sm font-medium tabular-nums text-muted-foreground">
+            Spent <HiddenAmount>{formatMoney(spentMinor, currency)}</HiddenAmount>
+          </span>
+          <span className="flex h-9 flex-1 items-center justify-center gap-0.5 rounded-full bg-primary text-sm font-medium text-primary-foreground">
+            Edit plan
+            <ChevronRight className="size-3.5" />
+          </span>
+        </div>
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className={cn(
+          'flex flex-col gap-4 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-soft)]',
+          cardAccentClass(paceAccent),
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              {monthLabel} plan
+            </p>
+            <p className="mt-1.5 text-2xl font-bold leading-none tracking-tight tabular-nums">
+              <HiddenAmount>{formatMoney(Math.abs(remainingMinor), currency)}</HiddenAmount>
+              <span className="ml-1.5 text-sm font-medium text-muted-foreground">
+                {remainingMinor >= 0 ? 'left' : 'over'}
+              </span>
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                status.pace === 'over'
+                  ? 'bg-[var(--rose-soft)] text-[var(--rose)]'
+                  : status.pace === 'over-pace'
+                    ? 'bg-[var(--apricot-soft)] text-[var(--apricot)]'
+                    : status.pace === 'ahead'
+                      ? 'bg-[var(--mint-soft)] text-[var(--mint)]'
+                      : 'bg-[var(--iris-soft)] text-[var(--iris)]',
+              )}
+            >
+              {pace.label}
+            </span>
+            <button
+              type="button"
+              onClick={startEditing}
+              className="text-xs font-medium text-primary"
+            >
+              Edit plan
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold tabular-nums">
+              <HiddenAmount>{formatMoney(spentMinor, currency)}</HiddenAmount>
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Spent so far</p>
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="truncate text-sm font-semibold tabular-nums">
+              <HiddenAmount>{formatMoney(plan.intended_amount_minor, currency)}</HiddenAmount>
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Total plan</p>
+          </div>
+        </div>
+
+        <div>
+          <Progress value={pct} className="h-2" />
+          <p className="mt-2 text-xs text-muted-foreground">
+            {pct}% used
+            {' · '}
+            {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
+            {' · '}
+            projected{' '}
+            <HiddenAmount>{formatMoney(status.projectedMinor, currency)}</HiddenAmount>
+          </p>
+        </div>
 
         {prevMonthSpentMinor > 0 && (
-          <div className="mt-4 flex items-center gap-1.5 border-t pt-3 text-sm">
+          <div className="flex items-center gap-1.5 border-t border-border/60 pt-3 text-sm">
             {vsLastMonthMinor >= 0 ? (
               <TrendDown className="size-3.5 shrink-0 text-[var(--mint)]" weight="bold" />
             ) : (
               <TrendUp className="size-3.5 shrink-0 text-[var(--rose)]" weight="bold" />
             )}
-            <span className={cn('font-medium', vsLastMonthMinor >= 0 ? 'text-[var(--mint)]' : 'text-[var(--rose)]')}>
-              {formatMoney(Math.abs(vsLastMonthMinor), currency)} {vsLastMonthMinor >= 0 ? 'less' : 'more'} than{' '}
-              {prevMonthLabel}
+            <span
+              className={cn(
+                'min-w-0 truncate font-medium',
+                vsLastMonthMinor >= 0 ? 'text-[var(--mint)]' : 'text-[var(--rose)]',
+              )}
+            >
+              <HiddenAmount>{formatMoney(Math.abs(vsLastMonthMinor), currency)}</HiddenAmount>
+              {vsLastMonthMinor >= 0 ? ' less' : ' more'} than {prevMonthLabel}
             </span>
-            <Link to="/analytics" className="ml-auto flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary">
-              View Details
+            <Link
+              to="/analytics"
+              className="ml-auto flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary"
+            >
+              Details
               <ChevronRight className="size-3.5" />
             </Link>
           </div>
         )}
       </div>
 
-      <p className="px-1 text-xs text-muted-foreground">
-        <span className={cn('font-medium', pace.className)}>{pace.label}</span>
-        {' · '}
-        {status.daysLeft > 0 ? `${status.daysLeft} days left` : 'Last day'}
-        {' · '}
-        projected to finish around {formatMoney(status.projectedMinor, currency)}
-      </p>
-
       <button
         type="button"
         onClick={planWithPenda}
-        className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
+        className={cn(
+          'flex items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+          cardAccentClass('iris'),
+        )}
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+        <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
           <Sparkle className="size-5" weight="fill" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium">Plan it with Penda</p>
-          <p className="text-sm text-muted-foreground">AI-generated financial strategy for {monthLabel}</p>
+          <p className="font-medium">Split with Penda</p>
+          <p className="text-sm text-muted-foreground">Turn the plan into a few envelopes</p>
         </div>
       </button>
 

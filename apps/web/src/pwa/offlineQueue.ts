@@ -1,5 +1,13 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { TransactionInput } from '@/features/transactions/types'
+import {
+  MAX_PENDING_AI_CONFIRMS,
+  MAX_PENDING_CHAT,
+  assertUnderCap,
+  confirmIdsToReplace,
+  shouldDropFailedAiConfirm,
+  sortByQueuedAt,
+} from './offlineQueueLogic'
 
 interface PendingTransaction {
   id: string
@@ -37,9 +45,6 @@ interface PendaDB extends DBSchema {
     value: PendingAiConfirm
   }
 }
-
-const MAX_PENDING_CHAT = 10
-const MAX_PENDING_AI_CONFIRMS = 20
 
 let dbPromise: Promise<IDBPDatabase<PendaDB>> | null = null
 
@@ -90,7 +95,7 @@ export async function removePendingTransaction(id: string): Promise<void> {
 export async function flushPendingTransactions(
   insert: (walletId: string, userId: string, input: TransactionInput) => Promise<unknown>,
 ): Promise<number> {
-  const pending = await listPendingTransactions()
+  const pending = sortByQueuedAt(await listPendingTransactions())
   let synced = 0
   for (const item of pending) {
     try {
@@ -107,9 +112,7 @@ export async function flushPendingTransactions(
 export async function enqueueChatMessage(walletId: string, text: string): Promise<PendingChatMessage> {
   const db = await getDb()
   const existing = await db.getAll('pending-chat-messages')
-  if (existing.length >= MAX_PENDING_CHAT) {
-    throw new Error('Too many queued chat messages, reconnect and try again.')
-  }
+  assertUnderCap(existing.length, MAX_PENDING_CHAT, 'chat messages')
   const pending: PendingChatMessage = {
     id: crypto.randomUUID(),
     wallet_id: walletId,
@@ -133,7 +136,7 @@ export async function removePendingChatMessage(id: string): Promise<void> {
 export async function flushPendingChatMessages(
   send: (walletId: string, text: string) => Promise<unknown>,
 ): Promise<number> {
-  const pending = await listPendingChatMessages()
+  const pending = sortByQueuedAt(await listPendingChatMessages())
   let synced = 0
   for (const item of pending) {
     try {
@@ -153,12 +156,13 @@ export async function enqueueAiConfirm(
 ): Promise<PendingAiConfirm> {
   const db = await getDb()
   const existing = await db.getAll('pending-ai-confirms')
-  if (existing.length >= MAX_PENDING_AI_CONFIRMS) {
-    throw new Error('Too many queued AI confirms, reconnect and try again.')
+  const replacing = confirmIdsToReplace(existing, actionId)
+  // Replacing a prior decision for the same action does not grow the queue.
+  if (replacing.length === 0) {
+    assertUnderCap(existing.length, MAX_PENDING_AI_CONFIRMS, 'AI confirms')
   }
-  // Replace any prior queued decision for the same action.
-  for (const item of existing) {
-    if (item.action_id === actionId) await db.delete('pending-ai-confirms', item.id)
+  for (const id of replacing) {
+    await db.delete('pending-ai-confirms', id)
   }
   const pending: PendingAiConfirm = {
     id: crypto.randomUUID(),
@@ -183,14 +187,20 @@ export async function removePendingAiConfirm(id: string): Promise<void> {
 export async function flushPendingAiConfirms(
   confirm: (actionId: string, decision: 'confirm' | 'cancel') => Promise<unknown>,
 ): Promise<number> {
-  const pending = await listPendingAiConfirms()
+  const pending = sortByQueuedAt(await listPendingAiConfirms())
   let synced = 0
   for (const item of pending) {
     try {
       await confirm(item.action_id, item.decision)
       await removePendingAiConfirm(item.id)
       synced++
-    } catch {
+    } catch (error) {
+      // Lost races / already-applied confirms must not stick forever.
+      if (shouldDropFailedAiConfirm(error)) {
+        await removePendingAiConfirm(item.id)
+        synced++
+        continue
+      }
       // Keep for next flush.
     }
   }

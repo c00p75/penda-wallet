@@ -73,6 +73,8 @@ export function buildPaydayMessage(opts: {
   currency: string
   freeBeforePaydayMinor?: number | null
   typicalAmountMinor?: number | null
+  /** Current wallet balance. Day/post allocate copy is suppressed when cash is gone. */
+  availableBalanceMinor?: number | null
 }): { title: string; body: string; chatSeed: string } {
   const free =
     opts.freeBeforePaydayMinor != null
@@ -80,6 +82,8 @@ export function buildPaydayMessage(opts: {
       : null
   const typical =
     opts.typicalAmountMinor != null ? formatMoney(opts.typicalAmountMinor, opts.currency) : null
+  const cashGone =
+    opts.availableBalanceMinor != null && opts.availableBalanceMinor <= 0
 
   if (opts.phase === 'pre') {
     return {
@@ -95,12 +99,27 @@ export function buildPaydayMessage(opts: {
   }
 
   if (opts.phase === 'day') {
+    if (cashGone) {
+      return {
+        title: 'Payday',
+        body: 'Payday cash looks spent already. Want a catch-up plan for the rest of the period?',
+        chatSeed: 'Help me catch up after payday spending.',
+      }
+    }
     return {
       title: 'Payday',
       body: typical
         ? `Payday energy. Typical take-home ~${typical}, shall we allocate it?`
         : `Payday. Want help splitting bills, buffer, and fun money?`,
       chatSeed: 'Help me allocate today’s payday.',
+    }
+  }
+
+  if (cashGone) {
+    return {
+      title: 'After payday',
+      body: 'Payday already looks spent down. Want a catch-up plan instead of an allocation check?',
+      chatSeed: 'Help me catch up after payday spending.',
     }
   }
 

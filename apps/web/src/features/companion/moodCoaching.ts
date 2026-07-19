@@ -71,7 +71,7 @@ export function moodPromptFragment(tone: MoodTone | null): string {
     return `\nThe user has been feeling upbeat lately. Celebrate wins briefly; it's fine to lean into goals.`
   }
   if (tone === 'stressed') {
-    return `\nThe user has been feeling stressed about money. Prefer reassurance and buffer ideas over alerts. Ask fewer questions. Never guilt-trip.`
+    return `\nThe user has been feeling stressed about money. Prefer reassurance over alerts. Only suggest parking or buffering money when cash remains. Ask fewer questions. Never guilt-trip.`
   }
   return `\nThe user has been feeling low. Keep replies short and kind. Skip optional tips unless they ask.`
 }

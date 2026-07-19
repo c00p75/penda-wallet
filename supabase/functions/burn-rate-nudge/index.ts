@@ -75,6 +75,7 @@ interface CategoryRow {
 
 const OPPORTUNITY_MIN_BASELINE_MINOR = 20_000
 const OPPORTUNITY_UNDERSPEND_FACTOR = 0.7
+const OPPORTUNITY_MIN_PARK_MINOR = 5_000
 const OBSERVABILITY_MIN_90D_TOTAL_MINOR = 15_000
 const OBSERVABILITY_MIN_COUNT = 2
 const CELEBRATION_MIN_PCT = 0.8
@@ -85,6 +86,14 @@ function sumExpense(rows: WideTxRow[], fromExclusive: string, throughInclusive: 
     .reduce((sum, t) => sum + t.amount_minor, 0)
 }
 
+function walletBalanceMinor(rows: WideTxRow[]): number {
+  return rows.reduce((sum, t) => {
+    if (t.type === 'income') return sum + t.amount_minor
+    if (t.type === 'expense') return sum - t.amount_minor
+    return sum
+  }, 0)
+}
+
 export function pickCoachingInsight(
   transactions: WideTxRow[],
   goals: GoalRow[],
@@ -92,25 +101,31 @@ export function pickCoachingInsight(
   budgets: BudgetRow[],
   now: Date,
   currency: string,
+  availableBalanceMinor?: number,
 ): CoachingResult | null {
   const daysAgoStr = (n: number) =>
     toStr(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - n)))
   const today = daysAgoStr(0)
 
   // Opportunity, spent noticeably less than the recent baseline this week.
+  // Only suggest parking when cash is still there to move.
   const last7 = sumExpense(transactions, daysAgoStr(7), today)
   const baselineWeekly = sumExpense(transactions, daysAgoStr(35), daysAgoStr(7)) / 4
+  const balance = availableBalanceMinor ?? walletBalanceMinor(transactions)
   if (baselineWeekly >= OPPORTUNITY_MIN_BASELINE_MINOR && last7 <= baselineWeekly * OPPORTUNITY_UNDERSPEND_FACTOR) {
     const diff = Math.round(baselineWeekly - last7)
-    const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
-    return {
-      kind: 'opportunity',
-      title: 'Nice spending week',
-      body: goal
-        ? `You spent ${fmt(diff, currency)} less than usual this week, want to move it toward "${goal.name}"?`
-        : `You spent ${fmt(diff, currency)} less than usual this week. A great moment to stash it.`,
-      url: '/goals',
-      meta: { diff_minor: diff, goal_id: goal?.id ?? null },
+    const parkable = Math.min(diff, Math.max(0, balance))
+    if (parkable >= OPPORTUNITY_MIN_PARK_MINOR) {
+      const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
+      return {
+        kind: 'opportunity',
+        title: 'Nice spending week',
+        body: goal
+          ? `You spent ${fmt(diff, currency)} less than usual this week, want to move ${fmt(parkable, currency)} toward "${goal.name}"?`
+          : `You spent ${fmt(diff, currency)} less than usual this week. A great moment to stash ${fmt(parkable, currency)}.`,
+        url: '/goals',
+        meta: { diff_minor: diff, parkable_minor: parkable, goal_id: goal?.id ?? null },
+      }
     }
   }
 
@@ -300,13 +315,15 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       supabase.from('categories').select('id, name').or(`wallet_id.eq.${walletId},wallet_id.is.null`),
     ])
 
+    const wideRows = (wideTx ?? []) as WideTxRow[]
     const coaching = pickCoachingInsight(
-      (wideTx ?? []) as WideTxRow[],
+      wideRows,
       (goals ?? []) as GoalRow[],
       (categories ?? []) as CategoryRow[],
       budgets,
       now,
       currency,
+      walletBalanceMinor(wideRows),
     )
     if (!coaching) return { skipped: 'nothing to say' }
 

@@ -19,6 +19,7 @@ export const CHAT_PAGES = [
   'ai-actions',
   'family',
   'settle-up',
+  'radar',
 ] as const
 
 export type ChatPage = (typeof CHAT_PAGES)[number]
@@ -54,6 +55,7 @@ export function pageContextFromPathname(pathname: string): PageContext | undefin
   if (pathname === '/ai-actions') return { page: 'ai-actions' }
   if (pathname === '/family') return { page: 'family' }
   if (pathname === '/settle-up') return { page: 'settle-up' }
+  if (pathname === '/radar') return { page: 'radar' }
   return undefined
 }
 

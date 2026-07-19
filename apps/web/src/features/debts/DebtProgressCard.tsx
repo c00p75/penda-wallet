@@ -1,7 +1,9 @@
-import { CheckCircle2 } from 'lucide-react'
 import { ArrowDownLeft, ArrowUpRight } from '@/components/icons/product'
 import { Progress } from '@/components/ui/progress'
+import { cardAccentClass } from '@/components/ui/cardAccent'
+import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import type { Debt } from './types'
 
 interface DebtProgressCardProps {
@@ -15,46 +17,70 @@ function formatDate(dateStr: string) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
   })
 }
 
 export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: DebtProgressCardProps) {
   const paidOff = debt.principal_minor > 0 ? 1 - Math.max(debt.balance_minor, 0) / debt.principal_minor : 0
+  const paidPct = Math.round(Math.min(Math.max(paidOff, 0), 1) * 100)
   const isSettled = debt.balance_minor <= 0
-  const DirectionIcon = debt.direction === 'i_owe' ? ArrowUpRight : ArrowDownLeft
+  const iOwe = debt.direction === 'i_owe'
+  const DirectionIcon = iOwe ? ArrowUpRight : ArrowDownLeft
+  const accent = isSettled ? 'mint' : iOwe ? 'rose' : 'mint'
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
-      <button type="button" onClick={onSelect} className="flex flex-col gap-2 text-left">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <DirectionIcon
-              className={`size-3.5 shrink-0 ${debt.direction === 'i_owe' ? 'text-[var(--status-critical)]' : 'text-[var(--status-good)]'}`}
-            />
-            <p className="truncate text-sm font-medium">{debt.name}</p>
+    <div
+      className={cn(
+        'flex flex-col gap-3 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-soft)]',
+        cardAccentClass(accent),
+      )}
+    >
+      <button type="button" onClick={onSelect} className="flex flex-col gap-3 text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span
+              aria-hidden
+              className={cn(
+                'grid size-10 shrink-0 place-items-center rounded-2xl',
+                isSettled
+                  ? 'bg-[var(--mint-soft)] text-[var(--mint)]'
+                  : iOwe
+                    ? 'bg-[var(--rose-soft)] text-[var(--rose)]'
+                    : 'bg-[var(--mint-soft)] text-[var(--mint)]',
+              )}
+            >
+              <DirectionIcon className="size-5" weight="bold" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{debt.name}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {isSettled ? 'Settled' : iOwe ? 'You owe' : 'Owed to you'}
+                {debt.counterparty ? ` · ${debt.counterparty}` : ''}
+                {!isSettled && debt.due_date ? ` · due ${formatDate(debt.due_date)}` : ''}
+              </p>
+            </div>
           </div>
-          <p className="shrink-0 text-sm font-medium">{formatMoney(Math.max(debt.balance_minor, 0), currency)}</p>
+          <div className="shrink-0 text-right">
+            <p className="text-sm font-bold tabular-nums">
+              <HiddenAmount>{formatMoney(Math.max(debt.balance_minor, 0), currency)}</HiddenAmount>
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {isSettled ? 'cleared' : 'left'}
+            </p>
+          </div>
         </div>
 
-        <Progress
-          value={Math.min(Math.max(paidOff, 0), 1) * 100}
-          className="h-1.5"
-          indicatorClassName={isSettled ? 'bg-[var(--status-good)]' : 'bg-primary'}
-        />
-
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {isSettled ? (
-            <>
-              <CheckCircle2 className="size-3.5 text-[var(--status-good)]" />
-              <span className="font-medium text-[var(--status-good)]">Settled</span>
-            </>
-          ) : (
-            <span>
-              {formatMoney(debt.balance_minor, currency)} of {formatMoney(debt.principal_minor, currency)} left
-              {debt.due_date && ` · due ${formatDate(debt.due_date)}`}
-            </span>
-          )}
+        <div>
+          <Progress
+            value={paidPct}
+            className="h-1.5"
+            indicatorClassName={isSettled ? 'bg-[var(--mint)]' : iOwe ? 'bg-[var(--rose)]' : 'bg-[var(--mint)]'}
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {paidPct}% paid
+            {' · '}
+            of <HiddenAmount>{formatMoney(debt.principal_minor, currency)}</HiddenAmount> principal
+          </p>
         </div>
       </button>
 
@@ -62,7 +88,7 @@ export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: Deb
         <button
           type="button"
           onClick={onLogPayment}
-          className="self-start text-xs font-medium text-primary hover:underline"
+          className="self-start rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/15"
         >
           Log a payment
         </button>

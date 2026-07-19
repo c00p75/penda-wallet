@@ -1,6 +1,7 @@
 import { formatMoney } from '@/lib/money'
 import { cardAccentClass, type CardAccent } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
+import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import type { Category } from '@/features/categories/types'
 import type { BudgetProgress } from './types'
 
@@ -17,15 +18,13 @@ function statusColorFor(pct: number): {
   bg: string
   fg: string
   accent: CardAccent
+  label: string
 } {
-  if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)', accent: 'rose' }
-  if (pct >= 0.8) return { bg: 'var(--apricot-soft)', fg: 'var(--apricot)', accent: 'apricot' }
-  return { bg: 'var(--mint-soft)', fg: 'var(--mint)', accent: 'mint' }
+  if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)', accent: 'rose', label: 'Over' }
+  if (pct >= 0.8) return { bg: 'var(--apricot-soft)', fg: 'var(--apricot)', accent: 'apricot', label: 'Warm' }
+  return { bg: 'var(--mint-soft)', fg: 'var(--mint)', accent: 'mint', label: 'On track' }
 }
 
-// A category without a custom color still needs visual variety in the grid , 
-// pick one of the brand tints deterministically from its id so the same
-// category always lands on the same color.
 const FALLBACK_TINTS = [
   { bg: 'var(--iris-soft)', fg: 'var(--iris)' },
   { bg: 'var(--apricot-soft)', fg: 'var(--apricot)' },
@@ -50,63 +49,55 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
   const remaining = cap - progress.spent_minor
   const status = statusColorFor(pct)
   const iconTint = iconTintFor(category)
-  const showEnvelopeRemaining = progress.rollover
 
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        'flex flex-col gap-3 rounded-[1.35rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.98]',
+        'flex flex-col gap-3 rounded-[1.5rem] bg-card p-3.5 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.98]',
         cardAccentClass(status.accent),
       )}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-2">
         <span
-          className="grid size-10 shrink-0 place-items-center rounded-2xl text-lg"
+          className="grid size-9 shrink-0 place-items-center rounded-2xl text-base"
           style={{ background: iconTint.bg, color: iconTint.fg }}
         >
           {category?.icon ?? '💰'}
         </span>
         <span
-          className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
+          className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
           style={{ background: status.bg, color: status.fg }}
         >
-          {pctLabel}% used
+          {status.label}
         </span>
       </div>
 
       <div className="min-w-0">
-        <p className="truncate font-medium">{category?.name ?? 'Overall'}</p>
-        {showEnvelopeRemaining ? (
-          <>
-            <p
-              className="mt-1 text-lg font-bold tabular-nums"
-              style={{ color: remaining >= 0 ? 'var(--mint)' : 'var(--rose)' }}
-            >
-              {formatMoney(Math.abs(remaining), currency)}
-              <span className="ml-1 text-sm font-medium text-muted-foreground">
-                {remaining >= 0 ? 'left' : 'over'}
-              </span>
-            </p>
-            <p className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
-              {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
-              {progress.carried_over_minor !== 0 && (
-                <>
-                  {' · '}
-                  {progress.carried_over_minor > 0 ? '+' : ''}
-                  {formatMoney(progress.carried_over_minor, currency)} rolled over
-                </>
-              )}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="mt-0.5 truncate text-sm tabular-nums text-muted-foreground">
-              {formatMoney(progress.spent_minor, currency)} of {formatMoney(cap, currency)}
-            </p>
-          </>
-        )}
+        <p className="truncate text-sm font-medium">{category?.name ?? 'Overall'}</p>
+        <p
+          className="mt-1 text-lg font-bold leading-none tabular-nums tracking-tight"
+          style={{ color: remaining >= 0 ? undefined : 'var(--rose)' }}
+        >
+          <HiddenAmount>{formatMoney(Math.abs(remaining), currency)}</HiddenAmount>
+          <span className="ml-1 text-xs font-medium text-muted-foreground">
+            {remaining >= 0 ? 'left' : 'over'}
+          </span>
+        </p>
+        <p className="mt-1 truncate text-[11px] tabular-nums text-muted-foreground">
+          <HiddenAmount>{formatMoney(progress.spent_minor, currency)}</HiddenAmount>
+          {' of '}
+          <HiddenAmount>{formatMoney(cap, currency)}</HiddenAmount>
+          {progress.rollover && progress.carried_over_minor !== 0 && (
+            <>
+              {' · '}
+              {progress.carried_over_minor > 0 ? '+' : ''}
+              <HiddenAmount>{formatMoney(progress.carried_over_minor, currency)}</HiddenAmount>
+              {' rolled'}
+            </>
+          )}
+        </p>
       </div>
 
       <div className="mt-auto h-1.5 w-full overflow-hidden rounded-full bg-muted">

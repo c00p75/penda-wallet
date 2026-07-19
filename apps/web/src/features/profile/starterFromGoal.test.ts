@@ -12,9 +12,12 @@ describe('starterGoalFromPrimary', () => {
     expect(starterGoalFromPrimary('save_for_something')?.name).toBe('My savings goal')
   })
 
-  it('skips debt and track-only picks', () => {
+  it('seeds a track-spending reminder goal', () => {
+    expect(starterGoalFromPrimary('track_spending')?.name).toBe('Know where it goes')
+  })
+
+  it('skips debt (seeded as a debt row) and null', () => {
     expect(starterGoalFromPrimary('pay_off_debt')).toBeNull()
-    expect(starterGoalFromPrimary('track_spending')).toBeNull()
     expect(starterGoalFromPrimary(null)).toBeNull()
   })
 })

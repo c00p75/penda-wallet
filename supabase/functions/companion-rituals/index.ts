@@ -2,13 +2,16 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
-import { loadEngagement, shouldSkipSoftNudge } from '../_shared/engagement.ts'
+import { loadEngagement } from '../_shared/engagement.ts'
 import { PERSONALITY_NAMES } from '../_shared/personas.ts'
+import { normalizeCompanionPrefs } from '../_shared/companionPrefs.ts'
 import {
-  normalizeCompanionPrefs,
-  recentMoodTone,
-  shouldQuietNudge,
-} from '../_shared/companionPrefs.ts'
+  classifyPactFollowUp,
+  companionRitualSkipReason,
+  cronSecretAuthorized,
+  daysAgo,
+  midpointDate,
+} from '../_shared/companionRitualGating.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -16,7 +19,7 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET')!
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
-  if (req.headers.get('X-Cron-Secret') !== CRON_SECRET) {
+  if (!cronSecretAuthorized(req.headers.get('X-Cron-Secret'), CRON_SECRET)) {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
@@ -75,9 +78,6 @@ async function ritualForUser(
 ) {
   const prefs = normalizeCompanionPrefs(profile.companion_prefs)
   const engagement = await loadEngagement(supabase, profile.id)
-  if (shouldSkipSoftNudge(engagement)) {
-    return { userId: profile.id, skipped: 'adaptive' }
-  }
 
   const { data: moodRows } = await supabase
     .from('ai_memories')
@@ -87,16 +87,16 @@ async function ritualForUser(
     .order('created_at', { ascending: false })
     .limit(5)
 
-  const mood = recentMoodTone(moodRows ?? [], now)
-  if (
-    shouldQuietNudge({
-      prefs,
-      hour: now.getUTCHours(),
-      dayOfWeek: now.getUTCDay(),
-      recentMood: mood,
-    })
-  ) {
-    return { userId: profile.id, skipped: 'quiet' }
+  const skip = companionRitualSkipReason({
+    engagement,
+    prefs,
+    hour: now.getUTCHours(),
+    dayOfWeek: now.getUTCDay(),
+    moodMemories: moodRows ?? [],
+    now,
+  })
+  if (skip) {
+    return { userId: profile.id, skipped: skip }
   }
 
   const { data: membership } = await supabase
@@ -163,17 +163,18 @@ async function sendPactFollowUps(
         tx.transaction_date >= pact.start_date &&
         tx.transaction_date <= pact.end_date,
     )
-    const mid = midpointDate(pact.start_date, pact.end_date)
-    let kind: 'midpoint' | 'end' | 'broken' | null = null
+    const kind = classifyPactFollowUp({
+      today,
+      startDate: pact.start_date,
+      endDate: pact.end_date,
+      broken,
+    })
     let message = ''
-    if (broken) {
-      kind = 'broken'
+    if (kind === 'broken') {
       message = `Your pact "${pact.description}" got tested. Want to reset it, or talk through what happened?`
-    } else if (today === mid) {
-      kind = 'midpoint'
+    } else if (kind === 'midpoint') {
       message = `Halfway through "${pact.description}". Still holding?`
-    } else if (today === pact.end_date) {
-      kind = 'end'
+    } else if (kind === 'end') {
       message = `You made it through "${pact.description}". Want to set the next one?`
     }
     if (!kind) continue
@@ -233,12 +234,31 @@ async function sendPaydayCompanion(
   else if (days === -1 || days === -2) phase = 'post'
   if (!phase) return false
 
+  let cashGone = false
+  if (phase === 'day' || phase === 'post') {
+    const { data: balTxs } = await supabase
+      .from('transactions')
+      .select('type, amount_minor, converted_amount_minor')
+      .eq('wallet_id', walletId)
+      .eq('user_confirmed', true)
+      .is('deleted_at', null)
+    const balance = (balTxs ?? []).reduce((sum, tx) => {
+      const amt = Number(tx.converted_amount_minor ?? tx.amount_minor ?? 0)
+      if (tx.type === 'income') return sum + amt
+      if (tx.type === 'expense') return sum - amt
+      return sum
+    }, 0)
+    cashGone = balance <= 0
+  }
+
   const message =
     phase === 'pre'
       ? `Payday is near (${nextIncome}). Want a short pre-payday plan?`
-      : phase === 'day'
-        ? `Payday today. Shall we allocate bills, buffer, and fun money?`
-        : `Payday just landed. Did you set aside savings first?`
+      : cashGone
+        ? `Payday cash looks spent already. Want a catch-up plan for the rest of the period?`
+        : phase === 'day'
+          ? `Payday today. Shall we allocate bills, buffer, and fun money?`
+          : `Payday just landed. Did you set aside savings first?`
 
   const dedupeKey = `payday:${phase}:${nextIncome}`
   const inserted = await insertCheckin(supabase, {
@@ -339,14 +359,22 @@ async function letterForWallet(
   const premiumOrAny = members ?? []
   if (premiumOrAny.length === 0) return { walletId, skipped: 'no_members' }
 
-  const { data: txs } = await supabase
-    .from('transactions')
-    .select('type, amount_minor, converted_amount_minor, category_id, categories(name)')
-    .eq('wallet_id', walletId)
-    .eq('user_confirmed', true)
-    .is('deleted_at', null)
-    .gte('transaction_date', periodStart)
-    .lte('transaction_date', periodEnd)
+  const [{ data: txs }, { data: balTxs }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('type, amount_minor, converted_amount_minor, category_id, categories(name)')
+      .eq('wallet_id', walletId)
+      .eq('user_confirmed', true)
+      .is('deleted_at', null)
+      .gte('transaction_date', periodStart)
+      .lte('transaction_date', periodEnd),
+    supabase
+      .from('transactions')
+      .select('type, amount_minor, converted_amount_minor')
+      .eq('wallet_id', walletId)
+      .eq('user_confirmed', true)
+      .is('deleted_at', null),
+  ])
 
   let income = 0
   let expense = 0
@@ -361,6 +389,13 @@ async function letterForWallet(
       byCat.set(name, (byCat.get(name) ?? 0) + amt)
     }
   }
+
+  const balanceMinor = (balTxs ?? []).reduce((sum, tx) => {
+    const amt = Number(tx.converted_amount_minor ?? tx.amount_minor ?? 0)
+    if (tx.type === 'income') return sum + amt
+    if (tx.type === 'expense') return sum - amt
+    return sum
+  }, 0)
 
   let topCategoryName: string | null = null
   let topCategoryMinor = 0
@@ -398,7 +433,9 @@ async function letterForWallet(
         ? `Biggest slice: ${topCategoryName} at ${formatMinor(topCategoryMinor, currency)}.`
         : null,
       net >= 0
-        ? 'One next move: park a slice of the surplus toward a goal.'
+        ? balanceMinor > 0
+          ? 'One next move: park a slice of the surplus toward a goal.'
+          : 'Week looked ahead on paper, but cash looks tight now. Want a catch-up plan?'
         : 'One next move: pick one leak to cut this week, open chat and we’ll choose together.',
     ]
       .filter(Boolean)
@@ -485,22 +522,10 @@ async function insertCheckin(
   return true
 }
 
-function midpointDate(start: string, end: string): string {
-  const a = Date.parse(`${start}T00:00:00Z`)
-  const b = Date.parse(`${end}T00:00:00Z`)
-  return new Date((a + b) / 2).toISOString().slice(0, 10)
-}
-
 function daysBetween(from: string, to: string): number {
   const a = Date.parse(`${from}T00:00:00Z`)
   const b = Date.parse(`${to}T00:00:00Z`)
   return Math.round((b - a) / 86_400_000)
-}
-
-function daysAgo(today: string, n: number): string {
-  const d = new Date(`${today}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() - n)
-  return d.toISOString().slice(0, 10)
 }
 
 function utcDateStr(d: Date): string {

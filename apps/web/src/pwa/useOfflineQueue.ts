@@ -11,6 +11,7 @@ import {
   listPendingChatMessages,
   listPendingTransactions,
 } from './offlineQueue'
+import { totalPendingCount } from './offlineQueueLogic'
 import { useOfflinePendingStore } from './offlinePendingStore'
 
 /**
@@ -27,7 +28,7 @@ export function useOfflineQueueSync() {
       listPendingChatMessages(),
       listPendingAiConfirms(),
     ])
-    setPendingCount(tx.length + chat.length + confirms.length)
+    setPendingCount(totalPendingCount(tx.length, chat.length, confirms.length))
   }, [setPendingCount])
 
   const flush = useCallback(async () => {
@@ -67,7 +68,12 @@ export function useOfflinePending() {
   const setPendingCount = useOfflinePendingStore((s) => s.setPendingCount)
 
   const refreshCount = useCallback(async () => {
-    setPendingCount((await listPendingTransactions()).length)
+    const [tx, chat, confirms] = await Promise.all([
+      listPendingTransactions(),
+      listPendingChatMessages(),
+      listPendingAiConfirms(),
+    ])
+    setPendingCount(totalPendingCount(tx.length, chat.length, confirms.length))
   }, [setPendingCount])
 
   return { pendingCount, refreshCount }

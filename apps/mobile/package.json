@@ -3,6 +3,7 @@
   "main": "index.js",
   "version": "1.0.0",
   "dependencies": {
+    "@penda/money-core": "*",
     "@expo-google-fonts/outfit": "^0.4.3",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -46,13 +47,15 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "eas-cli": "^21.0.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild",
     "build:dev": "eas build --profile development --platform all",

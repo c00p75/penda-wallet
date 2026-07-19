@@ -67,7 +67,12 @@ export function FamilyHubPage() {
   if (!wallet) return null
 
   const mode = profile?.mode ?? 'individual'
-  const allowances = goals.filter((g) => /allowance|pocket|kids?/i.test(g.name))
+  const isCouple = mode === 'couple'
+  const allowances = goals.filter((g) =>
+    isCouple
+      ? /allowance|pocket|private|envelope|personal/i.test(g.name)
+      : /allowance|pocket|kids?/i.test(g.name),
+  )
   const currency = wallet.base_currency
   const familyTips = detectFamilyCompanionTips({
     mode,
@@ -85,17 +90,33 @@ export function FamilyHubPage() {
     try {
       await createGoal.mutateAsync({
         input: {
-          name: memberId ? `${labelFor(memberId)} allowance` : 'Kids allowance',
-          icon: '🧒',
+          name: memberId
+            ? isCouple
+              ? `${labelFor(memberId)} private`
+              : `${labelFor(memberId)} allowance`
+            : isCouple
+              ? 'Private envelope'
+              : 'Kids allowance',
+          icon: isCouple ? '🔒' : '🧒',
           image_path: null,
           target_amount_minor: 50_000,
           target_date: null,
-          motivation: 'Pocket money for the household',
+          motivation: isCouple
+            ? 'No-questions private money'
+            : 'Pocket money for the household',
           assigned_member_id: memberId ?? null,
         },
         initialAmountMinor: 0,
       })
-      toast(memberId ? `Allowance for ${labelFor(memberId)} created.` : 'Allowance goal created.')
+      toast(
+        memberId
+          ? isCouple
+            ? `Private envelope for ${labelFor(memberId)} created.`
+            : `Allowance for ${labelFor(memberId)} created.`
+          : isCouple
+            ? 'Private envelope created.'
+            : 'Allowance goal created.',
+      )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -151,16 +172,28 @@ export function FamilyHubPage() {
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
-      <PageHeader title="Family hub" subtitle="Household plan & allowances" />
+      <PageHeader
+        title={isCouple ? 'Couple hub' : 'Family hub'}
+        subtitle={
+          isCouple
+            ? 'Joint plan, fair share & private envelopes'
+            : 'Household plan & allowances'
+        }
+      />
 
       <AiInsight
         featured
         askText={
-          familyTips[0]?.chatSeed ?? 'Help us stay on track as a household this month'
+          familyTips[0]?.chatSeed ??
+          (isCouple
+            ? 'Help us set a fair-share rule and stay kind about money this month'
+            : 'Help us stay on track as a household this month')
         }
       >
         {familyTips[0]?.text ??
-          `Your ${termFor(mode, 'plan').toLowerCase()} is the shared intention, invite members so everyone sees the same numbers and allocations.`}
+          (isCouple
+            ? `Your ${termFor('couple', 'plan').toLowerCase()} is shared; private envelopes stay private. Invite your partner from Profile.`
+            : `Your ${termFor(mode, 'plan').toLowerCase()} is the shared intention, invite members so everyone sees the same numbers and allocations.`)}
       </AiInsight>
       {familyTips[0] && (
         <Button
@@ -180,7 +213,9 @@ export function FamilyHubPage() {
             <Users className="size-6" weight="duotone" />
           </span>
           <div>
-            <p className="text-sm font-medium text-white/85">Household plan</p>
+            <p className="text-sm font-medium text-white/85">
+              {isCouple ? 'Joint plan' : 'Household plan'}
+            </p>
             {plan ? (
               <p className="mt-1 text-3xl font-bold tabular-nums">
                 <HiddenAmount>
@@ -197,21 +232,28 @@ export function FamilyHubPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <IconTile icon={Wallet} label="Open budgets" tone="mint" onClick={() => navigate('/budgets')} />
-        <IconTile icon={Baby} label="New allowance" tone="apricot" onClick={() => addAllowance()} />
+        <IconTile
+          icon={Baby}
+          label={isCouple ? 'Private envelope' : 'New allowance'}
+          tone="apricot"
+          onClick={() => addAllowance()}
+        />
         <IconTile icon={Users} label="Settle up" tone="iris" onClick={() => navigate('/settle-up')} />
         <IconTile
           icon={Users}
-          label="Invite member"
+          label={isCouple ? 'Invite partner' : 'Invite member'}
           tone="sun"
           onClick={() => navigate('/profile')}
         />
       </div>
 
       <section>
-        <SectionHeader title="Household members" />
+        <SectionHeader title={isCouple ? 'Partners' : 'Household members'} />
         {members.length === 0 ? (
           <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            Invite family from Profile → wallet settings.
+            {isCouple
+              ? 'Invite your partner from Profile → wallet settings.'
+              : 'Invite family from Profile → wallet settings.'}
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">
@@ -265,10 +307,16 @@ export function FamilyHubPage() {
       ) : null}
 
       <section>
-        <SectionHeader title="Allowances" actionLabel="+ New" onAction={() => addAllowance()} />
+        <SectionHeader
+          title={isCouple ? 'Private envelopes' : 'Allowances'}
+          actionLabel="+ New"
+          onAction={() => addAllowance()}
+        />
         {allowances.length === 0 ? (
           <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            Track pocket money as named savings goals, one per kid.
+            {isCouple
+              ? 'Track personal “no questions asked” money as named goals.'
+              : 'Track pocket money as named savings goals, one per kid.'}
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">

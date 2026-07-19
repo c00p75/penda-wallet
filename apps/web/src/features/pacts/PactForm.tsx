@@ -18,7 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Category } from '@/features/categories/types'
-import type { CommitmentPactInput } from './types'
+import { toMinorUnits } from '@/lib/money'
+import type { CommitmentPactInput, PactStakeKind } from './types'
 
 interface PactFormProps {
   open: boolean
@@ -45,23 +46,34 @@ export function PactForm({ open, onOpenChange, categories, goalId, goalName, onS
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [stakeKind, setStakeKind] = useState<PactStakeKind>('none')
+  const [stakeAmount, setStakeAmount] = useState('')
+  const [stakeNote, setStakeNote] = useState('')
 
   useEffect(() => {
     if (!open) return
     setDescription('')
     setCategoryId('')
     setEndDate(weekFromNowStr())
+    setStakeKind('none')
+    setStakeAmount('')
+    setStakeNote('')
   }, [open])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!description.trim() || !categoryId || !endDate) return
+    const amountMinor =
+      stakeKind !== 'none' && Number(stakeAmount) > 0 ? toMinorUnits(Number(stakeAmount)) : null
     await onSubmit({
       description: description.trim(),
       category_id: categoryId,
       goal_id: goalId ?? null,
       start_date: todayStr(),
       end_date: endDate,
+      stake_kind: stakeKind === 'none' ? 'none' : stakeKind,
+      stake_amount_minor: amountMinor,
+      stake_note: stakeNote.trim() || null,
     })
     onOpenChange(false)
   }
@@ -119,6 +131,49 @@ export function PactForm({ open, onOpenChange, categories, goalId, goalName, onS
               required
             />
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pact-stake">Stakes (optional)</Label>
+            <Select value={stakeKind} onValueChange={(v) => setStakeKind(v as PactStakeKind)}>
+              <SelectTrigger id="pact-stake" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No stakes</SelectItem>
+                <SelectItem value="charity">Charity pledge if I break it</SelectItem>
+                <SelectItem value="friend">Tell a friend / accountability</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Honor system — Penda won’t move money; it just holds you to the pledge.
+            </p>
+          </div>
+          {stakeKind !== 'none' ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pact-stake-amt">Stake amount</Label>
+                <Input
+                  id="pact-stake-amt"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={stakeAmount}
+                  onChange={(e) => setStakeAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pact-stake-note">Who / which cause?</Label>
+                <Input
+                  id="pact-stake-note"
+                  value={stakeNote}
+                  onChange={(e) => setStakeNote(e.target.value)}
+                  placeholder={stakeKind === 'charity' ? 'Local food bank' : 'Text Ama if I slip'}
+                />
+              </div>
+            </>
+          ) : null}
 
           <SheetFooter className="flex-row gap-2 px-0">
             <SheetClose asChild>
