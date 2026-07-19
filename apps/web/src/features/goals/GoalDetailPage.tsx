@@ -36,7 +36,7 @@ export function GoalDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: wallet } = useCurrentWallet()
 
-  const { data: goals = [], isLoading: goalsLoading } = useSavingsGoals(wallet?.id)
+  const { data: goals = [], isLoading: goalsLoading, isFetching: goalsFetching } = useSavingsGoals(wallet?.id)
   const goal = goals.find((g) => g.id === id) ?? null
 
   const { data: contributions = [] } = useContributions(goal?.id)
@@ -56,7 +56,11 @@ export function GoalDetailPage() {
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
-  if (!goal) return goalsLoading ? null : <Navigate to="/goals" replace />
+  // Opening a freshly-created goal (e.g. the chat "View" link) races the
+  // savings-goals cache: the list is cached-but-stale, so isLoading is false
+  // while the new goal hasn't landed yet. Wait for the in-flight refetch
+  // before bouncing to the list, otherwise "View" drops the user on /goals.
+  if (!goal) return goalsLoading || goalsFetching ? null : <Navigate to="/goals" replace />
 
   const currency = wallet.base_currency
   const goalPacts = pacts.filter((p) => p.goal_id === goal.id)
