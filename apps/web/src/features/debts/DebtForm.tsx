@@ -7,6 +7,7 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet'
+import { ArrowUpRightIcon } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,9 +23,22 @@ interface DebtFormProps {
   onSubmit: (input: DebtInput) => Promise<void>
   onDelete?: () => Promise<void>
   isSubmitting?: boolean
+  /** Leave chat and go to the list/hub page (label e.g. "View debts"). */
+  onOpenInApp?: () => void
+  openInAppLabel?: string
 }
 
-export function DebtForm({ open, onOpenChange, currency, debt, onSubmit, onDelete, isSubmitting }: DebtFormProps) {
+export function DebtForm({
+  open,
+  onOpenChange,
+  currency,
+  debt,
+  onSubmit,
+  onDelete,
+  isSubmitting,
+  onOpenInApp,
+  openInAppLabel = 'View debts',
+}: DebtFormProps) {
   const [name, setName] = useState('')
   const [direction, setDirection] = useState<DebtDirection>('i_owe')
   const [counterparty, setCounterparty] = useState('')
@@ -165,6 +179,18 @@ export function DebtForm({ open, onOpenChange, currency, debt, onSubmit, onDelet
               {debt ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>
+
+          {onOpenInApp && debt && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto gap-1.5 self-center text-muted-foreground"
+              onClick={onOpenInApp}
+            >
+              {openInAppLabel}
+              <ArrowUpRightIcon className="size-3.5" />
+            </Button>
+          )}
         </form>
       </SheetContent>
     </Sheet>

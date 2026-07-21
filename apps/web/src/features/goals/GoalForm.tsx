@@ -9,6 +9,7 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet'
+import { ArrowUpRightIcon } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -34,6 +35,9 @@ interface GoalFormProps {
   onSubmit: (input: SavingsGoalInput, initialAmountMinor: number) => Promise<void>
   onDelete?: () => Promise<void>
   isSubmitting?: boolean
+  /** Leave chat and go to the list/hub page (label e.g. "View goals"). */
+  onOpenInApp?: () => void
+  openInAppLabel?: string
 }
 
 export function GoalForm({
@@ -45,6 +49,8 @@ export function GoalForm({
   onSubmit,
   onDelete,
   isSubmitting,
+  onOpenInApp,
+  openInAppLabel = 'View goals',
 }: GoalFormProps) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState<string | null>(null)
@@ -267,6 +273,18 @@ export function GoalForm({
               {goal ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>
+
+          {onOpenInApp && goal && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto gap-1.5 self-center text-muted-foreground"
+              onClick={onOpenInApp}
+            >
+              {openInAppLabel}
+              <ArrowUpRightIcon className="size-3.5" />
+            </Button>
+          )}
         </form>
       </SheetContent>
     </Sheet>

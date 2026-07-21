@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -12,6 +12,10 @@ import { supabase } from '@/src/lib/supabase';
 import { useAuthStore } from '@/src/store/authStore';
 
 const redirectTo = makeRedirectUri({ scheme: 'penda' });
+const MIN_PASSWORD_LENGTH = 8;
+
+type AuthMode = 'signin' | 'signup' | 'forgot';
+type Status = 'idle' | 'loading' | 'sent' | 'error';
 
 function Sparkle({ size, color }: { size: number; color: string }) {
   return (
@@ -24,27 +28,103 @@ function Sparkle({ size, color }: { size: number; color: string }) {
   );
 }
 
+function validatePassword(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+  return null;
+}
+
 export default function LoginScreen() {
   const session = useAuthStore((s) => s.session);
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   if (session) return <Redirect href="/" />;
 
-  async function handleMagicLink() {
-    if (!email.trim()) return;
-    setStatus('sending');
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: redirectTo },
+  function switchMode(next: AuthMode) {
+    setMode(next);
+    setStatus('idle');
+    setErrorMessage('');
+    setInfoMessage('');
+    setPassword('');
+    setConfirmPassword('');
+  }
+
+  async function handleSubmit() {
+    setErrorMessage('');
+    setInfoMessage('');
+    setStatus('loading');
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setErrorMessage('Enter your email address.');
+      setStatus('error');
+      return;
+    }
+
+    if (mode === 'forgot') {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo,
+      });
+      if (error) {
+        setErrorMessage(error.message);
+        setStatus('error');
+        return;
+      }
+      setInfoMessage(`Password reset link sent to ${trimmedEmail}.`);
+      setStatus('sent');
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setErrorMessage(passwordError);
+      setStatus('error');
+      return;
+    }
+
+    if (mode === 'signup') {
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match.');
+        setStatus('error');
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: { emailRedirectTo: redirectTo },
+      });
+      if (error) {
+        setErrorMessage(error.message);
+        setStatus('error');
+        return;
+      }
+      if (!data.session) {
+        setInfoMessage(`Check ${trimmedEmail} to confirm your account, then sign in.`);
+        setStatus('sent');
+        return;
+      }
+      setStatus('idle');
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
     });
     if (error) {
       setErrorMessage(error.message);
       setStatus('error');
-    } else {
-      setStatus('sent');
+      return;
     }
+    setStatus('idle');
   }
 
   async function handleGoogle() {
@@ -75,6 +155,19 @@ export default function LoginScreen() {
     }
   }
 
+  const submitLabel =
+    status === 'loading'
+      ? mode === 'forgot'
+        ? 'Sending…'
+        : mode === 'signup'
+          ? 'Creating account…'
+          : 'Signing in…'
+      : mode === 'forgot'
+        ? 'Send reset link'
+        : mode === 'signup'
+          ? 'Create account'
+          : 'Sign in';
+
   return (
     <Screen padded={false}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -101,26 +194,41 @@ export default function LoginScreen() {
           </LinearGradient>
 
           <View style={styles.form}>
-            <AnimatedPressable onPress={() => void handleGoogle()} style={styles.googleBtn}>
-              <Text variant="bodyMedium">Continue with Google</Text>
-            </AnimatedPressable>
+            {mode !== 'forgot' ? (
+              <AnimatedPressable onPress={() => void handleGoogle()} style={styles.googleBtn}>
+                <Text variant="bodyMedium">Continue with Google</Text>
+              </AnimatedPressable>
+            ) : null}
 
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text variant="caption" color={colors.textMuted}>
-                or continue with email
-              </Text>
-              <View style={styles.dividerLine} />
-            </View>
+            {mode !== 'forgot' ? (
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text variant="caption" color={colors.textMuted}>
+                  or continue with email
+                </Text>
+                <View style={styles.dividerLine} />
+              </View>
+            ) : null}
 
             {status === 'sent' ? (
               <View style={styles.sentBox}>
                 <Text variant="body" color={colors.textSecondary}>
-                  Check <Text variant="bodyMedium">{email}</Text> for a sign-in link.
+                  {infoMessage}
                 </Text>
+                <Pressable onPress={() => switchMode('signin')} style={styles.linkWrap}>
+                  <Text variant="caption" color={colors.text} style={styles.link}>
+                    Back to sign in
+                  </Text>
+                </Pressable>
               </View>
             ) : (
               <>
+                {mode === 'forgot' ? (
+                  <Text variant="body" color={colors.textSecondary}>
+                    Enter your email and we&apos;ll send a link to reset your password.
+                  </Text>
+                ) : null}
+
                 <Text variant="caption" color={colors.textMuted}>
                   Email address
                 </Text>
@@ -133,19 +241,96 @@ export default function LoginScreen() {
                   autoComplete="email"
                   style={styles.input}
                 />
+
+                {mode !== 'forgot' ? (
+                  <>
+                    <View style={styles.passwordHeader}>
+                      <Text variant="caption" color={colors.textMuted}>
+                        Password
+                      </Text>
+                      {mode === 'signin' ? (
+                        <Pressable onPress={() => switchMode('forgot')}>
+                          <Text variant="caption" color={colors.textMuted} style={styles.link}>
+                            Forgot password?
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    <Input
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'password'}
+                      style={styles.input}
+                    />
+                  </>
+                ) : null}
+
+                {mode === 'signup' ? (
+                  <>
+                    <Text variant="caption" color={colors.textMuted}>
+                      Confirm password
+                    </Text>
+                    <Input
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="Re-enter password"
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoComplete="new-password"
+                      style={styles.input}
+                    />
+                  </>
+                ) : null}
+
                 {status === 'error' ? (
                   <Text variant="caption" color={colors.rose}>
                     {errorMessage}
                   </Text>
                 ) : null}
+
                 <Button
-                  title={status === 'sending' ? 'Sending link…' : 'Send magic link'}
-                  onPress={() => void handleMagicLink()}
-                  loading={status === 'sending'}
+                  title={submitLabel}
+                  onPress={() => void handleSubmit()}
+                  loading={status === 'loading'}
                   style={styles.submit}
                 />
               </>
             )}
+
+            {status !== 'sent' ? (
+              <View style={styles.modeSwitch}>
+                {mode === 'signin' ? (
+                  <Pressable onPress={() => switchMode('signup')}>
+                    <Text variant="caption" color={colors.textMuted}>
+                      Don&apos;t have an account?{' '}
+                      <Text variant="caption" color={colors.text} style={styles.link}>
+                        Sign up
+                      </Text>
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {mode === 'signup' ? (
+                  <Pressable onPress={() => switchMode('signin')}>
+                    <Text variant="caption" color={colors.textMuted}>
+                      Already have an account?{' '}
+                      <Text variant="caption" color={colors.text} style={styles.link}>
+                        Sign in
+                      </Text>
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {mode === 'forgot' ? (
+                  <Pressable onPress={() => switchMode('signin')}>
+                    <Text variant="caption" color={colors.text} style={styles.link}>
+                      Back to sign in
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
 
             <Text variant="caption" color={colors.textMuted} style={styles.terms}>
               By continuing, you agree to Penda&apos;s Terms of Service and Privacy Policy.
@@ -206,6 +391,12 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
   },
+  passwordHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   input: {
     marginTop: spacing.xs,
   },
@@ -218,6 +409,16 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: `${colors.mint}55`,
+    gap: spacing.md,
+  },
+  linkWrap: {
+    alignSelf: 'center',
+  },
+  link: {
+    textDecorationLine: 'underline',
+  },
+  modeSwitch: {
+    alignItems: 'center',
   },
   terms: {
     textAlign: 'center',

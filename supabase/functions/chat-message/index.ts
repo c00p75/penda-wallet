@@ -9,6 +9,7 @@ import {
   MODE_AI_CONTEXT,
   PERSONALITY_NAMES,
   PERSONALITY_PROMPTS,
+  resolvePersonality,
 } from '../_shared/personas.ts'
 import {
   loadConsentAndTrust,
@@ -997,7 +998,8 @@ function buildSystemInstruction(
   _opts?: { continuityEnabled?: boolean },
 ): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
-  const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
+  const personality = resolvePersonality(profile.personality)
+  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
   const moodTone = recentMoodTone(memories)
   const screenLine = pageContext
     ? pageContext.entityId
@@ -1077,7 +1079,7 @@ work", kind "mood" with a short mood label). Use it sparingly, for things genuin
 later, not routine transaction chatter. Weave anything relevant from what you already remember (below)
 into your replies naturally, don't just list it back.${buildMemorySection(memories)}`
 
-  const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
   // Volatile context (current page, today's date) goes LAST: everything above
   // it is stable across a user's requests, so Gemini's implicit prefix

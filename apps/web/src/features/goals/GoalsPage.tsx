@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
+import { fetchDebt } from '@/features/debts/api'
 import { Plus, Sparkles } from 'lucide-react'
 import { Target } from '@/components/icons/product'
 import { toast } from 'sonner'
@@ -67,6 +69,9 @@ export function GoalsPage() {
   const navigate = useNavigate()
   const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkDebtId = searchParams.get('debt')
+  const tabParam = searchParams.get('tab')
 
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
   const createGoal = useCreateSavingsGoal(wallet?.id)
@@ -76,7 +81,9 @@ export function GoalsPage() {
   const updateDebt = useUpdateDebt(wallet?.id)
   const deleteDebt = useDeleteDebt(wallet?.id)
 
-  const [tab, setTab] = useState<'goals' | 'debts'>('goals')
+  const [tab, setTab] = useState<'goals' | 'debts'>(() =>
+    tabParam === 'debts' || deepLinkDebtId ? 'debts' : 'goals',
+  )
   const [goalFormOpen, setGoalFormOpen] = useState(false)
   const [contributingGoal, setContributingGoal] = useState<SavingsGoal | null>(null)
   const [debtFormOpen, setDebtFormOpen] = useState(false)
@@ -85,6 +92,33 @@ export function GoalsPage() {
 
   const addContribution = useAddContribution(wallet?.id, contributingGoal?.id)
   const addPayment = useAddPayment(wallet?.id, payingDebt?.id)
+
+  // Chat "View" deep link: debts tab and/or open the debt form for ?debt=<id>.
+  useEffect(() => {
+    if (tabParam !== 'debts' || deepLinkDebtId) return
+    setTab('debts')
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('tab')
+        return next
+      },
+      { replace: true },
+    )
+  }, [tabParam, deepLinkDebtId, setSearchParams])
+
+  useDeepLinkEntityOpen({
+    kind: 'debt',
+    paramId: deepLinkDebtId,
+    list: debts,
+    fetchById: fetchDebt,
+    clearParamKeys: ['tab'],
+    onOpen: (debt) => {
+      setTab('debts')
+      setEditingDebt(debt)
+      setDebtFormOpen(true)
+    },
+  })
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null

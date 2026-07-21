@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { HeroBlob } from '@/components/ui/hero-blob'
 
@@ -12,12 +13,12 @@ const HERO_BG: Record<HeroTone, string> = {
   rose: 'linear-gradient(145deg, var(--rose-hero-from) 0%, var(--rose-hero-to) 100%)',
 }
 
-const HERO_SHADOW: Record<HeroTone, string> = {
-  iris: '0 14px 36px color-mix(in srgb, var(--iris-hero-to) 45%, transparent)',
-  apricot: '0 14px 36px color-mix(in srgb, var(--apricot-hero-to) 45%, transparent)',
-  sun: '0 14px 36px color-mix(in srgb, var(--sun-hero-to) 45%, transparent)',
-  mint: '0 14px 36px color-mix(in srgb, var(--mint-hero-to) 45%, transparent)',
-  rose: '0 14px 36px color-mix(in srgb, var(--rose-hero-to) 45%, transparent)',
+const HERO_GLOW: Record<HeroTone, string> = {
+  iris: 'var(--iris-hero-glow)',
+  apricot: 'var(--apricot-hero-glow)',
+  sun: 'var(--sun-hero-glow)',
+  mint: 'var(--mint-hero-glow)',
+  rose: 'var(--rose-hero-glow)',
 }
 
 type HeroCardProps = {
@@ -55,16 +56,31 @@ export function HeroCard({
       )}
       style={{
         background: HERO_BG[tone],
-        boxShadow: HERO_SHADOW[tone],
+        boxShadow: HERO_GLOW[tone],
       }}
     >
       {blob && <HeroBlob tone={tone} className="-right-4 -bottom-6 size-28 rotate-12" />}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: 'var(--hero-card-scrim)' }}
+      />
       <div className="relative z-10 flex h-full min-w-0 flex-col justify-between gap-3">
         {label != null && (
-          <p className="text-sm font-medium text-white/85">{label}</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-white [text-shadow:0_1px_2px_rgb(0_0_0_/_0.28)]">
+              {label}
+            </p>
+            {onClick && (
+              <ChevronRight
+                className="mt-0.5 size-4 shrink-0 text-white/85"
+                aria-hidden
+              />
+            )}
+          </div>
         )}
         {value != null && (
-          <p className="whitespace-nowrap text-2xl font-bold leading-none tracking-tight tabular-nums">
+          <p className="whitespace-nowrap text-2xl font-bold leading-none tracking-tight text-white tabular-nums [text-shadow:0_1px_3px_rgb(0_0_0_/_0.32)]">
             {value}
           </p>
         )}

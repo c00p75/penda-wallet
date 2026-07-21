@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Maximize2, Send, X } from 'lucide-react'
+import { ChevronRight, Maximize2, Send, X } from 'lucide-react'
 import { Camera, Microphone } from '@/components/icons/product'
 import { toast } from 'sonner'
 import {
@@ -22,13 +22,23 @@ import { supabase } from '@/lib/supabase/client'
 import { enqueueAiConfirm, enqueueChatMessage } from '@/pwa/offlineQueue'
 import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
+import { AiSettingsSheet } from '@/features/profile/AiSettingsSheet'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
-import { PERSONALITIES } from '@/features/profile/types'
+import { personalityMeta } from '@/features/profile/types'
 import { useCategories } from '@/features/categories/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
 import { useUploadReceipt } from '@/features/receipts/hooks'
+import { BudgetForm } from '@/features/budgets/BudgetForm'
+import { useDeleteBudget, useUpdateBudget } from '@/features/budgets/hooks'
+import type { Budget, BudgetInput } from '@/features/budgets/types'
+import { DebtForm } from '@/features/debts/DebtForm'
+import { useDeleteDebt, useUpdateDebt } from '@/features/debts/hooks'
+import type { Debt, DebtInput } from '@/features/debts/types'
+import { GoalForm } from '@/features/goals/GoalForm'
+import { useDeleteSavingsGoal, useUpdateSavingsGoal } from '@/features/goals/hooks'
+import type { SavingsGoal, SavingsGoalInput } from '@/features/goals/types'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
 import {
   useConfirmReceiptItems,
@@ -42,6 +52,8 @@ import {
   finalizeLiveActions,
   mergeTrailActions,
   toolUi,
+  listHrefFor,
+  listLabelFor,
   viewHrefFor,
   withViewHrefs,
 } from './actionMeta'
@@ -52,6 +64,13 @@ import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
 import { resolveUndoTargets } from './chatUndo'
 import type { ChatAction, ChatMessage, ChatUndoTarget, PendingAction } from './types'
+import {
+  isInChatViewKind,
+  parseViewHref,
+  pendaOpenStateFromHref,
+  prefetchViewHref,
+  resolveViewEntity,
+} from './viewNavigation'
 import { useMemories } from '@/features/memory/hooks'
 import { usePacts } from '@/features/pacts/hooks'
 import { buildContinuityOpener } from '@/features/companion/continuity'
@@ -199,7 +218,7 @@ export function ChatSheet({
   const busy = sendMessage.isPending || streamingId !== null
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
-  const persona = PERSONALITIES.find((p) => p.value === profile?.ai_personality) ?? PERSONALITIES[0]
+  const persona = personalityMeta(profile?.ai_personality)
   const { data: memories = [] } = useMemories(session?.user.id)
   const { data: pacts = [] } = usePacts(walletId)
   const deferredList = useDeferredStore((s) =>
@@ -218,14 +237,102 @@ export function ChatSheet({
   const updateTransaction = useUpdateTransaction(walletId)
   const deleteTransaction = useDeleteTransaction(walletId)
   const confirmReceiptItems = useConfirmReceiptItems(walletId)
+  const updateBudget = useUpdateBudget(walletId)
+  const deleteBudget = useDeleteBudget(walletId)
+  const updateDebt = useUpdateDebt(walletId)
+  const deleteDebt = useDeleteDebt(walletId)
+  const updateGoal = useUpdateSavingsGoal(walletId)
+  const deleteGoal = useDeleteSavingsGoal(walletId)
 
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
-  const [receiptFormOpen, setReceiptFormOpen] = useState(false)
-  const [receiptDraft, setReceiptDraft] = useState<Transaction | null>(null)
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
+  /** Shared transaction sheet: receipt drafts and View-from-chat edits. */
+  const [overlayTx, setOverlayTx] = useState<Transaction | null>(null)
+  const [overlayBudget, setOverlayBudget] = useState<Budget | null>(null)
+  const [overlayDebt, setOverlayDebt] = useState<Debt | null>(null)
+  const [overlayGoal, setOverlayGoal] = useState<SavingsGoal | null>(null)
+  const [viewLoading, setViewLoading] = useState(false)
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
   const keyboardInset = useKeyboardInset()
-  useCloseOnBack(open, () => onOpenChange(false))
+  const { prepareNavigateAway } = useCloseOnBack(open, () => onOpenChange(false))
+  const [instantDismiss, setInstantDismiss] = useState(false)
+
+  const isReceiptOverlay =
+    !!overlayTx && overlayTx.source === 'receipt' && !overlayTx.user_confirmed
+
+  function clearEntityOverlays() {
+    setOverlayTx(null)
+    setOverlayBudget(null)
+    setOverlayDebt(null)
+    setOverlayGoal(null)
+  }
+
+  useEffect(() => {
+    if (open) setInstantDismiss(false)
+    else {
+      setAiSettingsOpen(false)
+      clearEntityOverlays()
+    }
+  }, [open])
+
+  /** Navigate first, then drop chat without exit animation / history race. */
+  function navigateAway(href: string) {
+    prepareNavigateAway()
+    setInstantDismiss(true)
+    prefetchViewHref(queryClient, walletId, href)
+    const state = pendaOpenStateFromHref(href)
+    navigate(href, { replace: true, state })
+    onOpenChange(false)
+  }
+
+  function warmViewHref(href: string) {
+    prefetchViewHref(queryClient, walletId, href)
+  }
+
+  /** Open any entity detail sheet on top of chat; hub-only links still navigate. */
+  async function openView(href: string) {
+    const { kind, id } = parseViewHref(href)
+    if (!isInChatViewKind(kind) || !id || !walletId) {
+      navigateAway(href)
+      return
+    }
+
+    setViewLoading(true)
+    try {
+      const entity = await resolveViewEntity(queryClient, walletId, kind, id)
+      if (!entity) {
+        toast.error('Could not find that item.')
+        return
+      }
+      clearEntityOverlays()
+      if (kind === 'transaction') setOverlayTx(entity as Transaction)
+      else if (kind === 'budget') setOverlayBudget(entity as Budget)
+      else if (kind === 'debt') setOverlayDebt(entity as Debt)
+      else setOverlayGoal(entity as SavingsGoal)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not open that item.')
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  /** Close the in-chat sheet and go to the entity's full page. */
+  function openInApp(href: string) {
+    clearEntityOverlays()
+    navigateAway(href)
+  }
+
+  // Warm destination caches while the View button is on screen.
+  useEffect(() => {
+    if (!open || !walletId) return
+    for (const m of messages) {
+      if (m.viewHref) prefetchViewHref(queryClient, walletId, m.viewHref)
+      for (const a of m.actions ?? []) {
+        if (a.viewHref) prefetchViewHref(queryClient, walletId, a.viewHref)
+      }
+    }
+  }, [open, walletId, messages, queryClient])
 
   // Text present before recording started, so live transcription appends
   // rather than clobbering what the user already typed.
@@ -451,6 +558,7 @@ export function ChatSheet({
         ? withViewHrefs(result.actions)
         : finalizeLiveActions(liveActionsRef.current)
     const undoTargets = resolveUndoTargets({ actions })
+    const primaryViewHref = actions.find((a) => a.viewHref)?.viewHref
     const reply: ChatMessage = {
       id: bubbleId,
       role: 'assistant',
@@ -459,6 +567,7 @@ export function ChatSheet({
       actions: actions.length > 0 ? actions : undefined,
       undoTargets: undoTargets.length > 0 ? undoTargets : undefined,
       autoApplied: result.autoApplied || undefined,
+      viewHref: primaryViewHref,
     }
     replaceMessage(bubbleId, reply)
     invalidateAfterChatResponse(queryClient, walletId, result)
@@ -834,54 +943,116 @@ export function ChatSheet({
     try {
       const draft = await uploadReceipt.mutateAsync(file)
       toast.dismiss(toastId)
-      setReceiptDraft(draft)
-      setReceiptFormOpen(true)
+      setOverlayTx(draft)
     } catch (error) {
       toast.dismiss(toastId)
       toast.error(error instanceof Error ? error.message : 'Could not read that receipt.')
     }
   }
 
-  async function confirmReceipt(input: TransactionInput) {
-    if (!receiptDraft) return
+  async function saveOverlayTransaction(input: TransactionInput) {
+    if (!overlayTx) return
     try {
       await updateTransaction.mutateAsync({
-        id: receiptDraft.id,
+        id: overlayTx.id,
         input,
-        version: receiptDraft.version,
+        version: overlayTx.version,
       })
-      toast('Receipt confirmed.')
-      setReceiptFormOpen(false)
-      setReceiptDraft(null)
+      toast(isReceiptOverlay ? 'Receipt confirmed.' : 'Transaction updated.')
+      setOverlayTx(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
   }
 
   async function confirmReceiptAsItems(input: ReceiptItemsConfirmInput) {
-    if (!receiptDraft) return
+    if (!overlayTx) return
     try {
-      await confirmReceiptItems.mutateAsync({ draft: receiptDraft, input })
+      await confirmReceiptItems.mutateAsync({ draft: overlayTx, input })
       toast(
         input.items.length === 1
           ? 'Receipt confirmed.'
           : `${input.items.length} items logged from receipt.`,
       )
-      setReceiptFormOpen(false)
-      setReceiptDraft(null)
+      setOverlayTx(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
       throw error
     }
   }
 
-  async function discardReceipt() {
-    if (!receiptDraft) return
+  async function deleteOverlayTransaction() {
+    if (!overlayTx) return
     try {
-      await deleteTransaction.mutateAsync(receiptDraft.id)
-      toast('Receipt discarded.')
-      setReceiptFormOpen(false)
-      setReceiptDraft(null)
+      await deleteTransaction.mutateAsync(overlayTx.id)
+      toast(isReceiptOverlay ? 'Receipt discarded.' : 'Transaction deleted.')
+      setOverlayTx(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function saveOverlayBudget(input: BudgetInput) {
+    if (!overlayBudget) return
+    try {
+      await updateBudget.mutateAsync({ id: overlayBudget.id, input })
+      toast('Budget updated.')
+      setOverlayBudget(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function deleteOverlayBudget() {
+    if (!overlayBudget) return
+    try {
+      await deleteBudget.mutateAsync(overlayBudget.id)
+      toast('Budget deleted.')
+      setOverlayBudget(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function saveOverlayDebt(input: DebtInput) {
+    if (!overlayDebt) return
+    try {
+      await updateDebt.mutateAsync({ id: overlayDebt.id, input })
+      toast('Debt updated.')
+      setOverlayDebt(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function deleteOverlayDebt() {
+    if (!overlayDebt) return
+    try {
+      await deleteDebt.mutateAsync(overlayDebt.id)
+      toast('Debt deleted.')
+      setOverlayDebt(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function saveOverlayGoal(input: SavingsGoalInput, _initialAmountMinor: number) {
+    if (!overlayGoal) return
+    try {
+      await updateGoal.mutateAsync({ id: overlayGoal.id, input })
+      toast('Goal updated.')
+      setOverlayGoal(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function deleteOverlayGoal() {
+    if (!overlayGoal) return
+    try {
+      await deleteGoal.mutateAsync(overlayGoal.id)
+      toast('Goal deleted.')
+      setOverlayGoal(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -927,11 +1098,41 @@ export function ChatSheet({
   }
 
   // Keep the latest message (or the "Thinking…" indicator) in view as the
-  // conversation grows, rather than leaving new replies below the fold.
+  // conversation grows, and jump to the bottom whenever the sheet opens with
+  // an existing thread (messages alone don't change on reopen).
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
+  const wasOpenRef = useRef(false)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
-  }, [messages, busy])
+    if (!open) {
+      wasOpenRef.current = false
+      return
+    }
+    const justOpened = !wasOpenRef.current
+    wasOpenRef.current = true
+    // Instant on open so history lands on the latest turn; smooth while chatting.
+    const behavior: ScrollBehavior = justOpened ? 'auto' : 'smooth'
+
+    const scrollToLatest = () => {
+      const scroller = messagesScrollRef.current
+      if (scroller) {
+        if (typeof scroller.scrollTo === 'function') {
+          scroller.scrollTo({ top: scroller.scrollHeight, behavior })
+        } else {
+          scroller.scrollTop = scroller.scrollHeight
+        }
+        return
+      }
+      messagesEndRef.current?.scrollIntoView?.({ behavior, block: 'end' })
+    }
+
+    // Sheet content mounts after `open`; wait a frame so scrollHeight is correct.
+    const frame = requestAnimationFrame(() => {
+      scrollToLatest()
+      if (justOpened) requestAnimationFrame(scrollToLatest)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open, messages, busy])
 
   const streamingMessage = streamingId ? messages.find((m) => m.id === streamingId) : undefined
   const awaitingFirstToken = busy && (!streamingId || streamingMessage?.text === '')
@@ -949,16 +1150,18 @@ export function ChatSheet({
   const isQuick = mode === 'quick'
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        size={isQuick ? 'half' : 'page'}
-        showCloseButton={false}
-        className="gap-0 overflow-hidden p-0"
-        // Lift the sheet's contents clear of the on-screen keyboard so the input
-        // and buttons stay visible while typing.
-        style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
-      >
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="bottom"
+          size={isQuick ? 'half' : 'page'}
+          showCloseButton={false}
+          instantDismiss={instantDismiss}
+          className="gap-0 overflow-hidden p-0"
+          // Lift the sheet's contents clear of the on-screen keyboard so the input
+          // and buttons stay visible while typing.
+          style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
+        >
         <div
           className="mx-auto flex h-full w-full max-w-md flex-col"
           style={{
@@ -980,10 +1183,28 @@ export function ChatSheet({
           </div>
 
           <SheetHeader className="flex-row items-center justify-between gap-2 px-5 pt-2 pb-1">
-            <SheetTitle className="flex min-w-0 items-center gap-2">
-              <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
-              <span className="truncate">{isQuick ? 'Quick log' : `Chat with ${persona.name}`}</span>
-            </SheetTitle>
+            {isQuick ? (
+              <SheetTitle className="flex min-w-0 items-center gap-2">
+                <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
+                <span className="truncate">Quick log</span>
+              </SheetTitle>
+            ) : (
+              <>
+                <SheetTitle className="sr-only">Chat with {persona.name}</SheetTitle>
+                <button
+                  type="button"
+                  onClick={() => setAiSettingsOpen(true)}
+                  className="flex min-w-0 items-center gap-1.5 rounded-lg py-0.5 pr-1 text-left transition-opacity hover:opacity-80 active:opacity-70"
+                  aria-label={`${persona.name}, AI settings`}
+                >
+                  <PersonaAvatar value={persona.value} accent={persona.accent} size={28} />
+                  <span className="truncate font-heading text-base font-semibold text-foreground">
+                    {persona.name}
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </>
+            )}
             <div className="flex shrink-0 items-center gap-0.5">
               {!isQuick && (
                 <Button
@@ -991,10 +1212,7 @@ export function ChatSheet({
                   variant="ghost"
                   size="sm"
                   className="h-8 px-2 text-xs text-muted-foreground"
-                  onClick={() => {
-                    onOpenChange(false)
-                    navigate('/journal')
-                  }}
+                  onClick={() => navigateAway('/journal')}
                 >
                   Memory
                 </Button>
@@ -1022,8 +1240,13 @@ export function ChatSheet({
                 </Button>
               )}
               <SheetClose asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <X className="size-4" />
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  className="text-muted-foreground"
+                  aria-label="Close chat"
+                >
+                  <X className="size-5" />
                   <span className="sr-only">Close</span>
                 </Button>
               </SheetClose>
@@ -1042,7 +1265,7 @@ export function ChatSheet({
             />
           )}
 
-          <div className="flex-1 overflow-y-auto px-5">
+          <div ref={messagesScrollRef} className="flex-1 overflow-y-auto px-5">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
                 <p className="text-sm text-muted-foreground">
@@ -1117,7 +1340,7 @@ export function ChatSheet({
                       return (
                         <ActionTrail
                           actions={trail}
-                          onNavigateAway={() => onOpenChange(false)}
+                          onNavigateAway={navigateAway}
                           busyActionId={resolvingId}
                           resolveDisabled={resolvingId !== null}
                           onResolvePending={resolveAction}
@@ -1129,10 +1352,9 @@ export function ChatSheet({
                                   size="sm"
                                   variant="outline"
                                   className="h-7 px-2.5 text-xs"
-                                  onClick={() => {
-                                    onOpenChange(false)
-                                    navigate(m.viewHref!)
-                                  }}
+                                  disabled={viewLoading}
+                                  onPointerDown={() => warmViewHref(m.viewHref!)}
+                                  onClick={() => void openView(m.viewHref!)}
                                 >
                                   View
                                 </Button>
@@ -1154,10 +1376,7 @@ export function ChatSheet({
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 px-2.5 text-xs text-muted-foreground"
-                                  onClick={() => {
-                                    onOpenChange(false)
-                                    navigate('/ai-actions')
-                                  }}
+                                  onClick={() => navigateAway('/ai-actions')}
                                 >
                                   AI actions
                                 </Button>
@@ -1273,27 +1492,93 @@ export function ChatSheet({
           />
 
           <TransactionForm
-            open={receiptFormOpen}
-            onOpenChange={(open) => {
-              setReceiptFormOpen(open)
-              if (!open) setReceiptDraft(null)
+            open={!!overlayTx}
+            onOpenChange={(next) => {
+              if (!next) setOverlayTx(null)
             }}
             categories={categories}
             currency={currency}
             walletId={walletId}
-            transaction={receiptDraft}
-            onSubmit={confirmReceipt}
-            onConfirmItems={confirmReceiptAsItems}
-            onDelete={receiptDraft ? discardReceipt : undefined}
+            transaction={overlayTx}
+            onSubmit={saveOverlayTransaction}
+            onConfirmItems={isReceiptOverlay ? confirmReceiptAsItems : undefined}
+            onDelete={overlayTx ? deleteOverlayTransaction : undefined}
+            onOpenInApp={
+              overlayTx && !isReceiptOverlay
+                ? () => openInApp(listHrefFor('transaction') ?? '/transactions')
+                : undefined
+            }
+            openInAppLabel={listLabelFor('transaction')}
             isSubmitting={
               updateTransaction.isPending ||
               deleteTransaction.isPending ||
               confirmReceiptItems.isPending
             }
           />
+
+          <BudgetForm
+            open={!!overlayBudget}
+            onOpenChange={(next) => {
+              if (!next) setOverlayBudget(null)
+            }}
+            categories={categories}
+            currency={currency}
+            budget={overlayBudget}
+            onSubmit={saveOverlayBudget}
+            onDelete={overlayBudget ? deleteOverlayBudget : undefined}
+            onOpenInApp={
+              overlayBudget ? () => openInApp(listHrefFor('budget') ?? '/budgets') : undefined
+            }
+            openInAppLabel={listLabelFor('budget')}
+            isSubmitting={updateBudget.isPending || deleteBudget.isPending}
+          />
+
+          <DebtForm
+            open={!!overlayDebt}
+            onOpenChange={(next) => {
+              if (!next) setOverlayDebt(null)
+            }}
+            currency={currency}
+            debt={overlayDebt}
+            onSubmit={saveOverlayDebt}
+            onDelete={overlayDebt ? deleteOverlayDebt : undefined}
+            onOpenInApp={
+              overlayDebt ? () => openInApp(listHrefFor('debt') ?? '/goals?tab=debts') : undefined
+            }
+            openInAppLabel={listLabelFor('debt')}
+            isSubmitting={updateDebt.isPending || deleteDebt.isPending}
+          />
+
+          {walletId && (
+            <GoalForm
+              open={!!overlayGoal}
+              onOpenChange={(next) => {
+                if (!next) setOverlayGoal(null)
+              }}
+              walletId={walletId}
+              currency={currency}
+              goal={overlayGoal}
+              onSubmit={saveOverlayGoal}
+              onDelete={overlayGoal ? deleteOverlayGoal : undefined}
+              onOpenInApp={
+                overlayGoal ? () => openInApp(listHrefFor('goal') ?? '/goals') : undefined
+              }
+              openInAppLabel={listLabelFor('goal')}
+              isSubmitting={updateGoal.isPending || deleteGoal.isPending}
+            />
+          )}
         </div>
-      </SheetContent>
-    </Sheet>
+        </SheetContent>
+      </Sheet>
+
+      {!isQuick && (
+        <AiSettingsSheet
+          open={aiSettingsOpen}
+          onOpenChange={setAiSettingsOpen}
+          onOpenFullSettings={() => navigateAway('/settings?tab=ai')}
+        />
+      )}
+    </>
   )
 }
 

@@ -33,11 +33,19 @@ describe('starterBudgetsForPersona', () => {
   })
 
   it('gives different personas different emphasis', () => {
-    const genZ = starterBudgetsForPersona('gen_z', 1_000_000, CATEGORIES)
-    const gogo = starterBudgetsForPersona('gogo', 1_000_000, CATEGORIES)
-    const genZEntertainment = genZ.find((s) => s.categoryName === 'Entertainment')?.suggestedAmountMinor ?? 0
-    const gogoEntertainment = gogo.find((s) => s.categoryName === 'Entertainment')?.suggestedAmountMinor ?? 0
-    expect(genZEntertainment).toBeGreaterThan(gogoEntertainment)
+    const bobo = starterBudgetsForPersona('funny_comedian', 1_000_000, CATEGORIES)
+    const sarge = starterBudgetsForPersona('drill_sergeant', 1_000_000, CATEGORIES)
+    const boboEntertainment =
+      bobo.find((s) => s.categoryName === 'Entertainment')?.suggestedAmountMinor ?? 0
+    const sargeEntertainment =
+      sarge.find((s) => s.categoryName === 'Entertainment')?.suggestedAmountMinor ?? 0
+    expect(boboEntertainment).toBeGreaterThan(sargeEntertainment)
+  })
+
+  it('maps retired personas onto active starter splits', () => {
+    const legacy = starterBudgetsForPersona('gen_z', 1_000_000, CATEGORIES)
+    const bobo = starterBudgetsForPersona('funny_comedian', 1_000_000, CATEGORIES)
+    expect(legacy).toEqual(bobo)
   })
 
   it('returns nothing for a zero or negative plan amount', () => {

@@ -32,11 +32,15 @@ function SheetPortal({
 
 function SheetOverlay({
   className,
+  instantDismiss,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+}: React.ComponentProps<typeof SheetPrimitive.Overlay> & {
+  instantDismiss?: boolean
+}) {
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
+      data-instant-dismiss={instantDismiss ? "" : undefined}
       className={cn(
         "fixed inset-0 z-50 bg-black/40 duration-200 supports-backdrop-filter:backdrop-blur-[2px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
@@ -71,12 +75,15 @@ function SheetContent({
   side = "bottom",
   size = "card",
   showCloseButton = true,
+  /** Skip exit animation (e.g. chat View → destination). */
+  instantDismiss = false,
   style,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   size?: "card" | "page" | "half"
   showCloseButton?: boolean
+  instantDismiss?: boolean
 }) {
   const originStyle = useOriginStyle()
   const isPage = size === "page"
@@ -84,11 +91,12 @@ function SheetContent({
 
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay instantDismiss={instantDismiss} />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}
         data-size={size}
+        data-instant-dismiss={instantDismiss ? "" : undefined}
         style={{ ...originStyle, ...style }}
         className={cn(
           "fixed z-50 flex flex-col gap-4 overflow-y-auto border-0 bg-clip-padding text-sm outline-none",
@@ -96,8 +104,8 @@ function SheetContent({
             ? "inset-0 h-svh max-h-svh w-full max-w-none rounded-none bg-background text-foreground shadow-none ring-0"
             : isHalf
               ? cn(
-                  "inset-x-0 bottom-0 top-auto mx-auto h-[min(62svh,34rem)] max-h-[min(70svh,calc(100%-3rem))] w-full max-w-md",
-                  "rounded-t-[1.75rem] bg-background text-foreground shadow-[var(--shadow-card)] ring-1 ring-border/40",
+                  "inset-x-0 bottom-0 top-auto h-[min(62svh,34rem)] max-h-[min(70svh,calc(100%-3rem))] w-full max-w-none",
+                  "rounded-t-[1.75rem] rounded-b-none bg-background text-foreground shadow-[var(--shadow-card)] ring-1 ring-border/40",
                 )
               : cn(
                 "max-h-[min(90svh,calc(100%-2rem))] bg-card text-card-foreground",

@@ -21,13 +21,13 @@ describe('InsightCarousel', () => {
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 
-  it('renders pro-tip cards with their bold label and one dot per card', () => {
+  it('renders tip cards with a short headline and muted body', () => {
     const cards: InsightCard[] = [
       weekRead,
       { id: 'tip', variant: 'tip', tone: 'warm', label: 'Pro tip:', text: 'Nice movie night money.' },
     ]
     render(<InsightCarousel cards={cards} />)
-    expect(screen.getByText('Pro tip:')).toBeInTheDocument()
+    expect(screen.getByText('Pro tip')).toBeInTheDocument()
     expect(screen.getByText(/Nice movie night money/)).toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(2)
   })

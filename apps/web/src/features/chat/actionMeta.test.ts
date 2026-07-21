@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   finalizeLiveActions,
+  listHrefFor,
+  listLabelFor,
   mergeTrailActions,
   pendingToTrailActions,
   viewHrefFor,
@@ -11,16 +13,34 @@ import type { ChatAction, PendingAction } from './types'
 describe('viewHrefFor', () => {
   it.each([
     ['transaction', undefined, '/transactions'],
+    ['transaction', 'tx1', '/transactions?tx=tx1'],
     ['budget', undefined, '/budgets'],
+    ['budget', 'b1', '/budgets?budget=b1'],
     ['goal', 'g1', '/goals/g1'],
     ['goal', undefined, '/goals'],
-    ['debt', undefined, '/settle-up'],
+    ['debt', undefined, '/goals?tab=debts'],
+    ['debt', 'd1', '/goals?debt=d1'],
     ['memory', undefined, '/journal'],
     ['summary', undefined, '/analytics'],
     ['query', undefined, '/analytics'],
     ['wallet', undefined, undefined],
-  ] as const)('%s → %s', (domain, targetId, href) => {
+  ] as const)('%s / %s → %s', (domain, targetId, href) => {
     expect(viewHrefFor(domain, targetId)).toBe(href)
+  })
+})
+
+describe('listHrefFor / listLabelFor', () => {
+  it.each([
+    ['transaction', '/transactions', 'View transactions'],
+    ['budget', '/budgets', 'View budgets'],
+    ['goal', '/goals', 'View goals'],
+    ['debt', '/goals?tab=debts', 'View debts'],
+    ['memory', '/journal', 'View journal'],
+    ['summary', '/analytics', 'View analytics'],
+    ['wallet', undefined, undefined],
+  ] as const)('%s → list %s / %s', (domain, href, label) => {
+    expect(listHrefFor(domain)).toBe(href)
+    expect(listLabelFor(domain)).toBe(label)
   })
 })
 
@@ -62,10 +82,12 @@ describe('pendingToTrailActions / mergeTrailActions', () => {
         label: 'Logged',
         summary: 'Lunch',
         status: 'done',
+        targetId: 'tx1',
       },
     ]
     const merged = mergeTrailActions(completed, pending, { p2: 'cancelled' })
     expect(merged.map((a) => a.id)).toEqual(['c1', 'p1', 'p2'])
+    expect(merged[0]?.viewHref).toBe('/transactions?tx=tx1')
     expect(merged[2]?.status).toBe('cancelled')
   })
 
@@ -119,10 +141,11 @@ describe('withViewHrefs', () => {
         label: 'x',
         summary: 'y',
         status: 'done',
+        targetId: 'tx9',
       },
     ]
     const out = withViewHrefs(actions)
     expect(out[0]?.viewHref).toBeUndefined()
-    expect(out[1]?.viewHref).toBe('/transactions')
+    expect(out[1]?.viewHref).toBe('/transactions?tx=tx9')
   })
 })

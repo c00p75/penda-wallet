@@ -116,18 +116,65 @@ export function toolUi(tool: string): ToolUiMeta {
 export function viewHrefFor(domain: string, targetId?: string): string | undefined {
   switch (domain) {
     case 'transaction':
-      return '/transactions'
+      return targetId
+        ? `/transactions?tx=${encodeURIComponent(targetId)}`
+        : '/transactions'
     case 'budget':
-      return '/budgets'
+      return targetId ? `/budgets?budget=${encodeURIComponent(targetId)}` : '/budgets'
     case 'goal':
       return targetId ? `/goals/${targetId}` : '/goals'
     case 'debt':
-      return '/settle-up'
+      // IOUs live on the Goals page debts tab (not settle-up splits).
+      return targetId
+        ? `/goals?debt=${encodeURIComponent(targetId)}`
+        : '/goals?tab=debts'
     case 'memory':
       return '/journal'
     case 'summary':
     case 'query':
       return '/analytics'
+    default:
+      return undefined
+  }
+}
+
+/** List/hub page only (no deep-link that reopens an edit sheet). */
+export function listHrefFor(domain: string): string | undefined {
+  switch (domain) {
+    case 'transaction':
+      return '/transactions'
+    case 'budget':
+      return '/budgets'
+    case 'goal':
+      return '/goals'
+    case 'debt':
+      return '/goals?tab=debts'
+    case 'memory':
+      return '/journal'
+    case 'summary':
+    case 'query':
+      return '/analytics'
+    default:
+      return undefined
+  }
+}
+
+/** Label for leaving chat to the list/hub page. */
+export function listLabelFor(domain: string): string | undefined {
+  switch (domain) {
+    case 'transaction':
+      return 'View transactions'
+    case 'budget':
+      return 'View budgets'
+    case 'goal':
+      return 'View goals'
+    case 'debt':
+      return 'View debts'
+    case 'memory':
+      return 'View journal'
+    case 'summary':
+    case 'query':
+      return 'View analytics'
     default:
       return undefined
   }
@@ -178,7 +225,7 @@ export function mergeTrailActions(
   pending: PendingAction[] | undefined,
   statusMap: Record<string, 'confirmed' | 'cancelled'>,
 ): ChatAction[] {
-  const completed = actions ?? []
+  const completed = withViewHrefs(actions ?? [])
   const pendingRows = pending?.length ? pendingToTrailActions(pending, statusMap) : []
   return [...completed, ...pendingRows]
 }

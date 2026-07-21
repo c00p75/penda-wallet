@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
+import { fetchTransaction } from '@/features/transactions/api'
 import { X } from 'lucide-react'
 import { Camera, Scissors } from '@/components/icons/product'
 import { toast } from 'sonner'
@@ -144,6 +146,8 @@ export function LedgerPage() {
   const { data: wallet } = useCurrentWallet()
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
+  const [searchParams] = useSearchParams()
+  const deepLinkTxId = searchParams.get('tx')
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
 
@@ -187,6 +191,18 @@ export function LedgerPage() {
         )
       })
   }, [wallet?.id])
+
+  // Chat "View" deep link: open the transaction sheet as soon as the id is known.
+  useDeepLinkEntityOpen({
+    kind: 'transaction',
+    paramId: deepLinkTxId,
+    list: transactions,
+    fetchById: fetchTransaction,
+    onOpen: (tx) => {
+      setEditing(tx)
+      setFormOpen(true)
+    },
+  })
 
   function openAddForm() {
     setEditing(null)

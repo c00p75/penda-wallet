@@ -4,6 +4,8 @@ import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
 import { Button } from '@/components/ui/button'
 import { spectrumEdgeClass } from '@/components/ui/cardAccent'
+import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
+import type { AiPersonality } from '@/features/profile/types'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { cn } from '@/lib/utils'
 
@@ -18,10 +20,14 @@ export interface InsightCard {
   /** `read` shows the Penda mark; `tip` shows the pro-tip lightbulb. */
   variant: 'read' | 'tip'
   tone: InsightTone
-  /** Bold prefix, e.g. "Pro tip:". */
+  /**
+   * Short title for tip-style cards (e.g. "Pro tip", "Musa").
+   * When set, `text` renders as the muted supporting line under it.
+   */
   label?: string
+  /** Headline when there is no `label`; otherwise the supporting body. */
   text: string
-  /** Supporting line under the primary read (brief-style cards). */
+  /** Supporting line under the headline on brief-style cards (no `label`). */
   secondary?: string
   /** Primary CTAs (solid / outline), used by the lead brief card. */
   actions?: InsightCardAction[]
@@ -29,25 +35,47 @@ export interface InsightCard {
   action?: { label: string; onTap: () => void }
   /** Trust affordance, explain what triggered this nudge. */
   onWhy?: () => void
+  /** When set, shows the companion face instead of the tip/AI mark. */
+  persona?: { value: AiPersonality; accent: string }
 }
 
-function CardMark({ variant }: { variant: InsightCard['variant'] }) {
+function CardMark({
+  variant,
+  persona,
+}: {
+  variant: InsightCard['variant']
+  persona?: InsightCard['persona']
+}) {
+  if (persona) {
+    return (
+      <PersonaAvatar
+        value={persona.value}
+        accent={persona.accent}
+        size={32}
+        className="shrink-0"
+      />
+    )
+  }
   if (variant === 'tip') {
     return (
       <span
         aria-hidden
-        className="float-left mr-2.5 mt-0.5 flex size-8 items-center justify-center rounded-2xl"
+        className="flex size-8 shrink-0 items-center justify-center rounded-2xl"
         style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
       >
         <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--apricot)' }} />
       </span>
     )
   }
-  return <AiMark className="float-left mr-2.5 mt-0.5 size-8" />
+  return <AiMark className="size-8 shrink-0" />
 }
 
 function InsightCardView({ card }: { card: InsightCard }) {
   const hasPillActions = (card.actions?.length ?? 0) > 0
+  // Tip cards: short label as headline, `text` as muted body (matches the week brief).
+  // Brief cards: `text` as headline, optional `secondary` as muted body.
+  const title = card.label ? card.label.replace(/\s*:$/, '') : card.text
+  const body = card.label ? card.text : card.secondary
 
   return (
     <div
@@ -56,17 +84,31 @@ function InsightCardView({ card }: { card: InsightCard }) {
         'rounded-[1.75rem] p-4 shadow-[var(--shadow-card)]',
       )}
     >
-      <div className="min-w-0">
-        <CardMark variant={card.variant} />
-        <p className="text-base font-medium leading-snug text-foreground">
-          {card.label && <span className="font-semibold">{card.label} </span>}
-          {card.text}
-        </p>
-        {card.secondary && (
-          <p className="mt-1.5 text-sm leading-snug text-muted-foreground">{card.secondary}</p>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        {card.label ? (
+          <>
+            {/* Short name/label beside the mark; body uses the full card width. */}
+            <div className="flex items-center gap-2.5">
+              <CardMark variant={card.variant} persona={card.persona} />
+              <p className="min-w-0 text-base font-medium leading-snug text-foreground">{title}</p>
+            </div>
+            {body && (
+              <p className="text-sm leading-snug text-muted-foreground">{body}</p>
+            )}
+          </>
+        ) : (
+          <div className="flex items-start gap-2.5">
+            <CardMark variant={card.variant} persona={card.persona} />
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-medium leading-snug text-foreground">{title}</p>
+              {body && (
+                <p className="mt-1.5 text-sm leading-snug text-muted-foreground">{body}</p>
+              )}
+            </div>
+          </div>
         )}
         {(hasPillActions || card.action || card.onWhy) && (
-          <div className="mt-3 flex clear-both flex-wrap items-center gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {card.actions?.map((a) => (
               <Button
                 key={a.label}

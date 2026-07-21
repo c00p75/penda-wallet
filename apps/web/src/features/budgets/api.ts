@@ -12,6 +12,12 @@ export async function fetchBudgets(walletId: string): Promise<Budget[]> {
   return data
 }
 
+export async function fetchBudget(id: string): Promise<Budget | null> {
+  const { data, error } = await supabase.from('budgets').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function fetchBudgetProgress(walletId: string): Promise<BudgetProgress[]> {
   const { data, error } = await supabase.rpc('get_budget_progress', { p_wallet_id: walletId })
   if (error) throw error

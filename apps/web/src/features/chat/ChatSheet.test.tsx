@@ -30,6 +30,7 @@ vi.mock('./useVoiceRecorder', () => ({
 }))
 vi.mock('@/features/profile/hooks', () => ({
   useProfile: () => ({ data: undefined }),
+  useUpdateProfile: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/features/memory/hooks', () => ({
   useMemories: () => ({ data: [] }),
@@ -51,6 +52,47 @@ vi.mock('@/features/transactions/hooks', () => ({
   useDeleteTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useConfirmReceiptItems: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
+vi.mock('@/features/budgets/hooks', () => ({
+  useUpdateBudget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBudget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/features/debts/hooks', () => ({
+  useUpdateDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/features/goals/hooks', () => ({
+  useUpdateSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadGoalImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('@/features/transactions/api', async () => {
+  const actual = await vi.importActual<typeof import('@/features/transactions/api')>(
+    '@/features/transactions/api',
+  )
+  return {
+    ...actual,
+    fetchTransaction: vi.fn(async (id: string) => ({
+      id,
+      wallet_id: 'w1',
+      amount_minor: 1200,
+      currency: 'ZMW',
+      type: 'expense',
+      merchant: 'Coffee',
+      description: null,
+      category_id: null,
+      transaction_date: '2026-07-01',
+      source: 'manual',
+      user_confirmed: true,
+      version: 1,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+      deleted_at: null,
+      ai_extraction: null,
+      category: null,
+    })),
+    fetchTransactions: vi.fn(async () => []),
+  }
+})
 vi.mock('@/lib/useKeyboardInset', () => ({
   useKeyboardInset: () => 0,
 }))
@@ -243,7 +285,8 @@ describe('ChatSheet action trail', () => {
             label: 'Logged expense',
             summary: 'Coffee · K12.00',
             status: 'done',
-            viewHref: '/transactions',
+            viewHref: '/transactions?tx=tx-coffee',
+            targetId: 'tx-coffee',
             details: { Merchant: 'Coffee', Amount: 'K12.00' },
           },
         ],
@@ -260,6 +303,12 @@ describe('ChatSheet action trail', () => {
     expect(await screen.findByText('Merchant')).toBeInTheDocument()
     expect(screen.getByText('Coffee')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    expect(await screen.findByRole('heading', { name: 'Edit transaction' })).toBeInTheDocument()
+    // Chat stays open underneath the details sheet.
+    expect(screen.getByText('Logged it.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View transactions' })).toBeInTheDocument()
   })
 
   it('shows Undo for creates and auto-applied updates in the trail footer', async () => {
