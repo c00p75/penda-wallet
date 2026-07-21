@@ -76,7 +76,7 @@ function ActionStepRow({
   expanded: boolean
   showConnector: boolean
   onToggle: () => void
-  onNavigateAway?: () => void
+  onNavigateAway?: (href: string) => void
   busy?: boolean
   resolveDisabled?: boolean
   onResolvePending?: (action: PendingAction, decision: 'confirm' | 'cancel') => void
