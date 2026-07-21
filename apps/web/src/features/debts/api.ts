@@ -12,6 +12,12 @@ export async function fetchDebts(walletId: string): Promise<Debt[]> {
   return data
 }
 
+export async function fetchDebt(id: string): Promise<Debt | null> {
+  const { data, error } = await supabase.from('debts').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function createDebt(walletId: string, input: DebtInput): Promise<Debt> {
   const { data, error } = await supabase
     .from('debts')

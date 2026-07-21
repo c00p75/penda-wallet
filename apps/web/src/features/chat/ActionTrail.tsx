@@ -9,8 +9,8 @@ import type { ChatAction, PendingAction } from './types'
 
 interface ActionTrailProps {
   actions: ChatAction[]
-  /** When true, the sheet closes before navigating a View link. */
-  onNavigateAway?: () => void
+  /** Close the sheet and navigate to a View link (avoids back-stack races). */
+  onNavigateAway?: (href: string) => void
   busyActionId?: string | null
   resolveDisabled?: boolean
   onResolvePending?: (action: PendingAction, decision: 'confirm' | 'cancel') => void
@@ -76,7 +76,7 @@ function ActionStepRow({
   expanded: boolean
   showConnector: boolean
   onToggle: () => void
-  onNavigateAway?: () => void
+  onNavigateAway?: (href: string) => void
   busy?: boolean
   resolveDisabled?: boolean
   onResolvePending?: (action: PendingAction, decision: 'confirm' | 'cancel') => void
@@ -217,17 +217,16 @@ function ActionStepRow({
               ))}
             </dl>
           )}
+          {/* View lives in the trail footer (message.viewHref) so we don't show two. */}
           {action.viewHref &&
-            (action.status === 'done' || action.status === 'confirmed') && (
+            (action.status === 'done' || action.status === 'confirmed') &&
+            !onNavigateAway && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="mt-2 h-7 px-2.5 text-xs"
-                onClick={() => {
-                  onNavigateAway?.()
-                  navigate(action.viewHref!)
-                }}
+                onClick={() => navigate(action.viewHref!)}
               >
                 View
               </Button>

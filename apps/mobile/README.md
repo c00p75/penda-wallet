@@ -7,7 +7,7 @@ interactions and a floating Ask Penda chat orb.
 
 - **Expo SDK 57** + Expo Router + **expo-dev-client**
 - **React Native Reanimated** + Gesture Handler
-- **Supabase Auth** (magic link + Google OAuth via `penda://`)
+- **Supabase Auth** (email/password + Google OAuth via `penda://`)
 - **expo-sms-listener** (Android ambient MoMo ingest; requires a native build)
 - **expo-local-authentication** (app lock biometrics)
 - **EAS Build / Submit** for App Store and Play Store

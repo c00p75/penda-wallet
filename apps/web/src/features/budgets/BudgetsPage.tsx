@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
+import { fetchBudget } from '@/features/budgets/api'
 import { MessageCircle, Pencil, Plus } from 'lucide-react'
 import { Lightbulb, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
@@ -23,6 +25,7 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useProfile } from '@/features/profile/hooks'
+import { resolveAiPersonality } from '@/features/profile/types'
 import { useSavingsGoals } from '@/features/goals/hooks'
 import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useBudgetProgress, useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from './hooks'
@@ -60,6 +63,8 @@ export function BudgetsPage() {
   const { data: profile } = useProfile(session?.user.id)
 
   const { data: budgets = [] } = useBudgets(wallet?.id)
+  const [searchParams] = useSearchParams()
+  const deepLinkBudgetId = searchParams.get('budget')
   const { data: progress = [] } = useBudgetProgress(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
@@ -103,6 +108,19 @@ export function BudgetsPage() {
     }
   }, [])
 
+  // Chat "View" deep link: open the budget form as soon as the id is known.
+  useDeepLinkEntityOpen({
+    kind: 'budget',
+    paramId: deepLinkBudgetId,
+    list: budgets,
+    fetchById: fetchBudget,
+    onOpen: (budget) => {
+      setTab('budgets')
+      setEditingBudget(budget)
+      setBudgetFormOpen(true)
+    },
+  })
+
   const existingBudgetCategoryIds = useMemo(
     () => budgets.map((b) => b.category_id).filter((id): id is string => !!id),
     [budgets],
@@ -119,7 +137,7 @@ export function BudgetsPage() {
     () =>
       historySuggestions.length === 0 && plan
         ? starterBudgetsForPersona(
-            profile?.ai_personality ?? 'balanced_coach',
+            resolveAiPersonality(profile?.ai_personality),
             plan.intended_amount_minor,
             categories,
             existingBudgetCategoryIds,

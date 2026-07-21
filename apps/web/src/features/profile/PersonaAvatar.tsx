@@ -1,12 +1,13 @@
 import { cn } from '@/lib/utils'
 
-import type { AiPersonality } from './types'
+import { resolveAiPersonality, type AiPersonality } from './types'
 
 /**
  * A cast of hand-drawn portrait avatars for the AI personas, one flat-vector
  * face per personality, built from a shared kit of features (skin, hair, brows,
- * eyes, mouth, accessories) so the ten read as one family. The tinted circle
+ * eyes, mouth, accessories) so they read as one family. The tinted circle
  * behind each face reuses the persona's `accent`, matching the rest of the profile UI.
+ * Legacy persona keys still have faces; `resolveAiPersonality` maps them for the UI.
  */
 
 type HairStyle =
@@ -339,7 +340,7 @@ export interface PersonaAvatarProps {
 }
 
 export function PersonaAvatar({ value, accent, size = 44, className }: PersonaAvatarProps) {
-  const f = FACES[value]
+  const f = FACES[resolveAiPersonality(value)] ?? FACES[value] ?? FACES.balanced_coach
   return (
     <span
       className={cn('relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full', className)}

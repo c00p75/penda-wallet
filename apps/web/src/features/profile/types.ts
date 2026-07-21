@@ -13,6 +13,7 @@ import {
 export type { NotificationPrefs, CompanionPrefs }
 export { DEFAULT_NOTIFICATION_PREFS, DEFAULT_COMPANION_PREFS }
 
+/** Active + legacy values stored on profiles. Prefer `resolveAiPersonality` for UI/prompts. */
 export type AiPersonality =
   | 'balanced_coach'
   | 'angry_mom'
@@ -24,6 +25,41 @@ export type AiPersonality =
   | 'hustler'
   | 'gogo'
   | 'analyst'
+
+/** Personas shown in pickers. Legacy values still resolve via `resolveAiPersonality`. */
+export type ActiveAiPersonality =
+  | 'balanced_coach'
+  | 'angry_mom'
+  | 'drill_sergeant'
+  | 'funny_comedian'
+  | 'hustler'
+  | 'analyst'
+
+/** Map retired personas onto the closest active voice. */
+export const LEGACY_PERSONALITY_FALLBACKS: Partial<Record<AiPersonality, ActiveAiPersonality>> = {
+  wise_mentor: 'analyst',
+  chill_friend: 'balanced_coach',
+  gen_z: 'funny_comedian',
+  gogo: 'angry_mom',
+}
+
+export function resolveAiPersonality(
+  value: AiPersonality | string | null | undefined,
+): ActiveAiPersonality {
+  const raw = (value ?? 'balanced_coach') as AiPersonality
+  const mapped = LEGACY_PERSONALITY_FALLBACKS[raw] ?? raw
+  if (
+    mapped === 'balanced_coach' ||
+    mapped === 'angry_mom' ||
+    mapped === 'drill_sergeant' ||
+    mapped === 'funny_comedian' ||
+    mapped === 'hustler' ||
+    mapped === 'analyst'
+  ) {
+    return mapped
+  }
+  return 'balanced_coach'
+}
 
 export interface AiConsent {
   auto_log_sms: boolean
@@ -128,20 +164,12 @@ export const PERSONALITIES: PersonalityMeta[] = [
     accent: 'var(--rose)',
   },
   {
-    value: 'wise_mentor',
-    name: 'Sena',
-    label: 'Wise mentor',
-    description: 'Calm perspective, never judgment.',
-    preview: "Spending is just choices made visible. You're seeing them now. That's the work.",
-    accent: 'var(--mint)',
-  },
-  {
-    value: 'chill_friend',
-    name: 'Kabwe',
-    label: 'Chill friend',
-    description: 'Casual, easygoing, keeps you honest.',
-    preview: "No stress. You've still got K600 for the weekend. Enjoy it.",
-    accent: 'var(--apricot)',
+    value: 'funny_comedian',
+    name: 'Bobo',
+    label: 'Funny comedian',
+    description: 'Cracks jokes, still gets the point across.',
+    preview: 'K600 left and payday’s Friday? That’s not a budget, that’s a hostage situation. We’ll make it. 😄',
+    accent: 'oklch(0.8 0.16 70)',
   },
   {
     value: 'drill_sergeant',
@@ -152,36 +180,12 @@ export const PERSONALITIES: PersonalityMeta[] = [
     accent: 'oklch(0.6 0.09 250)',
   },
   {
-    value: 'funny_comedian',
-    name: 'Bobo',
-    label: 'Funny comedian',
-    description: 'Cracks jokes, still gets the point across.',
-    preview: 'K600 left and payday’s Friday? That’s not a budget, that’s a hostage situation. We’ll make it. 😄',
-    accent: 'oklch(0.8 0.16 70)',
-  },
-  {
-    value: 'gen_z',
-    name: 'Zee',
-    label: 'Gen-Z bestie',
-    description: 'Very online, hype, keeps it real.',
-    preview: 'K600 ahead?? okay we don’t claim broke behavior in this house 💅 financial icon fr.',
-    accent: 'oklch(0.68 0.2 350)',
-  },
-  {
     value: 'hustler',
     name: 'Musa',
     label: 'The hustler',
     description: 'Growth mindset, earn more, not just spend less.',
     preview: 'K600 left is fine. Real question: what’s bringing more in? What did you sell this week?',
     accent: 'oklch(0.64 0.15 155)',
-  },
-  {
-    value: 'gogo',
-    name: 'Gogo',
-    label: 'Frugal grandmother',
-    description: 'Patient, thrifty, never rushed.',
-    preview: 'Eh, you have K600? Put half away before it grows legs. A little saved often becomes a lot.',
-    accent: 'oklch(0.6 0.09 45)',
   },
   {
     value: 'analyst',
@@ -191,4 +195,20 @@ export const PERSONALITIES: PersonalityMeta[] = [
     preview: 'K600 remaining, 5 days to payday: K120/day. Current average: K185/day. Overshoot risk ~K325.',
     accent: 'oklch(0.58 0.03 250)',
   },
+]
+
+export function personalityMeta(
+  value: AiPersonality | string | null | undefined,
+): PersonalityMeta {
+  const resolved = resolveAiPersonality(value)
+  return PERSONALITIES.find((p) => p.value === resolved) ?? PERSONALITIES[0]!
+}
+
+/** Active + retired display names, for retargeting stored check-in copy. */
+export const PERSONA_DISPLAY_NAMES: readonly string[] = [
+  ...PERSONALITIES.map((p) => p.name),
+  'Sena',
+  'Kabwe',
+  'Zee',
+  'Gogo',
 ]

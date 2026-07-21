@@ -42,16 +42,31 @@
   --sun: oklch(0.82 0.14 90);
   --sun-soft: oklch(0.95 0.05 90);
   /* Illustrated hero card gradients */
-  --iris-hero-from: #7b6cf6;
-  --iris-hero-to: #4f46c8;
-  --apricot-hero-from: #ffb07a;
-  --apricot-hero-to: #f06a4d;
-  --mint-hero-from: #5fd4a8;
-  --mint-hero-to: #2a9d7a;
-  --rose-hero-from: #f48aa8;
-  --rose-hero-to: #d4547a;
-  --sun-hero-from: #ffd56a;
-  --sun-hero-to: #f0a830;
+  --iris-hero-from: #6f62ef;
+  --iris-hero-to: #4338b8;
+  --apricot-hero-from: #f08958;
+  --apricot-hero-to: #d4542e;
+  --mint-hero-from: #3fbf96;
+  --mint-hero-to: #1f7f62;
+  --rose-hero-from: #e87296;
+  --rose-hero-to: #c23d66;
+  /* Sun stays warm but deep enough for white type (was too pale). */
+  --sun-hero-from: #e09a18;
+  --sun-hero-to: #b86a0a;
+  /* Colored card glows: soft tinted drop shadows against light canvas */
+  --iris-hero-glow: 0 14px 34px color-mix(in srgb, var(--iris-hero-to) 38%, transparent);
+  --apricot-hero-glow: 0 14px 34px color-mix(in srgb, var(--apricot-hero-to) 36%, transparent);
+  --mint-hero-glow: 0 14px 34px color-mix(in srgb, var(--mint-hero-to) 36%, transparent);
+  --rose-hero-glow: 0 14px 34px color-mix(in srgb, var(--rose-hero-to) 36%, transparent);
+  --sun-hero-glow: 0 14px 34px color-mix(in srgb, var(--sun-hero-to) 34%, transparent);
+  /* Text scrim + blob strength on hero cards */
+  --hero-card-scrim: linear-gradient(
+    90deg,
+    rgb(0 0 0 / 0.26) 0%,
+    rgb(0 0 0 / 0.1) 48%,
+    transparent 78%
+  );
+  --hero-blob-white: 16%;
   /* Soft elevation */
   --shadow-soft: 0 2px 12px oklch(0.3 0.04 278 / 0.06);
   --shadow-card: 0 8px 28px oklch(0.3 0.04 278 / 0.08);
@@ -176,16 +191,39 @@ body {
   --rose-soft: oklch(0.32 0.06 5);
   --sun: oklch(0.84 0.12 90);
   --sun-soft: oklch(0.32 0.05 90);
-  --iris-hero-from: #8b7cf8;
-  --iris-hero-to: #5b52d4;
-  --apricot-hero-from: #ffb88a;
-  --apricot-hero-to: #e87858;
-  --mint-hero-from: #6adcb4;
-  --mint-hero-to: #38a888;
-  --rose-hero-from: #f69ab4;
-  --rose-hero-to: #de6488;
-  --sun-hero-from: #ffe07a;
-  --sun-hero-to: #f2b040;
+  --iris-hero-from: #7d70f0;
+  --iris-hero-to: #4f46c8;
+  --apricot-hero-from: #f29668;
+  --apricot-hero-to: #d4643c;
+  --mint-hero-from: #4cc8a0;
+  --mint-hero-to: #2a8f70;
+  --rose-hero-from: #ec84a4;
+  --rose-hero-to: #cc4e76;
+  --sun-hero-from: #e8a628;
+  --sun-hero-to: #c07810;
+  /* Luminous glows + hairline rim so cards lift off dark canvas */
+  --iris-hero-glow:
+    0 12px 36px color-mix(in srgb, var(--iris-hero-from) 58%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--iris-hero-from) 38%, transparent);
+  --apricot-hero-glow:
+    0 12px 36px color-mix(in srgb, var(--apricot-hero-from) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--apricot-hero-from) 34%, transparent);
+  --mint-hero-glow:
+    0 12px 36px color-mix(in srgb, var(--mint-hero-from) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mint-hero-from) 34%, transparent);
+  --rose-hero-glow:
+    0 12px 36px color-mix(in srgb, var(--rose-hero-from) 52%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--rose-hero-from) 34%, transparent);
+  --sun-hero-glow:
+    0 12px 36px color-mix(in srgb, var(--sun-hero-from) 48%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--sun-hero-from) 32%, transparent);
+  --hero-card-scrim: linear-gradient(
+    90deg,
+    rgb(0 0 0 / 0.42) 0%,
+    rgb(0 0 0 / 0.18) 50%,
+    transparent 82%
+  );
+  --hero-blob-white: 12%;
   --shadow-soft: 0 2px 12px oklch(0 0 0 / 0.28);
   --shadow-card: 0 8px 28px oklch(0 0 0 / 0.35);
   --shadow-hero: 0 14px 40px oklch(0.4 0.12 278 / 0.4);
@@ -308,6 +346,23 @@ body {
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
+/* Edge-docked half sheets: slide straight up from below the fold. */
+@keyframes overlay-sheet-drawer-in {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes overlay-sheet-drawer-out {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 100%, 0);
+  }
+}
 @keyframes overlay-sheet-left-in {
   from {
     opacity: 0;
@@ -371,6 +426,9 @@ body {
   [data-slot='sheet-content'][data-side='bottom'][data-open] {
     animation: overlay-sheet-bottom-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  [data-slot='sheet-content'][data-side='bottom'][data-size='half'][data-open] {
+    animation: overlay-sheet-drawer-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
   [data-slot='sheet-content'][data-side='left'][data-open] {
     animation: overlay-sheet-left-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -382,6 +440,16 @@ body {
   }
   [data-slot='sheet-content'][data-closed] {
     animation: overlay-sheet-out 160ms ease-in both;
+  }
+  [data-slot='sheet-content'][data-side='bottom'][data-size='half'][data-closed] {
+    animation: overlay-sheet-drawer-out 220ms ease-in both;
+  }
+
+  /* Chat View and similar: leave immediately so the destination is not waiting. */
+  [data-slot='sheet-content'][data-instant-dismiss][data-closed],
+  [data-slot='sheet-overlay'][data-instant-dismiss][data-closed] {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

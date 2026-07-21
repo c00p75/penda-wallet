@@ -6,6 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+const MIN_PASSWORD_LENGTH = 8
+
+type AuthMode = 'signin' | 'signup' | 'forgot'
+type Status = 'idle' | 'loading' | 'sent' | 'error'
+
 function GoogleLogo() {
   return (
     <svg className="size-4" viewBox="0 0 24 24" aria-hidden>
@@ -67,29 +72,107 @@ function Sparkle({
   )
 }
 
+function validatePassword(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+  }
+  return null
+}
+
 export function LoginPage() {
   const session = useAuthStore((s) => s.session)
+  const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [status, setStatus] = useState<Status>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
 
   if (session) {
     return <Navigate to="/" replace />
   }
 
-  async function handleMagicLink(e: React.FormEvent) {
+  function switchMode(next: AuthMode) {
+    setMode(next)
+    setStatus('idle')
+    setErrorMessage('')
+    setInfoMessage('')
+    setPassword('')
+    setConfirmPassword('')
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setStatus('sending')
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
+    setErrorMessage('')
+    setInfoMessage('')
+    setStatus('loading')
+
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      setErrorMessage('Enter your email address.')
+      setStatus('error')
+      return
+    }
+
+    if (mode === 'forgot') {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: `${window.location.origin}/login`,
+      })
+      if (error) {
+        setErrorMessage(error.message)
+        setStatus('error')
+        return
+      }
+      setInfoMessage(`Password reset link sent to ${trimmedEmail}.`)
+      setStatus('sent')
+      return
+    }
+
+    const passwordError = validatePassword(password)
+    if (passwordError) {
+      setErrorMessage(passwordError)
+      setStatus('error')
+      return
+    }
+
+    if (mode === 'signup') {
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match.')
+        setStatus('error')
+        return
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      })
+      if (error) {
+        setErrorMessage(error.message)
+        setStatus('error')
+        return
+      }
+      // Confirmations enabled: no session until the user verifies email.
+      if (!data.session) {
+        setInfoMessage(`Check ${trimmedEmail} to confirm your account, then sign in.`)
+        setStatus('sent')
+        return
+      }
+      setStatus('idle')
+      return
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
     })
     if (error) {
       setErrorMessage(error.message)
       setStatus('error')
-    } else {
-      setStatus('sent')
+      return
     }
+    setStatus('idle')
   }
 
   async function handleOAuth(provider: 'google') {
@@ -98,6 +181,19 @@ export function LoginPage() {
       options: { redirectTo: window.location.origin },
     })
   }
+
+  const submitLabel =
+    status === 'loading'
+      ? mode === 'forgot'
+        ? 'Sending…'
+        : mode === 'signup'
+          ? 'Creating account…'
+          : 'Signing in…'
+      : mode === 'forgot'
+        ? 'Send reset link'
+        : mode === 'signup'
+          ? 'Create account'
+          : 'Sign in'
 
   return (
     <main className="flex min-h-svh flex-col gap-5 bg-background px-5 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
@@ -140,29 +236,44 @@ export function LoginPage() {
 
       {/* Auth actions */}
       <div className="flex flex-col gap-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4" style={{ animationDuration: '600ms' }}>
-        <button
-          type="button"
-          onClick={() => handleOAuth('google')}
-          className="flex h-13 items-center justify-center gap-2.5 rounded-2xl border border-border/60 bg-white text-sm font-semibold text-gray-800 shadow-[var(--shadow-soft)] outline-none transition-all hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98] dark:border-transparent dark:bg-card dark:text-foreground"
-        >
-          <GoogleLogo />
-          Continue with Google
-        </button>
+        {mode !== 'forgot' && (
+          <button
+            type="button"
+            onClick={() => handleOAuth('google')}
+            className="flex h-13 items-center justify-center gap-2.5 rounded-2xl border border-border/60 bg-white text-sm font-semibold text-gray-800 shadow-[var(--shadow-soft)] outline-none transition-all hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98] dark:border-transparent dark:bg-card dark:text-foreground"
+          >
+            <GoogleLogo />
+            Continue with Google
+          </button>
+        )}
 
-        <div className="flex items-center gap-3 py-0.5 text-xs text-muted-foreground/70">
-          <div className="h-px flex-1 bg-border/80" />
-          or continue with email
-          <div className="h-px flex-1 bg-border/80" />
-        </div>
+        {mode !== 'forgot' && (
+          <div className="flex items-center gap-3 py-0.5 text-xs text-muted-foreground/70">
+            <div className="h-px flex-1 bg-border/80" />
+            or continue with email
+            <div className="h-px flex-1 bg-border/80" />
+          </div>
+        )}
 
         {status === 'sent' ? (
           <div className="rounded-2xl border border-[var(--mint)]/35 bg-[var(--mint-soft)]/70 p-4 text-center">
-            <p className="text-sm text-foreground/80">
-              Check <span className="font-semibold text-foreground">{email}</span> for a sign-in link.
-            </p>
+            <p className="text-sm text-foreground/80">{infoMessage}</p>
+            <button
+              type="button"
+              onClick={() => switchMode('signin')}
+              className="mt-3 text-xs font-semibold text-foreground underline-offset-2 hover:underline"
+            >
+              Back to sign in
+            </button>
           </div>
         ) : (
-          <form onSubmit={handleMagicLink} className="flex flex-col gap-2.5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+            {mode === 'forgot' && (
+              <p className="text-sm text-muted-foreground">
+                Enter your email and we&apos;ll send a link to reset your password.
+              </p>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">
                 Email address
@@ -178,11 +289,98 @@ export function LoginPage() {
                 className="h-12 rounded-2xl border-border/80 bg-background text-foreground shadow-sm placeholder:text-muted-foreground/50 focus:border-primary"
               />
             </div>
+
+            {mode !== 'forgot' && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">
+                    Password
+                  </Label>
+                  {mode === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot')}
+                      className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  className="h-12 rounded-2xl border-border/80 bg-background text-foreground shadow-sm placeholder:text-muted-foreground/50 focus:border-primary"
+                />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="confirm-password" className="text-xs font-medium text-muted-foreground">
+                  Confirm password
+                </Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  className="h-12 rounded-2xl border-border/80 bg-background text-foreground shadow-sm placeholder:text-muted-foreground/50 focus:border-primary"
+                />
+              </div>
+            )}
+
             {status === 'error' && <p className="text-xs font-medium text-[var(--rose)]">{errorMessage}</p>}
-            <Button type="submit" disabled={status === 'sending'} className="h-12 w-full rounded-2xl font-semibold shadow-[var(--shadow-soft)]">
-              {status === 'sending' ? 'Sending link…' : 'Send magic link'}
+
+            <Button type="submit" disabled={status === 'loading'} className="h-12 w-full rounded-2xl font-semibold shadow-[var(--shadow-soft)]">
+              {submitLabel}
             </Button>
           </form>
+        )}
+
+        {status !== 'sent' && (
+          <p className="text-center text-xs text-muted-foreground">
+            {mode === 'signin' && (
+              <>
+                Don&apos;t have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode('signup')}
+                  className="font-semibold text-foreground underline-offset-2 hover:underline"
+                >
+                  Sign up
+                </button>
+              </>
+            )}
+            {mode === 'signup' && (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode('signin')}
+                  className="font-semibold text-foreground underline-offset-2 hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+            {mode === 'forgot' && (
+              <button
+                type="button"
+                onClick={() => switchMode('signin')}
+                className="font-semibold text-foreground underline-offset-2 hover:underline"
+              >
+                Back to sign in
+              </button>
+            )}
+          </p>
         )}
 
         <p className="mt-1 text-center text-[11px] text-muted-foreground/80">

@@ -1,4 +1,5 @@
 import type { AiPersonality } from '@/features/profile/types'
+import { resolveAiPersonality } from '@/features/profile/types'
 import type { Category } from '@/features/categories/types'
 import type { BudgetSuggestion } from './suggestBudgets'
 
@@ -17,7 +18,10 @@ interface StarterAllocation {
  * suggestBudgets has nothing to learn from) still get a sensible starting
  * point instead of staring at zero.
  */
-const STARTER_ALLOCATIONS: Record<AiPersonality, StarterAllocation[]> = {
+const STARTER_ALLOCATIONS: Record<
+  ReturnType<typeof resolveAiPersonality>,
+  StarterAllocation[]
+> = {
   balanced_coach: [
     { categoryName: 'Housing', weight: 0.35 },
     { categoryName: 'Food & Drinks', weight: 0.2 },
@@ -31,18 +35,6 @@ const STARTER_ALLOCATIONS: Record<AiPersonality, StarterAllocation[]> = {
     { categoryName: 'Utilities', weight: 0.1 },
     { categoryName: 'Health', weight: 0.08 },
   ],
-  wise_mentor: [
-    { categoryName: 'Housing', weight: 0.3 },
-    { categoryName: 'Food & Drinks', weight: 0.15 },
-    { categoryName: 'Utilities', weight: 0.08 },
-    { categoryName: 'Health', weight: 0.07 },
-  ],
-  chill_friend: [
-    { categoryName: 'Housing', weight: 0.3 },
-    { categoryName: 'Food & Drinks', weight: 0.18 },
-    { categoryName: 'Entertainment', weight: 0.12 },
-    { categoryName: 'Shopping', weight: 0.08 },
-  ],
   drill_sergeant: [
     { categoryName: 'Housing', weight: 0.28 },
     { categoryName: 'Food & Drinks', weight: 0.14 },
@@ -54,21 +46,10 @@ const STARTER_ALLOCATIONS: Record<AiPersonality, StarterAllocation[]> = {
     { categoryName: 'Food & Drinks', weight: 0.18 },
     { categoryName: 'Entertainment', weight: 0.12 },
   ],
-  gen_z: [
-    { categoryName: 'Housing', weight: 0.25 },
-    { categoryName: 'Food & Drinks', weight: 0.15 },
-    { categoryName: 'Entertainment', weight: 0.15 },
-    { categoryName: 'Shopping', weight: 0.12 },
-  ],
   hustler: [
     { categoryName: 'Housing', weight: 0.28 },
     { categoryName: 'Food & Drinks', weight: 0.14 },
     { categoryName: 'Transportation', weight: 0.12 },
-    { categoryName: 'Utilities', weight: 0.07 },
-  ],
-  gogo: [
-    { categoryName: 'Housing', weight: 0.28 },
-    { categoryName: 'Food & Drinks', weight: 0.14 },
     { categoryName: 'Utilities', weight: 0.07 },
   ],
   analyst: [
@@ -92,7 +73,8 @@ export function starterBudgetsForPersona(
 ): BudgetSuggestion[] {
   if (intendedAmountMinor <= 0) return []
   const existing = new Set(existingCategoryIds)
-  const allocations = STARTER_ALLOCATIONS[persona] ?? STARTER_ALLOCATIONS.balanced_coach
+  const allocations =
+    STARTER_ALLOCATIONS[resolveAiPersonality(persona)] ?? STARTER_ALLOCATIONS.balanced_coach
 
   const suggestions: BudgetSuggestion[] = []
   for (const { categoryName, weight } of allocations) {

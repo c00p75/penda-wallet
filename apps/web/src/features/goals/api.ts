@@ -26,6 +26,12 @@ export async function fetchSavingsGoals(walletId: string): Promise<SavingsGoal[]
   return data
 }
 
+export async function fetchSavingsGoal(id: string): Promise<SavingsGoal | null> {
+  const { data, error } = await supabase.from('savings_goals').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function createSavingsGoal(
   walletId: string,
   input: SavingsGoalInput,

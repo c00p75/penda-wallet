@@ -41,6 +41,18 @@ export async function fetchTransactions(walletId: string): Promise<Transaction[]
   return data as unknown as Transaction[]
 }
 
+export async function fetchTransaction(id: string): Promise<Transaction | null> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select(SELECT_WITH_CATEGORY)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) throw error
+  return (data as unknown as Transaction | null) ?? null
+}
+
 export async function createTransaction(
   walletId: string,
   userId: string,

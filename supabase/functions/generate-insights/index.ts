@@ -3,7 +3,13 @@ import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
-import { GENDER_LABELS, GOAL_LABELS, PERSONALITY_NAMES, PERSONALITY_PROMPTS } from '../_shared/personas.ts'
+import {
+  GENDER_LABELS,
+  GOAL_LABELS,
+  PERSONALITY_NAMES,
+  PERSONALITY_PROMPTS,
+  resolvePersonality,
+} from '../_shared/personas.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -340,8 +346,9 @@ function buildPrompt(
     .map((c) => `- ${c.category}: ${fmt(c.amount_minor)} ${stats.currency}`)
     .join('\n')
 
-  const personalityFragment = PERSONALITY_PROMPTS[profile.personality] ?? PERSONALITY_PROMPTS.balanced_coach
-  const personaName = PERSONALITY_NAMES[profile.personality] ?? PERSONALITY_NAMES.balanced_coach
+  const personality = resolvePersonality(profile.personality)
+  const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
 
   // Hard requirement, not a suggestion: gender may only ever shape tone here,
   // never the numbers or the advice, see chat-message/index.ts for the

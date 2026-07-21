@@ -7,6 +7,7 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet'
+import { ArrowUpRightIcon } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +33,9 @@ interface BudgetFormProps {
   onSubmit: (input: BudgetInput) => Promise<void>
   onDelete?: () => Promise<void>
   isSubmitting?: boolean
+  /** Leave chat and go to the list/hub page (label e.g. "View budgets"). */
+  onOpenInApp?: () => void
+  openInAppLabel?: string
 }
 
 export function BudgetForm({
@@ -43,6 +47,8 @@ export function BudgetForm({
   onSubmit,
   onDelete,
   isSubmitting,
+  onOpenInApp,
+  openInAppLabel = 'View budgets',
 }: BudgetFormProps) {
   const [categoryId, setCategoryId] = useState<string>('')
   const [amount, setAmount] = useState('')
@@ -162,6 +168,18 @@ export function BudgetForm({
               {budget ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>
+
+          {onOpenInApp && budget && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto gap-1.5 self-center text-muted-foreground"
+              onClick={onOpenInApp}
+            >
+              {openInAppLabel}
+              <ArrowUpRightIcon className="size-3.5" />
+            </Button>
+          )}
         </form>
       </SheetContent>
     </Sheet>

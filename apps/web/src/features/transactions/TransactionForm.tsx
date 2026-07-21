@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { ArrowUpRightIcon } from '@/components/icons/product'
 import {
   Sheet,
   SheetContent,
@@ -55,6 +56,9 @@ interface TransactionFormProps {
   onConfirmItems?: (input: ReceiptItemsConfirmInput) => Promise<void>
   onDelete?: () => Promise<void>
   isSubmitting?: boolean
+  /** Leave chat and go to the list/hub page (label e.g. "View transactions"). */
+  onOpenInApp?: () => void
+  openInAppLabel?: string
 }
 
 type ReceiptLogMode = 'combined' | 'items'
@@ -103,6 +107,8 @@ export function TransactionForm({
   onConfirmItems,
   onDelete,
   isSubmitting,
+  onOpenInApp,
+  openInAppLabel = 'View transactions',
 }: TransactionFormProps) {
   const [type, setType] = useState<TransactionType>('expense')
   const [amount, setAmount] = useState('')
@@ -566,6 +572,18 @@ export function TransactionForm({
                     : 'Add'}
             </Button>
           </SheetFooter>
+
+          {onOpenInApp && transaction && !isReceiptDraft && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto gap-1.5 self-center text-muted-foreground"
+              onClick={onOpenInApp}
+            >
+              {openInAppLabel}
+              <ArrowUpRightIcon className="size-3.5" />
+            </Button>
+          )}
         </form>
       </SheetContent>
     </Sheet>

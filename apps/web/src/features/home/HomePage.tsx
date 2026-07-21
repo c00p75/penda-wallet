@@ -52,7 +52,7 @@ import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
 import { useDebts } from '@/features/debts/hooks'
 import { useProfile } from '@/features/profile/hooks'
-import { PERSONALITIES, DEFAULT_COMPANION_PREFS } from '@/features/profile/types'
+import { DEFAULT_COMPANION_PREFS, personalityMeta } from '@/features/profile/types'
 import { upsertCoachingNotification } from '@/features/notifications/api'
 import { explainSafeToSpend } from '@/features/planning/safeToSpendExplain'
 import { ImpulsePauseSheet } from '@/features/impulse/ImpulsePauseSheet'
@@ -63,7 +63,7 @@ import { buildCompanionHomeSignals } from '@/features/companion/homeCompanion'
 import { applyMoodToCoachingText } from '@/features/companion/moodCoaching'
 import { evidenceForInsight } from '@/features/companion/nudgeEvidence'
 import { WhyNudgeSheet } from '@/features/companion/WhyNudgeSheet'
-import { CheckInCard } from '@/features/companion/CheckInCard'
+import { retargetCheckinMessage } from '@/features/companion/checkinMessage'
 import {
   useCompanionCheckins,
   useLatestWeeklyLetter,
@@ -71,6 +71,7 @@ import {
 } from '@/features/companion/hooks'
 import { projectCashflow } from '@/features/cashflow/projection'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
+import { HeroDetailSheet, type HeroDetail } from '@/features/home/HeroDetailSheet'
 import { GettingStartedCard } from '@/features/onboarding/GettingStartedCard'
 import {
   buildGettingStartedSteps,
@@ -145,6 +146,7 @@ export function HomePage() {
 
   const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
   const { data: profile } = useProfile(session?.user.id)
+  const persona = personalityMeta(profile?.ai_personality)
   const blindBudgeting = !!profile?.blind_budgeting
   const pauseImpulse = useImpulseStore((s) => s.pause)
   const isImpulseDismissed = useImpulseStore((s) => s.isDismissed)
@@ -164,6 +166,7 @@ export function HomePage() {
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const [needsYouTick, setNeedsYouTick] = useState(0)
   const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
+  const [heroDetail, setHeroDetail] = useState<HeroDetail | null>(null)
   const [gettingStarted, setGettingStarted] = useState<GettingStartedState | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
   const walkthroughActive = useOnboardingStore((s) => s.walkthroughActive)
@@ -268,8 +271,7 @@ export function HomePage() {
       prefs: profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS,
       mode: profile?.mode ?? 'individual',
       currency: wallet?.base_currency ?? 'USD',
-      personaName:
-        PERSONALITIES.find((p) => p.value === profile?.ai_personality)?.name ?? 'Amara',
+      personaName: persona.name,
       memories,
       pacts,
       transactions,
@@ -296,7 +298,10 @@ export function HomePage() {
         }).freeBeforeNextIncomeMinor
       })(),
       weeklyLetterTeaser: weeklyLetter
-        ? `${weeklyLetter.title}: ${weeklyLetter.body.slice(0, 120)}…`
+        ? retargetCheckinMessage(
+            `${weeklyLetter.title}: ${weeklyLetter.body.slice(0, 120)}…`,
+            persona.name,
+          )
         : null,
       debts,
       lifeEvent: profile?.life_event ?? null,
@@ -472,11 +477,14 @@ export function HomePage() {
     ? Math.max(0, planSafe.perDayMinor)
     : Math.max(0, Math.round(remainingBudgetMinor / daysLeft))
 
-  const topGoal = [...goals].sort(
-    (a, b) =>
-      b.current_amount_minor / Math.max(1, b.target_amount_minor) -
-      a.current_amount_minor / Math.max(1, a.target_amount_minor),
-  )[0]
+  // Prefer a goal with real progress; hide the card when every goal is still at 0.
+  const topGoal = [...goals]
+    .filter((g) => g.current_amount_minor > 0)
+    .sort(
+      (a, b) =>
+        b.current_amount_minor / Math.max(1, b.target_amount_minor) -
+        a.current_amount_minor / Math.max(1, a.target_amount_minor),
+    )[0]
   const topGoalPct =
     topGoal && topGoal.target_amount_minor > 0
       ? Math.round((topGoal.current_amount_minor / topGoal.target_amount_minor) * 100)
@@ -566,6 +574,39 @@ export function HomePage() {
         ? 'Things are tight. I can help you pick what to pause.'
         : "Cash is stretched. Let's find the leak together."
 
+  const checkinCards: InsightCard[] =
+    dayZero || companionCheckins.length === 0
+      ? []
+      : companionCheckins.slice(0, 3).map((c) => {
+          const body = retargetCheckinMessage(c.message, persona.name)
+          const isPact = c.kind === 'pact' || c.kind === 'impulse'
+          const respond = (status: 'kept' | 'slipped' | 'dismissed' | 'answered') => {
+            if (respondCheckin.isPending) return
+            if (status === 'answered' || status === 'kept' || status === 'slipped') {
+              openChat(body, { autoSend: true, mode: 'full' })
+            }
+            respondCheckin.mutate({ id: c.id, status })
+          }
+          return {
+            id: `checkin:${c.id}`,
+            variant: 'tip' as const,
+            tone: 'warm' as const,
+            label: `${persona.name}:`,
+            text: body,
+            persona: { value: persona.value, accent: persona.accent },
+            actions: isPact
+              ? [
+                  { label: 'Kept it', onTap: () => respond('kept') },
+                  { label: 'Slipped', variant: 'outline' as const, onTap: () => respond('slipped') },
+                  { label: 'Not now', variant: 'outline' as const, onTap: () => respond('dismissed') },
+                ]
+              : [
+                  { label: 'Talk about it', onTap: () => respond('answered') },
+                  { label: 'Dismiss', variant: 'outline' as const, onTap: () => respond('dismissed') },
+                ],
+          }
+        })
+
   const insightCards: InsightCard[] = [
     {
       id: 'week-read',
@@ -597,6 +638,7 @@ export function HomePage() {
       ],
       onWhy: dayZero ? undefined : () => setWhyInsightId('week-read'),
     },
+    ...checkinCards,
     ...(dayZero
       ? []
       : [
@@ -744,38 +786,45 @@ export function HomePage() {
           </section>
         )}
 
-        {!dayZero && companionCheckins.length > 0 && (
-          <section>
-            <SectionHeader title="Check-ins" />
-            <div className="flex flex-col gap-2">
-              {companionCheckins.slice(0, 3).map((c) => (
-                <CheckInCard
-                  key={c.id}
-                  checkin={c}
-                  busy={respondCheckin.isPending}
-                  onRespond={(status) => {
-                    if (status === 'answered' || status === 'kept' || status === 'slipped') {
-                      openChat(c.message, { autoSend: true, mode: 'full' })
-                    }
-                    respondCheckin.mutate({ id: c.id, status })
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* Primary number, demoted carousel. Day zero: balance only. */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-8 -mt-4">
           <div className="flex w-max gap-3 px-4 snap-x snap-mandatory pb-[3rem]">
             <HeroCard
               tone="iris"
               className="snap-start"
-              onClick={
-                !dayZero && hasBudgets && !blindBudgeting && planSafe
-                  ? () => setWhyInsightId('safe-to-spend')
-                  : undefined
-              }
+              onClick={() => {
+                const balanceLabel = `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`
+                if (dayZero || (!hasBudgets && !blindBudgeting)) {
+                  setHeroDetail({ kind: 'balance', valueLabel: balanceLabel })
+                  return
+                }
+                if (blindBudgeting) {
+                  setHeroDetail({ kind: 'status', valueLabel: auraLabel })
+                  return
+                }
+                const explained = planSafe
+                  ? explainSafeToSpend(
+                      {
+                        intendedMinor: plan!.intended_amount_minor,
+                        spentMinor: monthSpentForPlan,
+                        upcomingFixedMinor: planSafe.reservedFixedMinor,
+                        daysLeftInMonth: planSafe.daysLeftInclusive,
+                        safeDailyMinor: planSafe.perDayMinor,
+                        safeTotalMinor: planSafe.discretionaryRemainingMinor,
+                      },
+                      (m) => formatMoney(m, currency),
+                    )
+                  : {
+                      summary: 'Safe to spend from your budgets and days left in the month.',
+                      bullets: ['Open budgets to refine the plan behind this number.'],
+                    }
+                setHeroDetail({
+                  kind: 'safe-to-spend',
+                  valueLabel: `${formatMoney(safeToSpendPerDayMinor, currency)}/day`,
+                  summary: explained.summary,
+                  bullets: explained.bullets,
+                })
+              }}
               label={
                 dayZero
                   ? 'Balance'
@@ -814,6 +863,12 @@ export function HomePage() {
               <HeroCard
                 tone="mint"
                 className="snap-start"
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'balance',
+                    valueLabel: `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`,
+                  })
+                }
                 label="Balance"
                 value={
                   <HiddenAmount>
@@ -834,7 +889,15 @@ export function HomePage() {
               <HeroCard
                 tone="apricot"
                 className="snap-start"
-                onClick={() => navigate(`/goals/${topGoal.id}`)}
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'goal',
+                    name: topGoal.name,
+                    goalId: topGoal.id,
+                    valueLabel: `${topGoalPct ?? 0}%`,
+                    progressLine: `${formatMoney(topGoal.current_amount_minor, currency)} of ${formatMoney(topGoal.target_amount_minor, currency)}`,
+                  })
+                }
                 label={topGoal.name}
                 value={
                   <HiddenAmount>
@@ -846,11 +909,16 @@ export function HomePage() {
                 }
               />
             )}
-            {!dayZero && (
+            {!dayZero && (blindBudgeting || monthSpending > 0) && (
               <HeroCard
                 tone="sun"
                 className="snap-start"
-                onClick={() => navigate('/transactions')}
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'month',
+                    valueLabel: blindBudgeting ? 'Hidden' : formatMoney(monthSpending, currency),
+                  })
+                }
                 label="This month"
                 value={
                   blindBudgeting ? (
@@ -1067,6 +1135,12 @@ export function HomePage() {
               ? evidenceForInsight(whyInsightId)
               : null
         }
+      />
+
+      <HeroDetailSheet
+        detail={heroDetail}
+        onOpenChange={(open) => !open && setHeroDetail(null)}
+        onNavigate={(href) => navigate(href)}
       />
 
       <BottomNav />

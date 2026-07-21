@@ -3,7 +3,7 @@ import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
 import { loadEngagement } from '../_shared/engagement.ts'
-import { PERSONALITY_NAMES } from '../_shared/personas.ts'
+import { PERSONALITY_NAMES, resolvePersonality } from '../_shared/personas.ts'
 import { normalizeCompanionPrefs } from '../_shared/companionPrefs.ts'
 import {
   classifyPactFollowUp,
@@ -422,7 +422,7 @@ async function letterForWallet(
     }
 
     const persona =
-      PERSONALITY_NAMES[profile?.ai_personality ?? 'balanced_coach'] ?? 'Amara'
+      PERSONALITY_NAMES[resolvePersonality(profile?.ai_personality)] ?? 'Amara'
     const netLabel = formatMinor(Math.abs(net), currency)
     const body = [
       `Hey. ${persona} here with your week (${periodStart} → ${periodEnd}).`,

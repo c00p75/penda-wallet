@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { Check, ChevronRight } from 'lucide-react'
 import {
   Bell,
@@ -55,6 +55,7 @@ import {
   DEFAULT_COMPANION_PREFS,
   DEFAULT_NOTIFICATION_PREFS,
   PERSONALITIES,
+  resolveAiPersonality,
   type AiConsent,
   type AiPersonality,
   type CompanionPrefs,
@@ -89,11 +90,21 @@ type SettingsContentProps = {
 }
 
 /** The actual settings UI, shared between the standalone page and Profile. */
+const SETTINGS_TABS = ['you', 'wallet', 'money', 'ai', 'account'] as const
+
 export function SettingsContent({ walletPanel }: SettingsContentProps) {
+  const [searchParams] = useSearchParams()
   const session = useAuthStore((s) => s.session)
   const userId = session?.user.id
   const { data: profile } = useProfile(userId)
   const updateProfile = useUpdateProfile(userId)
+  const tabParam = searchParams.get('tab')
+  const initialTab =
+    tabParam &&
+    SETTINGS_TABS.includes(tabParam as (typeof SETTINGS_TABS)[number]) &&
+    (tabParam !== 'wallet' || !!walletPanel)
+      ? tabParam
+      : 'you'
   const install = useInstallPrompt()
   const { isPremium } = useEntitlement(userId)
   const { data: wallet } = useCurrentWallet()
@@ -130,7 +141,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   useEffect(() => {
     if (!profile) return
     setDisplayName(profile.display_name ?? '')
-    setPersonality(profile.ai_personality)
+    setPersonality(resolveAiPersonality(profile.ai_personality))
     setMode(profile.mode)
     setNotificationOptIn(profile.notification_opt_in)
     setNotificationPrefs(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS)
@@ -200,7 +211,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const dirty =
     !!profile &&
     (displayName !== (profile.display_name ?? '') ||
-      personality !== profile.ai_personality ||
+      personality !== resolveAiPersonality(profile.ai_personality) ||
       mode !== profile.mode ||
       notificationOptIn !== profile.notification_opt_in ||
       JSON.stringify(notificationPrefs) !==
@@ -223,7 +234,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
 
   return (
     <>
-      <Tabs defaultValue="you" className="gap-4">
+      <Tabs defaultValue={initialTab} className="gap-4">
         <TabsList
           className={cn(
             'h-auto w-full',

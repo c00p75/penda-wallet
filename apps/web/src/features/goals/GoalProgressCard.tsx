@@ -26,12 +26,12 @@ const HERO_BG: Record<HeroTone, string> = {
   rose: 'linear-gradient(145deg, var(--rose-hero-from) 0%, var(--rose-hero-to) 100%)',
 }
 
-const HERO_SHADOW: Record<HeroTone, string> = {
-  iris: '0 14px 36px color-mix(in srgb, var(--iris-hero-to) 40%, transparent)',
-  apricot: '0 14px 36px color-mix(in srgb, var(--apricot-hero-to) 40%, transparent)',
-  sun: '0 14px 36px color-mix(in srgb, var(--sun-hero-to) 40%, transparent)',
-  mint: '0 14px 36px color-mix(in srgb, var(--mint-hero-to) 40%, transparent)',
-  rose: '0 14px 36px color-mix(in srgb, var(--rose-hero-to) 40%, transparent)',
+const HERO_GLOW: Record<HeroTone, string> = {
+  iris: 'var(--iris-hero-glow)',
+  apricot: 'var(--apricot-hero-glow)',
+  sun: 'var(--sun-hero-glow)',
+  mint: 'var(--mint-hero-glow)',
+  rose: 'var(--rose-hero-glow)',
 }
 
 export function GoalProgressCard({
@@ -61,9 +61,14 @@ export function GoalProgressCard({
   return (
     <div
       className="relative isolate overflow-hidden rounded-[1.75rem] p-5 text-white"
-      style={{ background: HERO_BG[activeTone], boxShadow: HERO_SHADOW[activeTone] }}
+      style={{ background: HERO_BG[activeTone], boxShadow: HERO_GLOW[activeTone] }}
     >
       <HeroBlob tone={activeTone} className="-right-6 -bottom-8 size-36 rotate-12" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: 'var(--hero-card-scrim)' }}
+      />
       <button type="button" onClick={onSelect} className="relative z-10 flex w-full items-center gap-4 text-left">
         <div
           className="grid size-[4.5rem] shrink-0 place-items-center rounded-full"
