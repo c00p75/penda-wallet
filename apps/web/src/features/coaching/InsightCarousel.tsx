@@ -93,7 +93,7 @@ function InsightCardView({ card }: { card: InsightCard }) {
               <p className="min-w-0 text-base font-medium leading-snug text-foreground">{title}</p>
             </div>
             {body && (
-              <p className="text-sm leading-snug text-muted-foreground">{body}</p>
+              <p className="text-sm leading-snug text-foreground">{body}</p>
             )}
           </>
         ) : (
@@ -102,7 +102,7 @@ function InsightCardView({ card }: { card: InsightCard }) {
             <div className="min-w-0 flex-1">
               <p className="text-base font-medium leading-snug text-foreground">{title}</p>
               {body && (
-                <p className="mt-1.5 text-sm leading-snug text-muted-foreground">{body}</p>
+                <p className="mt-1.5 text-sm leading-snug text-foreground">{body}</p>
               )}
             </div>
           </div>
