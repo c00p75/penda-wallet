@@ -1,6 +1,5 @@
 import { formatMoney } from '@/lib/money'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
-import { HeroBlob } from '@/components/ui/hero-blob'
 import type { HeroTone } from '@/components/ui/hero-card'
 import type { SavingsContribution, SavingsGoal } from './types'
 import { estimateGoalCompletion } from './forecast'
@@ -40,12 +39,12 @@ export function GoalProgressCard({
   currency,
   onSelect,
   onAddFunds,
-  tone = 'apricot',
+  tone = 'iris',
 }: GoalProgressCardProps) {
   const pct = goal.target_amount_minor > 0 ? goal.current_amount_minor / goal.target_amount_minor : 0
   const forecast = estimateGoalCompletion(goal, contributions)
   const reached = pct >= 1
-  const activeTone: HeroTone = reached ? 'mint' : tone
+  const activeTone: HeroTone = reached ? 'iris' : tone
   const ringPct = Math.round(Math.min(pct, 1) * 100)
   const remaining = Math.max(0, goal.target_amount_minor - goal.current_amount_minor)
 
@@ -63,7 +62,6 @@ export function GoalProgressCard({
       className="relative isolate overflow-hidden rounded-[1.75rem] p-5 text-white"
       style={{ background: HERO_BG[activeTone], boxShadow: HERO_GLOW[activeTone] }}
     >
-      <HeroBlob tone={activeTone} className="-right-6 -bottom-8 size-36 rotate-12" />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"

@@ -146,7 +146,17 @@ export interface PersonalityMeta {
   accent: string
 }
 
+// Ordered so the picker alternates by gender (male, female, male, female …)
+// rather than grouping the three women, then the three men.
 export const PERSONALITIES: PersonalityMeta[] = [
+  {
+    value: 'hustler',
+    name: 'Musa',
+    label: 'The hustler',
+    description: 'Growth mindset, earn more, not just spend less.',
+    preview: 'K600 left is fine. Real question: what’s bringing more in? What did you sell this week?',
+    accent: 'oklch(0.64 0.15 155)',
+  },
   {
     value: 'balanced_coach',
     name: 'Amara',
@@ -154,6 +164,14 @@ export const PERSONALITIES: PersonalityMeta[] = [
     description: 'Warm, encouraging, and balanced.',
     preview: "You're K600 ahead of last month. Steady wins like this add up.",
     accent: 'var(--iris)',
+  },
+  {
+    value: 'analyst',
+    name: 'Alex',
+    label: 'The analyst',
+    description: 'Just the numbers, precise, no fluff.',
+    preview: 'K600 remaining, 5 days to payday: K120/day. Current average: K185/day. Overshoot risk ~K325.',
+    accent: 'oklch(0.58 0.03 250)',
   },
   {
     value: 'angry_mom',
@@ -164,14 +182,6 @@ export const PERSONALITIES: PersonalityMeta[] = [
     accent: 'var(--rose)',
   },
   {
-    value: 'funny_comedian',
-    name: 'Bobo',
-    label: 'Funny comedian',
-    description: 'Cracks jokes, still gets the point across.',
-    preview: 'K600 left and payday’s Friday? That’s not a budget, that’s a hostage situation. We’ll make it. 😄',
-    accent: 'oklch(0.8 0.16 70)',
-  },
-  {
     value: 'drill_sergeant',
     name: 'Sarge',
     label: 'Drill sergeant',
@@ -180,20 +190,12 @@ export const PERSONALITIES: PersonalityMeta[] = [
     accent: 'oklch(0.6 0.09 250)',
   },
   {
-    value: 'hustler',
-    name: 'Musa',
-    label: 'The hustler',
-    description: 'Growth mindset, earn more, not just spend less.',
-    preview: 'K600 left is fine. Real question: what’s bringing more in? What did you sell this week?',
-    accent: 'oklch(0.64 0.15 155)',
-  },
-  {
-    value: 'analyst',
-    name: 'Nomsa',
-    label: 'The analyst',
-    description: 'Just the numbers, precise, no fluff.',
-    preview: 'K600 remaining, 5 days to payday: K120/day. Current average: K185/day. Overshoot risk ~K325.',
-    accent: 'oklch(0.58 0.03 250)',
+    value: 'funny_comedian',
+    name: 'Bobo',
+    label: 'Funny comedian',
+    description: 'Cracks jokes, still gets the point across.',
+    preview: 'K600 left and payday’s Friday? That’s not a budget, that’s a hostage situation. We’ll make it. 😄',
+    accent: 'oklch(0.8 0.16 70)',
   },
 ]
 
@@ -211,4 +213,5 @@ export const PERSONA_DISPLAY_NAMES: readonly string[] = [
   'Kabwe',
   'Zee',
   'Gogo',
+  'Nomsa',
 ]

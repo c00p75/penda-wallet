@@ -31,7 +31,8 @@ import { PaymentForm } from '@/features/debts/PaymentForm'
 import { DebtProgressCard } from '@/features/debts/DebtProgressCard'
 import type { Debt, DebtInput } from '@/features/debts/types'
 
-const GOAL_TONES = ['apricot', 'iris', 'sun', 'mint', 'rose'] as const
+/** Brand-family hero variants from the #5448cc palette (iris / violet / indigo / deep). */
+const GOAL_TONES = ['iris', 'apricot', 'mint', 'sun'] as const
 
 const SETUP_PROMPTS = [
   'Help me set a savings goal for something I care about',
@@ -287,10 +288,10 @@ export function GoalsPage() {
             }}
             className={cn(
               'flex items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
-              cardAccentClass('apricot'),
+              cardAccentClass('iris'),
             )}
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--apricot-soft)] text-[var(--apricot)]">
+            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
               <Target className="size-5" weight="duotone" />
             </span>
             <div className="min-w-0 flex-1">
@@ -339,7 +340,7 @@ export function GoalsPage() {
 
       {tab === 'goals' && !isGoalsSetup && (
         <>
-          <HeroCard tone={overallPct >= 100 ? 'mint' : 'apricot'} className="w-full min-h-[8.25rem]">
+          <HeroCard tone="iris" className="w-full min-h-[8.25rem]">
             <div className="flex w-full items-end justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-white/85">Saved toward goals</p>
@@ -456,7 +457,7 @@ export function GoalsPage() {
 
       {tab === 'debts' && !isDebtsSetup && (
         <>
-          <HeroCard tone={oweTotal > 0 ? 'rose' : 'mint'} className="w-full min-h-[8.25rem]">
+          <HeroCard tone={oweTotal > 0 ? 'rose' : 'iris'} className="w-full min-h-[8.25rem]">
             <div className="flex w-full flex-col gap-3">
               <p className="text-sm font-medium text-white/85">Debt snapshot</p>
               <div className="grid grid-cols-2 gap-3">

@@ -184,7 +184,12 @@ export function listLabelFor(domain: string): string | undefined {
 export function withViewHrefs(actions: ChatAction[]): ChatAction[] {
   return actions.map((action) => {
     if (action.status === 'error' || action.status === 'running') return action
-    const href = action.viewHref ?? viewHrefFor(action.domain, action.targetId)
+    // Deletes have no item left to open; send View to the list/hub instead.
+    const href =
+      action.viewHref ??
+      (action.tool === 'delete_record'
+        ? listHrefFor(action.domain)
+        : viewHrefFor(action.domain, action.targetId))
     return href ? { ...action, viewHref: href } : action
   })
 }
@@ -214,7 +219,12 @@ export function pendingToTrailActions(
       status: resolved ?? 'pending',
       pendingKind: p.kind,
       targetId: p.targetId,
-      viewHref: resolved === 'confirmed' ? viewHrefFor(p.domain, p.targetId) : undefined,
+      viewHref:
+        resolved === 'confirmed'
+          ? p.kind === 'delete'
+            ? listHrefFor(p.domain)
+            : viewHrefFor(p.domain, p.targetId)
+          : undefined,
     }
   })
 }

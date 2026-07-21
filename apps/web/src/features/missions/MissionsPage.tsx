@@ -67,7 +67,7 @@ export function MissionsPage() {
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">
       <PageHeader title="Missions" subtitle="Small commitments that compound" />
 
-      <HeroCard tone="apricot" className="w-full min-h-[7.5rem]">
+      <HeroCard tone="iris" className="w-full min-h-[7.5rem]">
         <div className="flex items-center gap-3">
           <span className="grid size-12 place-items-center rounded-2xl bg-white/20">
             <Path className="size-6" weight="duotone" />

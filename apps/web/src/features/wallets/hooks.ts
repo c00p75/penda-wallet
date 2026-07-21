@@ -36,7 +36,17 @@ export function useCreateWallet() {
   return useMutation({
     mutationFn: ({ name, baseCurrency }: { name: string; baseCurrency: string }) =>
       createWallet(name, baseCurrency),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wallets', userId] }),
+    onSuccess: (wallet) => {
+      // Put the wallet in cache immediately so AmbientChat can mount before refetch.
+      if (userId) {
+        queryClient.setQueryData<Wallet[]>(['wallets', userId], (prev) => {
+          const list = prev ?? []
+          if (list.some((w) => w.id === wallet.id)) return list
+          return [...list, wallet]
+        })
+      }
+      void queryClient.invalidateQueries({ queryKey: ['wallets', userId] })
+    },
   })
 }
 

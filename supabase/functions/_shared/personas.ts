@@ -58,7 +58,7 @@ export const PERSONALITY_NAMES: Record<string, string> = {
   drill_sergeant: 'Sarge',
   funny_comedian: 'Bobo',
   hustler: 'Musa',
-  analyst: 'Nomsa',
+  analyst: 'Alex',
   wise_mentor: 'Sena',
   chill_friend: 'Kabwe',
   gen_z: 'Zee',

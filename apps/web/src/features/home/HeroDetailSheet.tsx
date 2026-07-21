@@ -1,7 +1,6 @@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { BottomSheetHandle, useBottomSheetDrag } from '@/components/ui/bottomSheetDrag'
 import { Button } from '@/components/ui/button'
-import { HeroBlob } from '@/components/ui/hero-blob'
 import type { HeroTone } from '@/components/ui/hero-card'
 import {
   CalendarBlankIcon,
@@ -179,7 +178,6 @@ export function HeroDetailSheet({
             className="relative isolate overflow-hidden rounded-[1.5rem] px-5 py-5 text-white ring-1 ring-black/5"
             style={{ background: HERO_BG[tone] }}
           >
-            <HeroBlob tone={tone} className="-right-5 -bottom-8 size-32 rotate-12 opacity-90" />
             <div className="relative z-10 flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
                 <span

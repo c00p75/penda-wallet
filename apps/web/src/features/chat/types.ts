@@ -17,7 +17,7 @@ export interface ChatMessage {
   retryText?: string
   /** Offline queue marker, sends when back online. */
   queued?: boolean
-  /** After confirm: deep-link to the touched entity. */
+  /** After confirm: deep-link to the entity, or its list after a delete. */
   viewHref?: string
   /**
    * @deprecated Prefer undoTargets. Kept so older persisted threads still show Undo

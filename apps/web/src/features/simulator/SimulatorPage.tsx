@@ -119,7 +119,7 @@ export function SimulatorPage() {
   }
 
   const endBalance = scenario.days.at(-1)?.balanceMinor ?? 0
-  const heroTone = scenario.lowestBalance.balanceMinor < 0 ? 'rose' : canAfford === false ? 'apricot' : 'iris'
+  const heroTone = scenario.lowestBalance.balanceMinor < 0 ? 'rose' : canAfford === false ? 'rose' : 'iris'
 
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col gap-5 bg-background px-4 pb-24 pt-[max(1rem,env(safe-area-inset-top))]">

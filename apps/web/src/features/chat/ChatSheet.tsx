@@ -54,7 +54,6 @@ import {
   toolUi,
   listHrefFor,
   listLabelFor,
-  viewHrefFor,
   withViewHrefs,
 } from './actionMeta'
 import type { ChatMode } from './chatStore'
@@ -790,8 +789,7 @@ export function ChatSheet({
           decision === 'confirm'
             ? `Done. ${res.summary.replace(/\.$/, '')}.`
             : 'No worries. I left it as it was.',
-        viewHref:
-          decision === 'confirm' ? viewHrefFor(res.domain, targetId) : undefined,
+        viewHref: confirmedActions?.[0]?.viewHref,
         undoTargets: undoTargets.length > 0 ? undoTargets : undefined,
         actions: confirmedActions,
       })

@@ -82,8 +82,8 @@ export function AiInsight({
       ? spectrumEdgeClass
       : cn(
           'bg-card',
-          tone === 'warm' && 'bg-[var(--apricot-soft)]/25',
-          tone === 'attention' && 'bg-[var(--rose-soft)]/25',
+          tone === 'warm' && 'bg-[var(--rose-soft)]/20',
+          tone === 'attention' && 'bg-[var(--rose-soft)]/35',
         ),
     tappable && 'cursor-pointer transition-all hover:shadow-[var(--shadow-card)] active:scale-[0.99]',
     className,

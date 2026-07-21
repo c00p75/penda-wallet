@@ -236,7 +236,7 @@ export function GoalForm({
           </div>
 
           {perMonth !== null && perMonth > 0 && (
-            <p className="rounded-2xl bg-[var(--apricot-soft)]/60 px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/50">
+            <p className="rounded-2xl bg-[var(--iris-soft)]/60 px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/50">
               💪 Save <span className="font-semibold">{formatMoney(perMonth, currency)}/month</span> to
               reach this on time.
             </p>

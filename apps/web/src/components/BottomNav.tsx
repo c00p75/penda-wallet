@@ -4,10 +4,9 @@ import { ChartColumn } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useChatStore } from '@/features/chat/chatStore'
+import { AiSparkles } from '@/components/icons/AiSparkles'
 import {
-  ChatCircleIcon,
   PiggyBankIcon,
-  SparkleIcon,
   TargetIcon,
   WalletIcon,
   type IconWeight,
@@ -110,25 +109,9 @@ export function BottomNav() {
             openChat()
           }}
           aria-label="Ask Penda"
-          className="absolute inset-x-0 -top-7 z-10 mx-auto flex size-[4.25rem] items-center justify-center rounded-full text-white transition-transform active:scale-95"
-          style={{
-            background:
-              'linear-gradient(155deg, color-mix(in oklch, var(--primary) 55%, white 45%) 0%, var(--primary) 50%, color-mix(in oklch, var(--primary) 70%, black 30%) 100%)',
-            boxShadow: 'var(--shadow-hero)',
-          }}
+          className="penda-ai-pill absolute inset-x-0 -top-7 z-10 mx-auto flex size-[4.25rem] items-center justify-center rounded-full text-foreground transition-transform active:scale-95"
         >
-          {/* Twinkling sparkles mark this as AI; chat icon stays the primary glyph */}
-          <SparkleIcon
-            className="penda-sparkle absolute right-2.5 top-2 size-2.5 text-white/90"
-            weight="fill"
-            style={{ ['--twinkle-dur' as string]: '2.8s', ['--twinkle-delay' as string]: '0s' }}
-          />
-          <SparkleIcon
-            className="penda-sparkle absolute bottom-3 left-2.5 size-2 text-white/80"
-            weight="fill"
-            style={{ ['--twinkle-dur' as string]: '3.4s', ['--twinkle-delay' as string]: '0.9s' }}
-          />
-          <ChatCircleIcon className="size-7" weight="fill" />
+          <AiSparkles className="size-8" />
         </button>
       </div>
     </nav>

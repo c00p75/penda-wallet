@@ -336,7 +336,7 @@ export function BudgetsPage() {
             {monthLabel}
             {tab === 'budgets'
               ? isSetup
-                ? ' · set your intention'
+                ? ' · set your spending limit'
                 : ' · what you can spend'
               : ' · bills on autopilot'}
           </p>
@@ -365,7 +365,7 @@ export function BudgetsPage() {
               {plan ? '2' : '1'}
             </span>
             <p className="text-sm font-medium">
-              {plan ? 'Split into envelopes' : 'Set a month intention'}
+              {plan ? 'Split into envelopes' : 'Set a spending limit'}
             </p>
           </div>
 
@@ -426,10 +426,10 @@ export function BudgetsPage() {
                   }}
                   className={cn(
                     'flex items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
-                    cardAccentClass('mint'),
+                    cardAccentClass('iris'),
                   )}
                 >
-                  <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--mint-soft)] text-[var(--mint)]">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--iris-soft)] text-[var(--iris)]">
                     <Sparkle className="size-5" weight="fill" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -463,8 +463,8 @@ export function BudgetsPage() {
                 : spentPct >= 100
                   ? 'rose'
                   : spentPct >= 80
-                    ? 'apricot'
-                    : 'mint'
+                    ? 'rose'
+                    : 'iris'
             }
             className="w-full min-h-[8.25rem]"
           >
@@ -498,7 +498,7 @@ export function BudgetsPage() {
                       <HiddenAmount>
                         {formatMoney(safe!.discretionaryRemainingMinor, currency)}
                       </HiddenAmount>{' '}
-                      left in plan
+                      still okay to spend
                     </>
                   ) : (
                     <>

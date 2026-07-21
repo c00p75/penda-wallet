@@ -73,6 +73,16 @@ describe('pendingToTrailActions / mergeTrailActions', () => {
     expect(rows[1]).toMatchObject({ id: 'p2', status: 'pending', viewHref: undefined })
   })
 
+  it('sends confirmed deletes to the list, not the deleted item', () => {
+    const rows = pendingToTrailActions(pending, { p2: 'confirmed' })
+    expect(rows[1]).toMatchObject({
+      id: 'p2',
+      status: 'confirmed',
+      pendingKind: 'delete',
+      viewHref: '/transactions',
+    })
+  })
+
   it('appends pending rows after completed tool steps', () => {
     const completed: ChatAction[] = [
       {
@@ -147,5 +157,20 @@ describe('withViewHrefs', () => {
     const out = withViewHrefs(actions)
     expect(out[0]?.viewHref).toBeUndefined()
     expect(out[1]?.viewHref).toBe('/transactions?tx=tx9')
+  })
+
+  it('uses list href for completed deletes', () => {
+    const out = withViewHrefs([
+      {
+        id: 'd1',
+        tool: 'delete_record',
+        domain: 'budget',
+        label: 'Deleted',
+        summary: 'Groceries',
+        status: 'done',
+        targetId: 'b1',
+      },
+    ])
+    expect(out[0]?.viewHref).toBe('/budgets')
   })
 })

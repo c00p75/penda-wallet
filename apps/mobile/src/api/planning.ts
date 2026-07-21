@@ -13,6 +13,11 @@ export async function fetchSpendingPlan(walletId: string, month: string): Promis
   return data as SpendingPlan | null;
 }
 
+export async function deleteSpendingPlan(id: string): Promise<void> {
+  const { error } = await supabase.from('spending_plans').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function fetchPlanShares(planId: string): Promise<PlanShare[]> {
   const { data, error } = await supabase
     .from('spending_plan_shares')

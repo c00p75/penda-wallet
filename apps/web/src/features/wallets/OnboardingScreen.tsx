@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { HeroBlob } from '@/components/ui/hero-blob'
 import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { cn } from '@/lib/utils'
 import { currencySymbol } from '@/lib/currencies'
@@ -30,10 +30,16 @@ import { useCategories } from '@/features/categories/hooks'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useCreateWallet, useCurrentWallet } from './hooks'
+import { buildPlanChatSeed } from './onboardingChatSeed'
 
 const STEPS = ['wallet', 'goal', 'log', 'balance', 'plan'] as const
 type Step = (typeof STEPS)[number]
 type ChatStep = 'log' | 'balance' | 'plan'
+
+/** Delay so the sheet can mount after the step card paints. */
+const CHAT_OPEN_DELAY_MS = 400
+/** Max wait for seeded budgets before the plan step auto-sends a generic draft. */
+const PLAN_BUDGET_WAIT_MS = 2500
 
 function StepHeading({ bold, light }: { bold: string; light: string }) {
   return (
@@ -55,6 +61,7 @@ function isChatStep(step: Step): step is ChatStep {
 
 export function OnboardingScreen() {
   const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
   const createWallet = useCreateWallet()
   const updateProfile = useUpdateProfile(userId)
   const setCurrentWalletId = useWalletStore((s) => s.setCurrentWalletId)
@@ -101,15 +108,6 @@ export function OnboardingScreen() {
     }
   })
 
-  function buildPlanChatSeed() {
-    if (budgetPreview.length === 0) {
-      return 'I drafted a starter plan for you on the Plan tab. Reply "looks good" or tell me what to tweak.'
-    }
-    return `I drafted your starter plan: ${budgetPreview
-      .map((b) => `${b.label} ${formatMoney(b.amount, currency)}`)
-      .join(', ')}. Reply "looks good" or tell me what to tweak.`
-  }
-
   // Resume interactive walkthrough after refresh / remount once a wallet exists.
   useEffect(() => {
     if (resumed || !currentWallet) return
@@ -124,30 +122,38 @@ export function OnboardingScreen() {
     setResumed(true)
   }, [currentWallet, resumed, setWalkthroughActive])
 
-  // Chat-first: open Penda as soon as each interactive step starts.
+  // Chat-first: open Penda once AmbientChat can mount for this wallet.
   useEffect(() => {
     if (!isChatStep(step) || !activeWalletId) return
     if (openedChatForStepRef.current === step) return
+    // AmbientChat returns null until the wallet is in the wallets query cache.
+    if (!currentWallet || currentWallet.id !== activeWalletId) return
 
-    // Wait a beat for AmbientChat to mount; for plan, prefer budgets to be loaded.
-    const delay = step === 'plan' && budgets.length === 0 ? 900 : 400
-    const timer = window.setTimeout(() => {
-      if (openedChatForStepRef.current === step) return
-      openedChatForStepRef.current = step
-      if (step === 'log') {
+    function openForStep(target: ChatStep) {
+      if (openedChatForStepRef.current === target) return
+      openedChatForStepRef.current = target
+      if (target === 'log') {
         openChat(`I spent ${sym}`, { mode: 'quick' })
-      } else if (step === 'balance') {
+      } else if (target === 'balance') {
         setBalanceChatOpened(true)
         openChat(`My balance is ${sym}`, { mode: 'full' })
       } else {
-        openChat(buildPlanChatSeed(), { autoSend: true, mode: 'full' })
+        openChat(buildPlanChatSeed(budgetPreview, currency), { autoSend: true, mode: 'full' })
       }
-    }, delay)
+    }
 
+    // Plan: wait for seeded budgets so the auto-sent draft lists real amounts.
+    // If budgets never arrive (seed failed), still open with the generic draft.
+    if (step === 'plan' && budgets.length === 0) {
+      const timer = window.setTimeout(() => openForStep('plan'), PLAN_BUDGET_WAIT_MS)
+      return () => window.clearTimeout(timer)
+    }
+
+    const timer = window.setTimeout(() => openForStep(step), CHAT_OPEN_DELAY_MS)
     return () => window.clearTimeout(timer)
     // buildPlanChatSeed reads latest budgets/categories via closure when timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, activeWalletId, openChat, sym, budgets.length])
+  }, [step, activeWalletId, currentWallet?.id, openChat, sym, budgets.length, currency])
 
   // When user closes balance chat after opening it, treat as engaged enough to continue.
   useEffect(() => {
@@ -260,6 +266,7 @@ export function OnboardingScreen() {
           primaryGoal,
           incomeRange: null,
         })
+        await queryClient.invalidateQueries({ queryKey: ['budgets', wallet.id] })
       } catch {
         // Starter plan is optional.
       }
@@ -289,7 +296,10 @@ export function OnboardingScreen() {
     else if (step === 'balance') {
       setBalanceChatOpened(true)
       openChat(`My balance is ${sym}`, { mode: 'full' })
-    } else openChat(buildPlanChatSeed(), { autoSend: true, mode: 'full' })
+    } else {
+      // First plan open auto-sends; manual reopen only prefills so we don't spam the draft.
+      openChat(buildPlanChatSeed(budgetPreview, currency), { mode: 'full' })
+    }
   }
 
   return (
@@ -303,7 +313,6 @@ export function OnboardingScreen() {
           className="absolute -bottom-16 -left-12 size-56 rounded-full opacity-60 blur-3xl"
           style={{ background: 'radial-gradient(circle, var(--apricot-soft), transparent 70%)' }}
         />
-        <HeroBlob tone="mint" className="absolute top-8 right-4 size-24 opacity-40" />
       </div>
 
       <div className="relative flex flex-col items-center gap-2 text-center">
@@ -428,21 +437,36 @@ export function OnboardingScreen() {
       {step === 'balance' && (
         <div className="relative flex flex-col gap-3 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
           <div className="flex flex-col items-center gap-2 text-center">
-            <StepHeading bold="What do you" light="actually have?" />
-            <p className="text-sm text-muted-foreground">
-              Tell Penda your balance in chat so the numbers stay honest.
-            </p>
+            {latestReconciliation ? (
+              <>
+                <StepHeading bold="Balance" light="saved" />
+                <p className="text-sm text-muted-foreground">Your starting number is locked in.</p>
+              </>
+            ) : (
+              <>
+                <StepHeading bold="What do you" light="actually have?" />
+                <p className="text-sm text-muted-foreground">
+                  {balanceChatReturned
+                    ? 'Share your balance in chat, then continue when you are ready.'
+                    : 'Tell Penda your balance in chat so the numbers stay honest.'}
+                </p>
+              </>
+            )}
           </div>
-          {hasBalanceSet ? (
+          {latestReconciliation ? (
             <p className="rounded-2xl bg-[var(--mint-soft)]/50 px-3 py-2 text-center text-sm font-medium text-[var(--mint)]">
-              {latestReconciliation ? 'Balance saved.' : 'Thanks, you can continue.'}
+              Balance saved.
             </p>
           ) : (
-            <Button className="rounded-full" onClick={reopenChat}>
+            <Button
+              className="rounded-full"
+              variant={balanceChatReturned ? 'outline' : 'default'}
+              onClick={reopenChat}
+            >
               {chatOpen ? 'Keep chatting' : 'Open chat with Penda'}
             </Button>
           )}
-          {hasBalanceSet ? (
+          {latestReconciliation || balanceChatReturned ? (
             <Button className="rounded-full" onClick={() => advanceTo('plan', { skippedBalance: false })}>
               Continue
             </Button>

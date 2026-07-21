@@ -12,9 +12,16 @@ interface TransactionRowProps {
   currency: string;
   index?: number;
   onPress?: () => void;
+  onLongPress?: () => void;
 }
 
-export function TransactionRow({ transaction, currency, index = 0, onPress }: TransactionRowProps) {
+export function TransactionRow({
+  transaction,
+  currency,
+  index = 0,
+  onPress,
+  onLongPress,
+}: TransactionRowProps) {
   const isIncome = transaction.type === 'income';
   const amount = transaction.converted_amount_minor ?? transaction.amount_minor;
   const displayCurrency = transaction.currency || currency;
@@ -22,7 +29,11 @@ export function TransactionRow({ transaction, currency, index = 0, onPress }: Tr
   const subtitle = transaction.category?.name ?? transaction.transaction_date;
 
   return (
-    <AnimatedPressable onPress={onPress} disabled={!onPress}>
+    <AnimatedPressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      disabled={!onPress && !onLongPress}
+    >
       <Animated.View
         entering={FadeInDown.delay(index * 40).springify().damping(18)}
         style={styles.row}

@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 /** Semantic edge colors from the brand accent family. */
 export type CardAccent = 'iris' | 'mint' | 'apricot' | 'rose' | 'sun'
 
-/** Multi-accent gradient rim for prominent feature cards. */
+/** Multi-color rim (mint → sun → apricot → iris) for featured Penda / tip cards. */
 export const spectrumEdgeClass = 'penda-spectrum-edge'
 
 /**
@@ -27,7 +27,7 @@ export function cardAccentClass(accent: CardAccent | undefined, className?: stri
 export function accentFromInsightTone(
   tone: 'default' | 'warm' | 'attention' | undefined,
 ): CardAccent {
-  if (tone === 'warm') return 'apricot'
+  if (tone === 'warm') return 'rose'
   if (tone === 'attention') return 'rose'
   return 'iris'
 }

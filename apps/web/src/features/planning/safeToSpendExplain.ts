@@ -23,8 +23,8 @@ export function explainSafeToSpend(
   const remainingPlan = Math.max(0, input.intendedMinor - input.spentMinor)
   const afterFixed = Math.max(0, remainingPlan - input.upcomingFixedMinor)
   const bullets = [
-    `Month intention: ${format(input.intendedMinor)}`,
-    `Already spent: ${format(input.spentMinor)} → ${format(remainingPlan)} left in the plan`,
+    `Spending limit: ${format(input.intendedMinor)}`,
+    `Already spent: ${format(input.spentMinor)} → ${format(remainingPlan)} still okay to spend`,
     `Upcoming fixed costs still due: ${format(input.upcomingFixedMinor)}`,
     `Flexible pool after fixed: ${format(afterFixed)}`,
     `${input.daysLeftInMonth} day(s) left → about ${format(input.safeDailyMinor)}/day`,

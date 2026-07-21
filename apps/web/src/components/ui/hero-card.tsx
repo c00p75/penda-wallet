@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { HeroBlob } from '@/components/ui/hero-blob'
 
 export type HeroTone = 'iris' | 'apricot' | 'sun' | 'mint' | 'rose'
 
@@ -26,21 +25,19 @@ type HeroCardProps = {
   label?: ReactNode
   value?: ReactNode
   children?: ReactNode
-  blob?: boolean
   className?: string
   onClick?: () => void
 }
 
 /**
- * Colorful full-bleed illustrated card used for key stats
- * (balance, safe-to-spend, goals, etc.).
+ * Colorful full-bleed card used for key stats
+ * (balance, safe-to-spend, goals, etc.). Gradient only, no corner blobs.
  */
 export function HeroCard({
   tone = 'iris',
   label,
   value,
   children,
-  blob = true,
   className,
   onClick,
 }: HeroCardProps) {
@@ -59,7 +56,6 @@ export function HeroCard({
         boxShadow: HERO_GLOW[tone],
       }}
     >
-      {blob && <HeroBlob tone={tone} className="-right-4 -bottom-6 size-28 rotate-12" />}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"

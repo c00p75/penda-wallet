@@ -124,7 +124,7 @@ export function BusinessHubPage() {
         }
       />
 
-      <HeroCard tone={profit >= 0 ? 'mint' : 'rose'} className="w-full min-h-[8.5rem]">
+      <HeroCard tone={profit >= 0 ? 'iris' : 'rose'} className="w-full min-h-[8.5rem]">
         <div>
           <p className="text-sm font-medium text-white/85">Period profit</p>
           <p className="mt-2 text-3xl font-bold tabular-nums">
@@ -151,7 +151,7 @@ export function BusinessHubPage() {
             Burn {formatMoney(Math.round(avgDailyBurn), currency)}/day
           </p>
         </IconTile>
-        <IconTile icon={Receipt} label="Receivables" tone="apricot" className="col-span-1">
+        <IconTile icon={Receipt} label="Receivables" tone="rose" className="col-span-1">
           <p className="text-lg font-bold tabular-nums">
             <HiddenAmount>{formatMoney(arTotal, currency)}</HiddenAmount>
           </p>

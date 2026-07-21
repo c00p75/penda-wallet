@@ -231,18 +231,18 @@ export function FamilyHubPage() {
       </HeroCard>
 
       <div className="grid grid-cols-2 gap-3">
-        <IconTile icon={Wallet} label="Open budgets" tone="mint" onClick={() => navigate('/budgets')} />
+        <IconTile icon={Wallet} label="Open budgets" tone="iris" onClick={() => navigate('/budgets')} />
         <IconTile
           icon={Baby}
           label={isCouple ? 'Private envelope' : 'New allowance'}
-          tone="apricot"
+          tone="rose"
           onClick={() => addAllowance()}
         />
         <IconTile icon={Users} label="Settle up" tone="iris" onClick={() => navigate('/settle-up')} />
         <IconTile
           icon={Users}
           label={isCouple ? 'Invite partner' : 'Invite member'}
-          tone="sun"
+          tone="rose"
           onClick={() => navigate('/profile')}
         />
       </div>

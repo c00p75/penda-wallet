@@ -1,18 +1,19 @@
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, Card, EmptyState, LoadingView } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { colors, spacing } from '@/src/lib/theme';
 import { formatMoney } from '@/src/lib/money';
-import { fetchBudgetProgress } from '@/src/api/budgets';
+import { deleteBudget, fetchBudgetProgress } from '@/src/api/budgets';
 import { fetchCategories } from '@/src/api/categories';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 
 export default function BudgetsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { wallet, isLoading: walletLoading } = useCurrentWallet();
 
   const { data: progress = [], isLoading, refetch, isRefetching } = useQuery({
@@ -27,11 +28,33 @@ export default function BudgetsScreen() {
     enabled: !!wallet?.id,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteBudget(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgets', wallet?.id] });
+    },
+    onError: (err) => {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete budget');
+    },
+  });
+
   if (walletLoading || isLoading) return <LoadingView label="Loading budgets…" />;
 
   const currency = wallet?.base_currency ?? 'USD';
   const categoryName = (id: string | null) =>
     categories.find((c) => c.id === id)?.name ?? 'Overall';
+
+  function confirmDelete(budgetId: string, name: string) {
+    Alert.alert('Delete budget?', `Remove the ${name} budget?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(budgetId),
+      },
+    ]);
+  }
 
   return (
     <ScrollView
@@ -63,13 +86,14 @@ export default function BudgetsScreen() {
         />
       ) : (
         progress.map((bp) => {
+          const name = categoryName(bp.category_id);
           const ratio = bp.effective_amount_minor
             ? bp.spent_minor / bp.effective_amount_minor
             : 0;
           return (
             <Card key={bp.budget_id} style={styles.card}>
               <View style={styles.row}>
-                <Text variant="h3">{categoryName(bp.category_id)}</Text>
+                <Text variant="h3">{name}</Text>
                 <Text variant="caption" color={colors.textMuted}>
                   {bp.period}
                 </Text>
@@ -87,6 +111,11 @@ export default function BudgetsScreen() {
                   {formatMoney(bp.effective_amount_minor - bp.spent_minor, currency)} remaining
                 </Text>
               )}
+              <AnimatedPressable onPress={() => confirmDelete(bp.budget_id, name)} style={styles.deleteBtn}>
+                <Text variant="label" color={colors.rose}>
+                  Delete
+                </Text>
+              </AnimatedPressable>
             </Card>
           );
         })
@@ -136,5 +165,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  deleteBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
   },
 });

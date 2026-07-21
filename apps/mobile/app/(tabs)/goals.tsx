@@ -9,7 +9,7 @@ import { ProgressBar } from '@/src/components/ProgressBar';
 import { colors, spacing } from '@/src/lib/theme';
 import { formatMoney, toMinorUnits } from '@/src/lib/money';
 import { localDateStr } from '@/src/lib/dates';
-import { addContribution, fetchSavingsGoals } from '@/src/api/goals';
+import { addContribution, deleteSavingsGoal, fetchSavingsGoals } from '@/src/api/goals';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 
 export default function GoalsScreen() {
@@ -37,6 +37,37 @@ export default function GoalsScreen() {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to add contribution');
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteSavingsGoal(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['goals', wallet?.id] });
+      setContributingId(null);
+    },
+    onError: (err) => {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete goal');
+    },
+  });
+
+  function openGoalMenu(goalId: string, name: string) {
+    Alert.alert(name, undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert('Delete goal?', `Remove "${name}" and its contributions?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () => deleteMutation.mutate(goalId),
+            },
+          ]);
+        },
+      },
+    ]);
+  }
 
   if (walletLoading || isLoading) return <LoadingView label="Loading goals…" />;
 
@@ -79,11 +110,23 @@ export default function GoalsScreen() {
 
           return (
             <Card key={goal.id} style={styles.card}>
-              <View style={styles.row}>
-                <Text variant="h3">{goal.icon ? `${goal.icon} ` : ''}{goal.name}</Text>
-                <Text variant="label" color={colors.iris}>
-                  {Math.round(pct * 100)}%
-                </Text>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleBlock}>
+                  <Text variant="h3">
+                    {goal.icon ? `${goal.icon} ` : ''}
+                    {goal.name}
+                  </Text>
+                  <Text variant="label" color={colors.iris}>
+                    {Math.round(pct * 100)}%
+                  </Text>
+                </View>
+                <AnimatedPressable
+                  onPress={() => openGoalMenu(goal.id, goal.name)}
+                  style={styles.menuBtn}
+                  accessibilityLabel={`Options for ${goal.name}`}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+                </AnimatedPressable>
               </View>
               {goal.motivation ? (
                 <Text variant="small" color={colors.textSecondary}>
@@ -181,10 +224,24 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.sm,
   },
-  row: {
+  cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  cardTitleBlock: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  menuBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -4,
+    marginRight: -6,
   },
   contribForm: {
     gap: spacing.sm,
@@ -198,3 +255,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+

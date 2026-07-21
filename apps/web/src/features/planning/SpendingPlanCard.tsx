@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, MoreVertical } from 'lucide-react'
 import { Sparkle, Target, TrendDown, TrendUp } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
@@ -15,7 +16,7 @@ import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { localMonthEnd, localMonthStart } from '@/lib/dates'
 import type { Transaction } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
-import { useSpendingPlan, useUpsertSpendingPlan } from './hooks'
+import { useDeleteSpendingPlan, useSpendingPlan, useUpsertSpendingPlan } from './hooks'
 import { computeSpendingPlanStatus, type SpendingPlanPace } from './spendingPlan'
 import { detectRecurringSpend, type RecurringCandidate } from './fixedCosts'
 import { computeRetro, previousMonthStart } from './retro'
@@ -26,6 +27,43 @@ const PACE_COPY: Record<SpendingPlanPace, { label: string; className: string }> 
   'on-track': { label: 'On track', className: 'text-primary' },
   'over-pace': { label: 'Spending fast', className: 'text-amber-600 dark:text-amber-400' },
   over: { label: 'Over plan', className: 'text-rose-600 dark:text-rose-400' },
+}
+
+function PlanOverflowMenu({
+  disabled,
+  onDelete,
+}: {
+  disabled?: boolean
+  onDelete: () => void | Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Plan options"
+          className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          <MoreVertical className="size-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 gap-0 p-1.5">
+        <button
+          type="button"
+          className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+          onClick={() => {
+            setOpen(false)
+            void onDelete()
+          }}
+        >
+          Delete plan
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 const PACE_CHIP: Record<
@@ -118,6 +156,7 @@ export function SpendingPlanCard({
   const { data: plan } = useSpendingPlan(walletId, month)
   const { data: prevPlan } = useSpendingPlan(walletId, prevMonth)
   const upsert = useUpsertSpendingPlan(walletId)
+  const removePlan = useDeleteSpendingPlan(walletId, month)
   const openChat = useChatStore((s) => s.openChat)
 
   const [editing, setEditing] = useState(false)
@@ -191,6 +230,18 @@ export function SpendingPlanCard({
     }
   }
 
+  async function deletePlan() {
+    if (!plan) return
+    try {
+      await removePlan.mutateAsync(plan.id)
+      setEditing(false)
+      setAmount('')
+      toast(`Deleted ${monthLabel} plan.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
   // End-of-period retro: how last month actually went, computed the moment a
   // new month starts with no plan yet, it seeds the next plan (a rounded
   // read of last month's actual spend) instead of leaving the input blank.
@@ -231,14 +282,22 @@ export function SpendingPlanCard({
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-semibold leading-tight">
-              {isEdit ? `Edit ${monthLabel} plan` : 'This month, I intend to spend…'}
+              {isEdit
+                ? `Edit ${monthLabel} spending limit`
+                : `How much do you want to spend in ${monthLabel}?`}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {isEdit
-                ? 'Change your total intention. Envelopes stay as they are until you adjust them.'
-                : `One number for ${monthLabel}. Next you’ll split it into envelopes.`}
+                ? 'Change your spending limit. Envelopes stay as they are until you adjust them.'
+                : 'This is your spending limit, not your wallet balance. Next you’ll split it into envelopes.'}
             </p>
           </div>
+          {isEdit && (
+            <PlanOverflowMenu
+              disabled={removePlan.isPending || upsert.isPending}
+              onDelete={deletePlan}
+            />
+          )}
         </div>
 
         {retro && (
@@ -286,6 +345,7 @@ export function SpendingPlanCard({
                 setEditing(false)
                 setAmount('')
               }}
+              disabled={removePlan.isPending}
             >
               Cancel
             </Button>
@@ -294,9 +354,9 @@ export function SpendingPlanCard({
             type="button"
             className="flex-1"
             onClick={saveIntention}
-            disabled={upsert.isPending || !amount || Number(amount) <= 0}
+            disabled={upsert.isPending || removePlan.isPending || !amount || Number(amount) <= 0}
           >
-            {isEdit ? 'Save plan' : 'Set plan'}
+            {isEdit ? 'Save spending limit' : 'Set spending limit'}
           </Button>
         </div>
       </div>
@@ -332,11 +392,9 @@ export function SpendingPlanCard({
   if (variant === 'compact') {
     const chip = PACE_CHIP[status.pace]
     return (
-      <button
-        type="button"
-        onClick={startEditing}
+      <div
         className={cn(
-          'flex w-full flex-col gap-3.5 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+          'flex w-full flex-col gap-3.5 rounded-[1.5rem] bg-card p-4 shadow-[var(--shadow-soft)]',
           cardAccentClass(paceAccent),
         )}
       >
@@ -377,14 +435,14 @@ export function SpendingPlanCard({
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-medium text-muted-foreground">
-                {remainingMinor >= 0 ? 'Left in plan' : 'Over plan'}
+                {remainingMinor >= 0 ? 'Still okay to spend' : 'Over spending limit'}
               </p>
               <p className="mt-0.5 text-xl font-bold leading-none tracking-tight tabular-nums">
                 <HiddenAmount>{formatMoney(Math.abs(remainingMinor), currency)}</HiddenAmount>
               </p>
             </div>
             <div className="min-w-0 text-right">
-              <p className="text-[11px] font-medium text-muted-foreground">Intention</p>
+              <p className="text-[11px] font-medium text-muted-foreground">Spending limit</p>
               <p className="mt-0.5 text-sm font-semibold leading-none tabular-nums">
                 <HiddenAmount>{formatMoney(plan.intended_amount_minor, currency)}</HiddenAmount>
               </p>
@@ -397,12 +455,16 @@ export function SpendingPlanCard({
           <span className="flex h-9 min-w-0 flex-1 items-center justify-center truncate rounded-full border border-border/70 px-3 text-sm font-medium tabular-nums text-muted-foreground">
             Spent <HiddenAmount>{formatMoney(spentMinor, currency)}</HiddenAmount>
           </span>
-          <span className="flex h-9 flex-1 items-center justify-center gap-0.5 rounded-full bg-primary text-sm font-medium text-primary-foreground">
+          <button
+            type="button"
+            onClick={startEditing}
+            className="flex h-9 flex-1 items-center justify-center gap-0.5 rounded-full bg-primary text-sm font-medium text-primary-foreground transition-transform active:scale-[0.99]"
+          >
             Edit plan
             <ChevronRight className="size-3.5" />
-          </span>
+          </button>
         </div>
-      </button>
+      </div>
     )
   }
 
@@ -422,7 +484,7 @@ export function SpendingPlanCard({
             <p className="mt-1.5 text-2xl font-bold leading-none tracking-tight tabular-nums">
               <HiddenAmount>{formatMoney(Math.abs(remainingMinor), currency)}</HiddenAmount>
               <span className="ml-1.5 text-sm font-medium text-muted-foreground">
-                {remainingMinor >= 0 ? 'left' : 'over'}
+                {remainingMinor >= 0 ? 'still okay to spend' : 'over limit'}
               </span>
             </p>
           </div>
@@ -462,7 +524,7 @@ export function SpendingPlanCard({
             <p className="truncate text-sm font-semibold tabular-nums">
               <HiddenAmount>{formatMoney(plan.intended_amount_minor, currency)}</HiddenAmount>
             </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Total plan</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Spending limit</p>
           </div>
         </div>
 

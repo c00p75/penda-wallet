@@ -154,7 +154,7 @@ export function evidenceForInsight(
   if (insightId === 'safe-to-spend') {
     return {
       insightId,
-      summary: 'Safe-to-spend from your month intention minus spend and fixed costs.',
+      summary: 'Safe-to-spend from your spending limit minus spend and fixed costs.',
       bullets: ['Tap again after updating the plan or logging spend to refresh the breakdown.'],
     }
   }

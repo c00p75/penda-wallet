@@ -1,6 +1,6 @@
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, Card, Badge, LoadingView } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
@@ -9,13 +9,14 @@ import { TransactionRow } from '@/src/components/TransactionRow';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { colors, spacing } from '@/src/lib/theme';
 import { formatMoney } from '@/src/lib/money';
-import { fetchTransactions } from '@/src/api/transactions';
+import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
 import { fetchBudgetProgress } from '@/src/api/budgets';
 import { fetchSavingsGoals } from '@/src/api/goals';
 import { fetchCategories } from '@/src/api/categories';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { computeMonthlyBalance } from '@/src/lib/transactions';
 import { useAuthStore } from '@/src/store/authStore';
+import type { Transaction } from '@/src/api/types';
 
 function greetingLabel(now = new Date()): string {
   const h = now.getHours();
@@ -34,6 +35,7 @@ function firstName(session: ReturnType<typeof useAuthStore.getState>['session'])
 
 export default function HomeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const session = useAuthStore((s) => s.session);
   const { wallet, isLoading: walletLoading, refetch: refetchWallets } = useCurrentWallet();
 
@@ -42,6 +44,28 @@ export default function HomeScreen() {
     queryFn: () => fetchTransactions(wallet!.id),
     enabled: !!wallet?.id,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteTransaction(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+    },
+    onError: (err) => {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');
+    },
+  });
+
+  function confirmDelete(tx: Transaction) {
+    const title = tx.merchant || tx.description || 'this transaction';
+    Alert.alert('Delete transaction?', `Remove ${title}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(tx.id),
+      },
+    ]);
+  }
 
   const { data: budgetProgress = [], refetch: refetchBudgets } = useQuery({
     queryKey: ['budgetProgress', wallet?.id],
@@ -139,7 +163,13 @@ export default function HomeScreen() {
           </Text>
         ) : (
           recent.map((tx, i) => (
-            <TransactionRow key={tx.id} transaction={tx} currency={currency} index={i} />
+            <TransactionRow
+              key={tx.id}
+              transaction={tx}
+              currency={currency}
+              index={i}
+              onLongPress={() => confirmDelete(tx)}
+            />
           ))
         )}
       </Card>

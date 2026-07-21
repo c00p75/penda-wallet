@@ -725,11 +725,11 @@ export function HomePage() {
                 style={{
                   color:
                     auraLabel === 'Getting started'
-                      ? 'var(--mint)'
+                      ? 'var(--iris)'
                       : auraLabel === 'Comfortable'
-                        ? 'var(--mint)'
+                        ? 'var(--iris)'
                         : auraLabel === 'Tight'
-                          ? 'var(--apricot)'
+                          ? 'var(--rose)'
                           : 'var(--rose)',
                 }}
               >
@@ -772,7 +772,7 @@ export function HomePage() {
                   }}
                   className={cn(
                     'flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
-                    cardAccentClass('apricot'),
+                    cardAccentClass('rose'),
                   )}
                 >
                   <AiMark className="size-7" />
@@ -861,7 +861,7 @@ export function HomePage() {
             />
             {!dayZero && hasBudgets && (
               <HeroCard
-                tone="mint"
+                tone="iris"
                 className="snap-start"
                 onClick={() =>
                   setHeroDetail({
@@ -911,7 +911,7 @@ export function HomePage() {
             )}
             {!dayZero && (blindBudgeting || monthSpending > 0) && (
               <HeroCard
-                tone="sun"
+                tone="mint"
                 className="snap-start"
                 onClick={() =>
                   setHeroDetail({
@@ -948,12 +948,12 @@ export function HomePage() {
               }}
               className={cn(
                 'flex w-full items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-card)] transition-transform active:scale-[0.99]',
-                cardAccentClass('sun'),
+                cardAccentClass('iris'),
               )}
             >
               <span
                 className="grid size-12 place-items-center rounded-2xl text-xl"
-                style={{ background: 'var(--sun-soft)' }}
+                style={{ background: 'var(--iris-soft)' }}
               >
                 {upcoming.icon}
               </span>

@@ -114,7 +114,7 @@ export function GoalDetailPage() {
   const pct = goal.target_amount_minor > 0 ? goal.current_amount_minor / goal.target_amount_minor : 0
   const reached = pct >= 1
   const ringPct = Math.round(Math.min(pct, 1) * 100)
-  const accent = reached ? 'var(--mint)' : 'var(--apricot)'
+  const accent = 'var(--iris)'
 
   const perMonth = monthlyContributionMinor(goal.target_amount_minor, goal.current_amount_minor, goal.target_date)
   const forecast = estimateGoalCompletion(goal, contributions)

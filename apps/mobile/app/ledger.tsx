@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +9,12 @@ import { Text, LoadingView } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { TransactionRow } from '@/src/components/TransactionRow';
 import { colors, spacing } from '@/src/lib/theme';
-import { fetchTransactions } from '@/src/api/transactions';
+import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
 import { uploadReceipt } from '@/src/api/receipts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { useAuthStore } from '@/src/store/authStore';
 import { parseMoMoText } from '@/src/lib/momoParser';
+import type { Transaction } from '@/src/api/types';
 
 export default function LedgerScreen() {
   const router = useRouter();
@@ -27,6 +28,28 @@ export default function LedgerScreen() {
     queryFn: () => fetchTransactions(wallet!.id),
     enabled: !!wallet?.id,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteTransaction(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+    },
+    onError: (err) => {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');
+    },
+  });
+
+  function confirmDelete(tx: Transaction) {
+    const title = tx.merchant || tx.description || 'this transaction';
+    Alert.alert('Delete transaction?', `Remove ${title}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(tx.id),
+      },
+    ]);
+  }
 
   async function handlePasteMoMo() {
     const text = await Clipboard.getStringAsync();
@@ -111,7 +134,12 @@ export default function LedgerScreen() {
         data={transactions}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
-          <TransactionRow transaction={item} currency={currency} index={index} />
+          <TransactionRow
+            transaction={item}
+            currency={currency}
+            index={index}
+            onLongPress={() => confirmDelete(item)}
+          />
         )}
         contentContainerStyle={styles.list}
         refreshControl={

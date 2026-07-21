@@ -28,12 +28,12 @@ describe('PERSONALITIES picker', () => {
   it('exposes six active personas including Bobo, not Zee', () => {
     expect(PERSONALITIES).toHaveLength(6)
     expect(PERSONALITIES.map((p) => p.value)).toEqual([
-      'balanced_coach',
-      'angry_mom',
-      'funny_comedian',
-      'drill_sergeant',
       'hustler',
+      'balanced_coach',
       'analyst',
+      'angry_mom',
+      'drill_sergeant',
+      'funny_comedian',
     ])
     expect(PERSONALITIES.some((p) => p.name === 'Bobo')).toBe(true)
     expect(PERSONALITIES.some((p) => p.name === 'Zee')).toBe(false)

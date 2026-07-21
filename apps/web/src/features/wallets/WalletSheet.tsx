@@ -49,7 +49,7 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
     {
       icon: Camera,
       label: 'Scan receipt',
-      tone: 'sun' as const,
+      tone: 'rose' as const,
       onTap: () => requestHomeIntent('scan-receipt'),
     },
   ]
@@ -58,13 +58,13 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
     {
       icon: Target,
       label: 'Goals',
-      tone: 'apricot' as const,
+      tone: 'rose' as const,
       onTap: () => runAndClose(() => navigate('/goals')),
     },
     {
       icon: CalendarBlank,
       label: 'Cashflow',
-      tone: 'mint' as const,
+      tone: 'iris' as const,
       onTap: () => runAndClose(() => navigate('/cashflow')),
     },
     {
@@ -85,13 +85,13 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
     {
       icon: Path,
       label: 'Missions',
-      tone: 'apricot' as const,
+      tone: 'iris' as const,
       onTap: () => runAndClose(() => navigate('/missions')),
     },
     {
       icon: Trophy,
       label: 'Compete',
-      tone: 'sun' as const,
+      tone: 'rose' as const,
       onTap: () => runAndClose(() => navigate('/challenges')),
     },
   ]

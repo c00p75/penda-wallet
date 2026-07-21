@@ -63,7 +63,7 @@ function CardMark({
         className="flex size-8 shrink-0 items-center justify-center rounded-2xl"
         style={{ background: 'color-mix(in srgb, var(--apricot) 20%, transparent)' }}
       >
-        <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--apricot)' }} />
+        <Lightbulb className="size-4" weight="duotone" style={{ color: 'var(--iris)' }} />
       </span>
     )
   }

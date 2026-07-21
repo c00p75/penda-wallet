@@ -75,7 +75,7 @@ export function CashflowPage() {
   const { nextIncome, freeBeforeNextIncomeMinor, lowestBalance } = projection
   const endBalance = projection.days.at(-1)?.balanceMinor ?? 0
   const heroTone =
-    lowestBalance.balanceMinor < 0 ? 'rose' : freeBeforeNextIncomeMinor != null && freeBeforeNextIncomeMinor < 50000 ? 'apricot' : 'mint'
+    lowestBalance.balanceMinor < 0 ? 'rose' : freeBeforeNextIncomeMinor != null && freeBeforeNextIncomeMinor < 50000 ? 'rose' : 'iris'
 
   let insight: { tone: 'default' | 'warm' | 'attention'; text: string }
   if (nextIncome && freeBeforeNextIncomeMinor !== null) {
