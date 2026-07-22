@@ -564,22 +564,41 @@ body {
   }
 }
 
-/* Ambient sparkles: decorative AI "magic" twinkle on the auth screen */
+/* Ambient sparkles: decorative AI "magic" twinkle on the auth screen.
+   --sparkle-rot carries each star's resting rotation so the keyframe can
+   animate around it instead of snapping to 0deg. */
 @keyframes penda-sparkle-twinkle {
   0%,
   100% {
-    transform: scale(0.85) rotate(0deg);
+    transform: rotate(var(--sparkle-rot, 0deg)) scale(0.85);
     opacity: 0.35;
   }
   50% {
-    transform: scale(1) rotate(15deg);
+    transform: rotate(calc(var(--sparkle-rot, 0deg) + 15deg)) scale(1);
     opacity: 0.9;
+  }
+}
+/* Softer beat for the large focal stars: stays bright, barely turns. */
+@keyframes penda-sparkle-glow {
+  0%,
+  100% {
+    transform: rotate(var(--sparkle-rot, 0deg)) scale(0.96);
+    opacity: 0.68;
+  }
+  50% {
+    transform: rotate(calc(var(--sparkle-rot, 0deg) + 4deg)) scale(1.04);
+    opacity: 1;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
   .penda-sparkle {
+    transform-box: fill-box;
+    transform-origin: center;
     animation: penda-sparkle-twinkle var(--twinkle-dur, 4s) ease-in-out infinite;
     animation-delay: var(--twinkle-delay, 0s);
+  }
+  .penda-sparkle--soft {
+    animation-name: penda-sparkle-glow;
   }
 }
 

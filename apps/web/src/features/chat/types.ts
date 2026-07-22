@@ -1,3 +1,5 @@
+import type { ActiveAiPersonality } from '@/features/profile/types'
+
 /** Something applied in chat that the user can reverse from the trail footer. */
 export type ChatUndoTarget =
   | { type: 'pending_action'; actionId: string }
@@ -9,6 +11,11 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /**
+   * When set, render a full persona portrait as this assistant message
+   * (walkthrough intro). Stored as the personality key so localStorage stays stable.
+   */
+  personaPortrait?: ActiveAiPersonality
   /** Staged update/delete, also rendered inside the action trail. */
   pendingActions?: PendingAction[]
   /** Durable trail of tools that ran for this turn (creates, lookups, etc.). */

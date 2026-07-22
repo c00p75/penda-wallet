@@ -35,11 +35,14 @@ function GoogleLogo() {
 }
 
 // Four-point sparkle used as graphic decoration on the hero panel.
+// `soft` gives large focal stars a gentle glow; the default is a brighter
+// twinkle for the small accent sparkles.
 function Sparkle({
   className,
   color,
   rotate = 0,
   twinkle = true,
+  soft = false,
   durationMs = 4000,
   delayMs = 0,
 }: {
@@ -47,6 +50,7 @@ function Sparkle({
   color: string
   rotate?: number
   twinkle?: boolean
+  soft?: boolean
   durationMs?: number
   delayMs?: number
 }) {
@@ -54,11 +58,14 @@ function Sparkle({
     <svg
       viewBox="0 0 24 24"
       aria-hidden
-      className={`${twinkle ? 'penda-sparkle' : ''} ${className ?? ''}`}
+      className={`${twinkle ? `penda-sparkle${soft ? ' penda-sparkle--soft' : ''}` : ''} ${className ?? ''}`}
       style={
         {
           color,
+          // Resting rotation, also fed to the keyframe via --sparkle-rot so the
+          // twinkle turns around it (and it survives prefers-reduced-motion).
           transform: rotate ? `rotate(${rotate}deg)` : undefined,
+          '--sparkle-rot': `${rotate}deg`,
           '--twinkle-dur': `${durationMs}ms`,
           '--twinkle-delay': `${delayMs}ms`,
         } as React.CSSProperties
@@ -207,14 +214,14 @@ export function LoginPage() {
         }}
       >
         {/* Corner sparkles, kept clear of the headline */}
-        <Sparkle twinkle={false} color="rgba(255,255,255,0.9)" rotate={10} className="absolute right-7 top-10 size-12" />
-        <Sparkle twinkle={false} color="rgba(255,255,255,0.85)" className="absolute bottom-10 right-10 size-7" />
-        <Sparkle color="var(--iris)" durationMs={3600} className="absolute right-6 top-28 size-4 opacity-80" />
+        <Sparkle soft color="rgba(255,255,255,0.9)" rotate={10} durationMs={4800} className="absolute right-7 top-10 size-12" />
+        <Sparkle soft color="rgba(255,255,255,0.85)" durationMs={4200} delayMs={1400} className="absolute bottom-10 right-10 size-7" />
+        <Sparkle color="var(--iris)" durationMs={3600} delayMs={500} className="absolute right-6 top-28 size-4 opacity-80" />
 
         {/* Content */}
         <div className="relative z-10 flex items-center gap-1.5 text-sm font-semibold tracking-wide text-foreground/70">
           Penda
-          <Sparkle color="var(--iris)" durationMs={3200} className="size-3.5" />
+          <Sparkle color="var(--iris)" durationMs={3200} delayMs={1100} className="size-3.5" />
         </div>
 
         <h1 className="relative z-10 mt-6 text-[2.6rem] font-bold leading-[1.08] tracking-tight text-foreground">
@@ -230,7 +237,7 @@ export function LoginPage() {
 
         {/* Big graphic star, flows below the copy (never behind the headline) and bleeds off the panel edge */}
         <div className="relative z-0 mt-auto -mb-3 -ml-1 pt-6">
-          <Sparkle twinkle={false} color="var(--foreground)" rotate={-8} className="size-24 opacity-90" />
+          <Sparkle soft color="var(--foreground)" rotate={-8} durationMs={5600} delayMs={700} className="size-24" />
         </div>
       </section>
 

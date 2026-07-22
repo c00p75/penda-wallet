@@ -12,8 +12,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { cn } from '@/lib/utils'
-import { useCreateMission, useMissions, useUpdateMissionStatus } from './hooks'
-import { suggestMissions } from './suggestMissions'
+import { useCreateMission, useGenerateMissions, useMissions, useUpdateMissionStatus } from './hooks'
+import { suggestMissions, type SuggestedMission } from './suggestMissions'
 import type { MissionStatus } from './types'
 
 const STATUS_CYCLE: MissionStatus[] = ['active', 'kept', 'broken', 'dismissed']
@@ -33,13 +33,33 @@ export function MissionsPage() {
   const { data: missions = [] } = useMissions(wallet?.id)
   const createMission = useCreateMission(wallet?.id, userId)
   const updateStatus = useUpdateMissionStatus(wallet?.id)
+  const generateMissions = useGenerateMissions(wallet?.id)
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
 
+  const normTitle = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+  /** First idea whose title isn't already one of the user's missions. */
+  function pickNovel(ideas: SuggestedMission[]): SuggestedMission | undefined {
+    const existing = new Set(missions.map((m) => normTitle(m.title)))
+    return ideas.find((idea) => !existing.has(normTitle(idea.title))) ?? ideas[0]
+  }
+
   async function handleSuggest() {
-    const ideas = suggestMissions(transactions)
-    const idea = ideas[0]
+    let ideas: SuggestedMission[] = []
+    try {
+      // Fresh, AI-written missions from this wallet's goals + spending, so each
+      // tap is unique rather than the old fixed template.
+      ideas = await generateMissions.mutateAsync()
+    } catch (error) {
+      // A real failure (e.g. rate limit) surfaces its message; then we still
+      // fall back to the local starter ideas below so suggest always works.
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+    if (ideas.length === 0) ideas = suggestMissions(transactions)
+
+    const idea = pickNovel(ideas)
     if (!idea) {
       toast('Need a bit more spending history before I can suggest a mission.')
       return
@@ -85,9 +105,13 @@ export function MissionsPage() {
           : 'Missions are short, concrete challenges, five no-spend days, cook at home this week. Want one?'}
       </AiInsight>
 
-      <Button onClick={handleSuggest} disabled={createMission.isPending} className="gap-1.5 rounded-full">
+      <Button
+        onClick={handleSuggest}
+        disabled={createMission.isPending || generateMissions.isPending}
+        className="gap-1.5 rounded-full"
+      >
         <Sparkle className="size-4" weight="fill" />
-        Suggest a mission
+        {generateMissions.isPending ? 'Thinking of one…' : 'Suggest a mission'}
       </Button>
 
       {missions.length === 0 ? (

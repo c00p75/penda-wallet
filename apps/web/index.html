@@ -27,16 +27,14 @@
         --bs-word: #241d54;
         --bs-tag: #6a6494;
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bs-from: #0c1120;
-          --bs-via: #142137;
-          --bs-to: #1a2c49;
-          --bs-iris: #8a7cff;
-          --bs-mint: #34d6aa;
-          --bs-word: #eef1ff;
-          --bs-tag: #9a9ac2;
-        }
+      :root.dark {
+        --bs-from: #0c1120;
+        --bs-via: #142137;
+        --bs-to: #1a2c49;
+        --bs-iris: #8a7cff;
+        --bs-mint: #34d6aa;
+        --bs-word: #eef1ff;
+        --bs-tag: #9a9ac2;
       }
       html,
       body {
@@ -197,6 +195,21 @@
         }
       }
     </style>
+    <script>
+      // Apply the persisted theme (see themeStore.ts) before first paint so the
+      // boot splash above never flashes the wrong colors while main.tsx boots.
+      (function () {
+        var mode = 'system';
+        try {
+          var raw = localStorage.getItem('penda-theme');
+          if (raw) mode = JSON.parse(raw).state.mode || 'system';
+        } catch (e) {}
+        var isDark =
+          mode === 'dark' ||
+          (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', isDark);
+      })();
+    </script>
   </head>
   <body>
     <div id="boot-splash" aria-hidden="true" role="presentation">

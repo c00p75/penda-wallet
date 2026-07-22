@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,9 +17,14 @@ import { Text, Input, Button } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { colors, radius, spacing } from '@/src/lib/theme';
 import { useChatStore } from '@/src/store/chatStore';
-import { confirmAiAction, sendChatMessageStream, transcribeVoice } from '@/src/api/chat';
+import { confirmAiAction, sendChatMessageStream } from '@/src/api/chat';
 import type { ChatMessage, PendingAction } from '@/src/api/types';
 import { parseMoMoText } from '@/src/lib/momoParser';
+import { useVoiceRecorder } from '@/src/hooks/useVoiceRecorder';
+import {
+  assistantAskedQuestion,
+  shouldContinueListening,
+} from '@/src/lib/voiceConversation';
 
 interface ChatSheetProps {
   walletId: string;
@@ -28,12 +32,17 @@ interface ChatSheetProps {
   onClose: () => void;
 }
 
+const HOLD_THRESHOLD_MS = 250;
+const SILENCE_LEVEL = 0.08;
+const SILENCE_STOP_MS = 1400;
+
+type RecordMode = 'idle' | 'holding' | 'locked';
+
 export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
 
   const messages = useChatStore((s) => s.messages);
   const conversationId = useChatStore((s) => s.conversationId);
@@ -41,6 +50,7 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const actionStatus = useChatStore((s) => s.actionStatus);
   const prefill = useChatStore((s) => s.prefill);
   const autoSend = useChatStore((s) => s.autoSend);
+  const startRecordingFlag = useChatStore((s) => s.startRecording);
 
   const addUserMessage = useChatStore((s) => s.addUserMessage);
   const startAssistantMessage = useChatStore((s) => s.startAssistantMessage);
@@ -49,15 +59,45 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const setConversationId = useChatStore((s) => s.setConversationId);
   const setActionStatus = useChatStore((s) => s.setActionStatus);
   const consumeAutoSend = useChatStore((s) => s.consumeAutoSend);
+  const consumeStartRecording = useChatStore((s) => s.consumeStartRecording);
   const setMessages = useChatStore((s) => s.setMessages);
 
   const [input, setInput] = useState(prefill);
   const [sending, setSending] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [recordMode, setRecordMode] = useState<RecordMode>('idle');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const busy = sending || streamingId !== null;
+  const baseInputRef = useRef('');
+  const pressStartRef = useRef(0);
+  const voiceTurnRef = useRef(false);
+  const suppressRelistenRef = useRef(false);
+  const relistenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechHeardRef = useRef(false);
+  const silenceSinceRef = useRef<number | null>(null);
+  const silenceStoppingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  const voice = useVoiceRecorder({
+    currency,
+    onError: (message) => {
+      setRecordMode('idle');
+      setError(message);
+    },
+  });
+
+  const busy = sending || streamingId !== null || voice.state === 'transcribing';
+  const isRecording = recordMode !== 'idle';
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (relistenTimeoutRef.current != null) clearTimeout(relistenTimeoutRef.current);
+      void voice.discard();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (prefill) setInput(prefill);
@@ -68,17 +108,63 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       consumeAutoSend();
       void sendMessage(prefill);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSend, prefill]);
+
+  useEffect(() => {
+    if (!startRecordingFlag) return;
+    consumeStartRecording();
+    baseInputRef.current = input;
+    setRecordMode('locked');
+    voiceTurnRef.current = true;
+    speechHeardRef.current = false;
+    silenceSinceRef.current = null;
+    void voice.start().catch(() => setRecordMode('idle'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startRecordingFlag]);
 
   const scrollToEnd = useCallback(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
   }, []);
 
+  const maybeRelisten = useCallback(
+    (reply: string, pending: PendingAction[] | undefined) => {
+      const hasPending = (pending ?? []).some((a) => !actionStatus[a.id]);
+      if (
+        !shouldContinueListening({
+          voiceConversationEnabled: true,
+          wasVoiceTurn: voiceTurnRef.current,
+          hasPendingConfirm: hasPending,
+          assistantAskedQuestion: assistantAskedQuestion(reply),
+        })
+      ) {
+        voiceTurnRef.current = false;
+        return;
+      }
+      if (relistenTimeoutRef.current != null) clearTimeout(relistenTimeoutRef.current);
+      relistenTimeoutRef.current = setTimeout(() => {
+        relistenTimeoutRef.current = null;
+        if (!mountedRef.current || suppressRelistenRef.current) {
+          voiceTurnRef.current = false;
+          return;
+        }
+        baseInputRef.current = '';
+        setInput('');
+        setRecordMode('locked');
+        speechHeardRef.current = false;
+        silenceSinceRef.current = null;
+        void voice.start().catch(() => setRecordMode('idle'));
+      }, 400);
+    },
+    [actionStatus, voice],
+  );
+
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { fromVoice?: boolean }) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
 
+      if (opts?.fromVoice) voiceTurnRef.current = true;
       setError(null);
       setSending(true);
       addUserMessage(trimmed);
@@ -120,14 +206,19 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
               void queryClient.invalidateQueries({ queryKey: ['budgets', walletId] });
               void queryClient.invalidateQueries({ queryKey: ['goals', walletId] });
               scrollToEnd();
+              maybeRelisten(payload.reply, payload.pendingActions);
             },
-            onError: ({ error: errMsg }) => setError(errMsg),
+            onError: ({ error: errMsg }) => {
+              setError(errMsg);
+              voiceTurnRef.current = false;
+            },
           },
           controller.signal,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to send message';
         setError(msg);
+        voiceTurnRef.current = false;
         finalizeAssistantMessage(assistantId, {
           text: `Sorry, something went wrong: ${msg}`,
         });
@@ -147,6 +238,7 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       setMessages,
       queryClient,
       scrollToEnd,
+      maybeRelisten,
     ],
   );
 
@@ -163,38 +255,91 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
     }
   };
 
-  const startRecording = async () => {
-    try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-      recordingRef.current = recording;
-      setRecording(true);
-    } catch {
-      setError('Microphone permission denied');
-    }
-  };
+  function mergedTranscript(finalText: string) {
+    const base = baseInputRef.current;
+    return base && finalText ? `${base} ${finalText}` : base || finalText;
+  }
 
-  const stopRecording = async () => {
-    const rec = recordingRef.current;
-    if (!rec) return;
-    setRecording(false);
-    try {
-      await rec.stopAndUnloadAsync();
-      const uri = rec.getURI();
-      recordingRef.current = null;
-      if (!uri) return;
-      setSending(true);
-      const transcript = await transcribeVoice(uri, 'voice.m4a');
-      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transcription failed');
-    } finally {
-      setSending(false);
+  async function beginRecording() {
+    suppressRelistenRef.current = false;
+    speechHeardRef.current = false;
+    silenceSinceRef.current = null;
+    setError(null);
+    baseInputRef.current = input;
+    await voice.start();
+  }
+
+  async function finishRecording(submit: boolean) {
+    const { transcript, discarded } = await voice.stop();
+    setRecordMode('idle');
+    speechHeardRef.current = false;
+    silenceSinceRef.current = null;
+    silenceStoppingRef.current = false;
+    if (discarded) {
+      setInput(baseInputRef.current);
+      return;
     }
-  };
+    if (!transcript.trim()) {
+      setInput(baseInputRef.current);
+      setError('Could not catch that. Try again a little closer to the mic.');
+      return;
+    }
+    const combined = mergedTranscript(transcript);
+    if (submit) void sendMessage(combined, { fromVoice: true });
+    else setInput(combined);
+  }
+
+  async function cancelRecording() {
+    await voice.discard();
+    setRecordMode('idle');
+    speechHeardRef.current = false;
+    silenceSinceRef.current = null;
+    setInput(baseInputRef.current);
+    setError(null);
+  }
+
+  function onMicPressIn() {
+    if (recordMode === 'locked') {
+      void finishRecording(false);
+      return;
+    }
+    if (recordMode !== 'idle') return;
+    pressStartRef.current = Date.now();
+    setRecordMode('holding');
+    void beginRecording();
+  }
+
+  function onMicPressOut() {
+    if (recordMode !== 'holding') return;
+    const held = Date.now() - pressStartRef.current;
+    if (held >= HOLD_THRESHOLD_MS) void finishRecording(true);
+    else setRecordMode('locked');
+  }
+
+  // Silence auto-stop after speech has been detected.
+  useEffect(() => {
+    if (recordMode === 'idle' || voice.state !== 'recording') {
+      speechHeardRef.current = false;
+      silenceSinceRef.current = null;
+      silenceStoppingRef.current = false;
+      return;
+    }
+    if (silenceStoppingRef.current) return;
+    const level = voice.level;
+    if (level >= SILENCE_LEVEL) {
+      speechHeardRef.current = true;
+      silenceSinceRef.current = null;
+      return;
+    }
+    if (!speechHeardRef.current) return;
+    const now = Date.now();
+    if (silenceSinceRef.current == null) silenceSinceRef.current = now;
+    if (now - silenceSinceRef.current < SILENCE_STOP_MS) return;
+    silenceSinceRef.current = null;
+    silenceStoppingRef.current = true;
+    void finishRecording(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.level, voice.state, recordMode]);
 
   const handlePasteMoMo = async () => {
     const text = await Clipboard.getStringAsync();
@@ -211,6 +356,15 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       setError('Could not parse MoMo SMS. Pasted raw text instead');
     }
   };
+
+  const statusText =
+    voice.state === 'transcribing'
+      ? 'Finishing…'
+      : recordMode === 'holding'
+        ? 'Listening. Release to send'
+        : recordMode === 'locked'
+          ? 'Listening. Tap the mic to stop'
+          : null;
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.role === 'user';
@@ -283,7 +437,13 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       <View style={styles.handle} />
       <View style={styles.header}>
         <Text variant="h3">Ask Penda</Text>
-        <AnimatedPressable onPress={onClose} scaleTo={0.9}>
+        <AnimatedPressable
+          onPress={() => {
+            void voice.discard();
+            onClose();
+          }}
+          scaleTo={0.9}
+        >
           <Ionicons name="close" size={24} color={colors.textSecondary} />
         </AnimatedPressable>
       </View>
@@ -319,25 +479,68 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {statusText ? (
+          <View style={styles.statusRow}>
+            <View style={styles.statusDot} />
+            <Text variant="caption" color={colors.textSecondary} style={styles.statusText}>
+              {statusText}
+            </Text>
+            {isRecording && voice.state === 'recording' ? (
+              <View style={styles.levelMeter} accessibilityElementsHidden>
+                {[0.35, 0.7, 1, 0.55, 0.4].map((weight, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.levelBar,
+                      { height: Math.max(3, Math.round(voice.level * weight * 12)) },
+                    ]}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {isRecording ? (
+              <Pressable onPress={() => void cancelRecording()} hitSlop={8}>
+                <Text variant="caption" color={colors.rose}>
+                  Cancel
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.inputRow}>
           <AnimatedPressable
-            onPressIn={() => void startRecording()}
-            onPressOut={() => void stopRecording()}
-            style={[styles.micBtn, recording && styles.micActive]}
+            onPressIn={onMicPressIn}
+            onPressOut={onMicPressOut}
+            disabled={voice.state === 'transcribing'}
+            style={[styles.micBtn, isRecording && styles.micActive]}
           >
-            {recording ? (
+            {voice.state === 'transcribing' ? (
               <ActivityIndicator color="#FFF" size="small" />
             ) : (
-              <Ionicons name="mic" size={22} color={recording ? '#FFF' : colors.iris} />
+              <Ionicons name="mic" size={22} color={isRecording ? '#FFF' : colors.iris} />
             )}
           </AnimatedPressable>
           <Input
             value={input}
-            onChangeText={setInput}
-            placeholder="Message Penda…"
+            onChangeText={(text) => {
+              suppressRelistenRef.current = true;
+              if (relistenTimeoutRef.current != null) {
+                clearTimeout(relistenTimeoutRef.current);
+                relistenTimeoutRef.current = null;
+              }
+              setInput(text);
+            }}
+            onFocus={() => {
+              suppressRelistenRef.current = true;
+              if (relistenTimeoutRef.current != null) {
+                clearTimeout(relistenTimeoutRef.current);
+                relistenTimeoutRef.current = null;
+              }
+            }}
+            placeholder={isRecording ? 'Listening…' : 'Message Penda…'}
             style={styles.input}
             multiline
-            editable={!busy}
+            editable={!busy || isRecording}
           />
           <AnimatedPressable
             onPress={() => void sendMessage(input)}
@@ -451,6 +654,33 @@ const styles = StyleSheet.create({
   pendingBtn: {
     flex: 1,
     paddingVertical: spacing.sm,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.iris,
+  },
+  statusText: {
+    flex: 1,
+  },
+  levelMeter: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    height: 12,
+  },
+  levelBar: {
+    width: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.iris,
   },
   inputRow: {
     flexDirection: 'row',

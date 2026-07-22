@@ -116,7 +116,15 @@ export function pickCoachingInsight(
     const diff = Math.round(baselineWeekly - last7)
     const parkable = Math.min(diff, Math.max(0, balance))
     if (parkable >= OPPORTUNITY_MIN_PARK_MINOR) {
-      const goal = goals.find((g) => g.current_amount_minor < g.target_amount_minor)
+      // Offer the goal CLOSEST to done (highest % funded but not yet complete),
+      // not just the first unfunded one in DB order, a nearly-there goal is the
+      // most motivating place to redirect a windfall.
+      const goal = goals
+        .filter((g) => g.target_amount_minor > 0 && g.current_amount_minor < g.target_amount_minor)
+        .sort(
+          (a, b) =>
+            b.current_amount_minor / b.target_amount_minor - a.current_amount_minor / a.target_amount_minor,
+        )[0]
       return {
         kind: 'opportunity',
         title: 'Nice spending week',

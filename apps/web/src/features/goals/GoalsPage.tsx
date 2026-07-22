@@ -13,6 +13,7 @@ import { cardAccentClass } from '@/components/ui/cardAccent'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
+import { TipNote } from '@/components/ui/tip-note'
 import { formatMoney } from '@/lib/money'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { cn } from '@/lib/utils'
@@ -276,9 +277,9 @@ export function GoalsPage() {
 
       {tab === 'goals' && isGoalsSetup && (
         <section className="flex flex-col gap-4">
-          <AiInsight featured>
+          <TipNote>
             Start with one goal. A trip, a buffer, a purchase. Penda will help you pace it.
-          </AiInsight>
+          </TipNote>
 
           <button
             type="button"
@@ -410,9 +411,9 @@ export function GoalsPage() {
 
       {tab === 'debts' && isDebtsSetup && (
         <section className="flex flex-col gap-4">
-          <AiInsight featured>
+          <TipNote>
             Track a loan or IOU in either direction. Logging payments keeps the balance honest.
-          </AiInsight>
+          </TipNote>
           <button
             type="button"
             onClick={(e) => {

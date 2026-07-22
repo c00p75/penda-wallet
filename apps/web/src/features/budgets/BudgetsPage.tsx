@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { AiInsight } from '@/components/AiInsight'
+import { TipNote } from '@/components/ui/tip-note'
 import { formatMoney } from '@/lib/money'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { cn } from '@/lib/utils'
@@ -371,9 +372,9 @@ export function BudgetsPage() {
 
           {!plan ? (
             <>
-              <AiInsight featured>
+              <TipNote>
                 Start with one number for {monthLabel}. Then we’ll break it into a few envelopes.
-              </AiInsight>
+              </TipNote>
               <SpendingPlanCard
                 walletId={wallet.id}
                 currency={currency}

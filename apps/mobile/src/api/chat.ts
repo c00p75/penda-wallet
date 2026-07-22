@@ -15,13 +15,24 @@ async function unwrapFunctionError(error: unknown): Promise<Error> {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export async function transcribeVoice(uri: string, filename: string): Promise<string> {
+export interface TranscribeVoiceOptions {
+  currency?: string;
+  locale?: string;
+}
+
+export async function transcribeVoice(
+  uri: string,
+  filename: string,
+  opts?: TranscribeVoiceOptions,
+): Promise<string> {
   const formData = new FormData();
   formData.append('audio', {
     uri,
     name: filename,
     type: 'audio/m4a',
   } as unknown as Blob);
+  if (opts?.currency) formData.append('currency', opts.currency);
+  if (opts?.locale) formData.append('locale', opts.locale);
 
   const { data, error } = await supabase.functions.invoke<{ transcript: string }>('transcribe-voice', {
     body: formData,

@@ -9,8 +9,10 @@ export interface SuggestedMission {
 }
 
 /**
- * Client-side mission ideas from recent spending, e.g. no-spend days in the
- * top category. Pure so "Suggest a mission" doesn't need a model call.
+ * Offline fallback for "Suggest a mission": deterministic client-side ideas
+ * from recent spending (e.g. no-spend days in the top category), used only
+ * when the AI generate-mission-suggestions edge function is unavailable or
+ * has no data to work with. The primary path is now AI-generated missions.
  */
 export function suggestMissions(transactions: Transaction[], now: Date = new Date()): SuggestedMission[] {
   const monthPrefix = localMonthPrefix(now)

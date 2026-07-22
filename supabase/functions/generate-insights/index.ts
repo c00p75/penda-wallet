@@ -163,7 +163,8 @@ async function generateForWallet(
   // share a single generation, so the common one-persona wallet still costs
   // exactly one model call.
   const profiles = await Promise.all(premiumIds.map((id) => fetchProfileContext(supabase, id)))
-  const profileKey = (p: InsightProfileContext) => `${p.personality}|${p.primaryGoal}|${p.gender}`
+  const profileKey = (p: InsightProfileContext) =>
+    `${p.personality}|${p.primaryGoals.join(',')}|${p.gender}`
   const digestByKey = new Map<string, string>()
   for (const profile of profiles) {
     const key = profileKey(profile)
@@ -231,7 +232,7 @@ async function generateAnnualRecap(
 
   const { data: transactions } = await supabase
     .from('transactions')
-    .select('amount_minor, converted_amount_minor, type')
+    .select('amount_minor, converted_amount_minor, type, category:categories(name)')
     .eq('wallet_id', walletId)
     .eq('user_confirmed', true)
     .is('deleted_at', null)
@@ -242,25 +243,52 @@ async function generateAnnualRecap(
 
   let spent = 0
   let income = 0
+  const categoryTotals = new Map<string, number>()
   for (const t of transactions) {
     const amt = Number(t.converted_amount_minor ?? t.amount_minor ?? 0)
-    if (t.type === 'expense') spent += amt
-    else if (t.type === 'income') income += amt
+    if (t.type === 'expense') {
+      spent += amt
+      const name = (t.category as unknown as { name: string } | null)?.name ?? 'Uncategorized'
+      categoryTotals.set(name, (categoryTotals.get(name) ?? 0) + amt)
+    } else if (t.type === 'income') {
+      income += amt
+    }
   }
+  const topCategories: CategoryTotal[] = Array.from(categoryTotals.entries())
+    .map(([category, amount_minor]) => ({ category, amount_minor }))
+    .sort((a, b) => b.amount_minor - a.amount_minor)
+    .slice(0, 5)
 
-  const body =
+  // Kept verbatim as the guaranteed fallback if both model calls fail.
+  const fallbackBody =
     `Your ${year} in money: earned ${fmtMoney(income, currency)}, spent ${fmtMoney(spent, currency)}. ` +
     `Net ${fmtMoney(income - spent, currency)}. Here's to a clearer ${year + 1}.`
+
+  const annualStats = { income, spent, net: income - spent, topCategories, currency, year }
+
+  // One recap per DISTINCT persona+goal context, shared across users who match
+  // (mirrors the weekly digest), so the common one-persona wallet still costs
+  // exactly one model call.
+  const recapByKey = new Map<string, string>()
 
   let notified = 0
   for (const userId of premiumIds) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('notification_prefs')
+      .select('notification_prefs, ai_personality, primary_goal, primary_goals')
       .eq('id', userId)
       .maybeSingle()
     const prefs = (profile?.notification_prefs ?? {}) as Record<string, unknown>
     if (prefs.annual_recap === false) continue
+
+    const personality = profile?.ai_personality ?? 'balanced_coach'
+    const primaryGoals = normalizeGoals(profile?.primary_goals, profile?.primary_goal)
+    const key = `${personality}|${primaryGoals.join(',')}`
+    let body = recapByKey.get(key)
+    if (body === undefined) {
+      body = await generateAnnualText(annualStats, { personality, primaryGoals }, fallbackBody)
+      recapByKey.set(key, body)
+    }
 
     await supabase.from('ai_insights').insert({
       wallet_id: walletId,
@@ -272,6 +300,7 @@ async function generateAnnualRecap(
         year,
         total_spent_minor: spent,
         total_income_minor: income,
+        top_categories: topCategories,
       },
       period_start: periodStart,
       period_end: periodEnd,
@@ -290,7 +319,88 @@ async function generateAnnualRecap(
     notified++
   }
 
-  return { year, spent, income, notified }
+  return { year, spent, income, topCategories, notified }
+}
+
+interface AnnualStats {
+  income: number
+  spent: number
+  net: number
+  topCategories: CategoryTotal[]
+  currency: string
+  year: number
+}
+
+/**
+ * Persona-voiced year in review. Gemini first, Groq on error, and the
+ * hardcoded body if both fail so the annual run always notifies.
+ */
+async function generateAnnualText(
+  stats: AnnualStats,
+  profile: { personality: string; primaryGoals: string[] },
+  fallbackBody: string,
+): Promise<string> {
+  const prompt = buildAnnualPrompt(stats, profile)
+  try {
+    const text = await generateWithGemini(prompt)
+    if (text) return text
+  } catch (error) {
+    console.error(
+      'Gemini annual recap generation failed, falling back to Groq:',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+  try {
+    const text = await generateWithGroq(prompt)
+    if (text) return text
+  } catch (error) {
+    console.error(
+      'Groq annual recap generation failed, using template:',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+  return fallbackBody
+}
+
+function buildAnnualPrompt(
+  stats: AnnualStats,
+  profile: { personality: string; primaryGoals: string[] },
+): string {
+  const fmt = (minor: number) => (minor / 100).toFixed(2)
+  const categoryLines = stats.topCategories
+    .map((c) => `- ${c.category}: ${fmt(c.amount_minor)} ${stats.currency}`)
+    .join('\n')
+
+  const personality = resolvePersonality(profile.personality)
+  const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
+  const personaName = PERSONALITY_NAMES[personality] ?? PERSONALITY_NAMES.balanced_coach
+
+  const goalPhrases = profile.primaryGoals.map((g) => GOAL_LABELS[g]).filter(Boolean)
+  let contextSection = ''
+  if (goalPhrases.length > 0) {
+    const isPlural = goalPhrases.length > 1
+    contextSection = `\n\nTheir stated primary financial ${isPlural ? 'goals' : 'goal'} right now ${
+      isPlural ? 'are' : 'is'
+    } to ${joinGoalPhrases(goalPhrases)}. Tie the year in review back to ${
+      isPlural ? 'them' : 'it'
+    } where it fits naturally.`
+  }
+
+  return `You are ${personaName}, an AI assistant persona in Penda, a personal finance app, writing a
+short end-of-year money recap for the user's ${stats.year} in review. Penda is the app, not your name,
+write in your own voice as ${personaName}, never referring to yourself as "Penda". ${personalityFragment}${contextSection}
+
+${stats.year} by the numbers:
+- Total income: ${fmt(stats.income)} ${stats.currency}
+- Total spent: ${fmt(stats.spent)} ${stats.currency}
+- Net: ${fmt(stats.net)} ${stats.currency}
+- Top spending categories:
+${categoryLines}
+
+Write a warm 2-3 sentence year in review grounded in these exact numbers, mention the biggest category by
+name and amount, and end on an encouraging note toward ${stats.year + 1}. Do not invent numbers not listed
+above. Do not use markdown formatting. Do not use em dashes. Keep it under 300 characters since it will
+show in a push notification.`
 }
 
 function fmtMoney(amountMinor: number, currency: string): string {
@@ -307,21 +417,34 @@ function fmtMoney(amountMinor: number, currency: string): string {
 
 interface InsightProfileContext {
   personality: string
-  primaryGoal: string | null
+  primaryGoals: string[]
   gender: string
 }
 
 async function fetchProfileContext(supabase: SupabaseClient, userId: string): Promise<InsightProfileContext> {
   const { data } = await supabase
     .from('profiles')
-    .select('ai_personality, primary_goal, gender')
+    .select('ai_personality, primary_goal, primary_goals, gender')
     .eq('id', userId)
     .maybeSingle()
   return {
     personality: data?.ai_personality ?? 'balanced_coach',
-    primaryGoal: data?.primary_goal ?? null,
+    primaryGoals: normalizeGoals(data?.primary_goals, data?.primary_goal),
     gender: data?.gender ?? 'prefer_not_to_say',
   }
+}
+
+/** Prefer the multi-goal array; fall back to the legacy single goal column. */
+function normalizeGoals(goals: unknown, legacy: string | null | undefined): string[] {
+  if (Array.isArray(goals)) return goals.filter((g): g is string => typeof g === 'string')
+  return legacy ? [legacy] : []
+}
+
+/** "a", "a and b", "a, b, and c" */
+function joinGoalPhrases(phrases: string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? ''
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`
 }
 
 async function generateDigestText(
@@ -354,9 +477,15 @@ function buildPrompt(
   // never the numbers or the advice, see chat-message/index.ts for the
   // matching (and more heavily used) instance of this same guardrail.
   const contextLines: string[] = []
-  if (profile.primaryGoal && GOAL_LABELS[profile.primaryGoal]) {
+  const goalPhrases = profile.primaryGoals.map((g) => GOAL_LABELS[g]).filter(Boolean)
+  if (goalPhrases.length > 0) {
+    const isPlural = goalPhrases.length > 1
     contextLines.push(
-      `Their stated primary financial goal right now is to ${GOAL_LABELS[profile.primaryGoal]}. Connect this digest back to it where it fits naturally.`,
+      `Their stated primary financial ${isPlural ? 'goals' : 'goal'} right now ${
+        isPlural ? 'are' : 'is'
+      } to ${joinGoalPhrases(goalPhrases)}. Connect this digest back to ${
+        isPlural ? 'them' : 'it'
+      } where it fits naturally.`,
     )
   }
   if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {

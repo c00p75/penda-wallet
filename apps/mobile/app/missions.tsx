@@ -7,7 +7,15 @@ import { Text, Button, Card, Input, Screen, LoadingView, Badge } from '@/src/com
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { colors, spacing } from '@/src/lib/theme';
 import { localDateStr } from '@/src/lib/dates';
-import { createMission, fetchMissions, updateMissionStatus } from '@/src/api/missions';
+import {
+  createMission,
+  fetchMissions,
+  generateMissionSuggestions,
+  updateMissionStatus,
+  type SuggestedMission,
+} from '@/src/api/missions';
+import { fetchTransactions } from '@/src/api/transactions';
+import { suggestMissions } from '@/src/lib/suggestMissions';
 import { useAuthStore } from '@/src/store/authStore';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import type { MissionStatus } from '@/src/api/types';
@@ -33,6 +41,46 @@ export default function MissionsScreen() {
     queryKey: ['missions', wallet?.id],
     queryFn: () => fetchMissions(wallet!.id),
     enabled: !!wallet?.id,
+  });
+
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['transactions', wallet?.id],
+    queryFn: () => fetchTransactions(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const normTitle = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const suggestMut = useMutation({
+    mutationFn: async () => {
+      let ideas: SuggestedMission[] = [];
+      try {
+        // Fresh, AI-written missions from this wallet's goals + spending, so
+        // each tap is unique rather than the old fixed template.
+        ideas = await generateMissionSuggestions(wallet!.id);
+      } catch (err) {
+        // A real failure (e.g. rate limit) surfaces its message; we still fall
+        // back to the local starter ideas below so suggest always works.
+        Alert.alert('Error', err instanceof Error ? err.message : 'Something went wrong.');
+      }
+      if (ideas.length === 0) ideas = suggestMissions(transactions);
+
+      // First idea whose title isn't already one of the user's missions.
+      const existing = new Set(missions.map((m) => normTitle(m.title)));
+      const idea = ideas.find((i) => !existing.has(normTitle(i.title))) ?? ideas[0];
+      if (!idea) return null;
+
+      return createMission(wallet!.id, session!.user.id, idea);
+    },
+    onSuccess: (mission) => {
+      if (!mission) {
+        Alert.alert('Missions', 'Need a bit more spending history before I can suggest a mission.');
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ['missions', wallet?.id] });
+      Alert.alert('Mission added', mission.title);
+    },
+    onError: (err) => Alert.alert('Error', err instanceof Error ? err.message : 'Could not create'),
   });
 
   const createMut = useMutation({
@@ -85,7 +133,20 @@ export default function MissionsScreen() {
         <Text variant="h1">{active.length}</Text>
       </Card>
 
-      <Button title="New mission" onPress={() => setShowCreate(true)} style={styles.createBtn} />
+      <Button
+        title="Suggest a mission"
+        onPress={() => suggestMut.mutate()}
+        loading={suggestMut.isPending}
+        disabled={suggestMut.isPending}
+        style={styles.suggestBtn}
+      />
+
+      <Button
+        title="New mission"
+        variant="secondary"
+        onPress={() => setShowCreate(true)}
+        style={styles.createBtn}
+      />
 
       {showCreate ? (
         <Card style={styles.form}>
@@ -134,6 +195,7 @@ const styles = StyleSheet.create({
   },
   spacer: { width: 22 },
   hero: { gap: spacing.xs, marginBottom: spacing.lg },
+  suggestBtn: { marginBottom: spacing.md },
   createBtn: { marginBottom: spacing.lg },
   form: { gap: spacing.md, marginBottom: spacing.lg },
   empty: { textAlign: 'center', marginTop: spacing.xl },

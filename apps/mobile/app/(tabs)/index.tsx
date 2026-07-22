@@ -16,6 +16,7 @@ import { fetchCategories } from '@/src/api/categories';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { computeMonthlyBalance } from '@/src/lib/transactions';
 import { useAuthStore } from '@/src/store/authStore';
+import { useChatStore } from '@/src/store/chatStore';
 import type { Transaction } from '@/src/api/types';
 
 function greetingLabel(now = new Date()): string {
@@ -37,6 +38,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const session = useAuthStore((s) => s.session);
+  const openChat = useChatStore((s) => s.openChat);
   const { wallet, isLoading: walletLoading, refetch: refetchWallets } = useCurrentWallet();
 
   const { data: transactions = [], isLoading: txLoading, refetch: refetchTx } = useQuery({
@@ -225,12 +227,30 @@ export default function HomeScreen() {
         </>
       ) : null}
 
-      <AnimatedPressable onPress={() => router.push('/chat')} style={styles.chatFab}>
-        <Ionicons name="sparkles" size={22} color="#FFF" />
-        <Text variant="bodyMedium" color="#FFF">
-          Ask Penda
-        </Text>
-      </AnimatedPressable>
+      <View style={styles.chatActions}>
+        <AnimatedPressable
+          onPress={() => {
+            openChat('', { startRecording: true });
+            router.push('/chat');
+          }}
+          style={styles.micFab}
+          accessibilityLabel="Talk to Penda"
+        >
+          <Ionicons name="mic" size={22} color="#FFF" />
+        </AnimatedPressable>
+        <AnimatedPressable
+          onPress={() => {
+            openChat();
+            router.push('/chat');
+          }}
+          style={styles.chatFab}
+        >
+          <Ionicons name="sparkles" size={22} color="#FFF" />
+          <Text variant="bodyMedium" color="#FFF">
+            Ask Penda
+          </Text>
+        </AnimatedPressable>
+      </View>
     </ScrollView>
   );
 }
@@ -291,7 +311,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  chatActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  micFab: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.rose,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chatFab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -299,7 +334,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.iris,
     paddingVertical: spacing.md + 2,
     borderRadius: 999,
-    marginTop: spacing.md,
   },
   quickLinks: {
     gap: spacing.sm,

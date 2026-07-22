@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AiInsight } from '@/components/AiInsight'
+import { TipNote } from '@/components/ui/tip-note'
 import { BottomNav } from '@/components/BottomNav'
 import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
@@ -150,7 +151,7 @@ export function SimulatorPage() {
       {verdict ? (
         <AiInsight featured tone={verdict.tone}>{verdict.text}</AiInsight>
       ) : (
-        <AiInsight featured>Try me, put in a purchase or slide to cut spending, and I'll show the ripple.</AiInsight>
+        <TipNote>Try me, put in a purchase or slide to cut spending, and I'll show the ripple.</TipNote>
       )}
 
       <div className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50">

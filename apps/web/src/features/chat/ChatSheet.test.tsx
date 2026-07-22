@@ -26,7 +26,16 @@ vi.mock('./api', async () => {
   }
 })
 vi.mock('./useVoiceRecorder', () => ({
-  useVoiceRecorder: () => ({ state: 'idle', start: vi.fn(), stop: vi.fn() }),
+  useVoiceRecorder: () => ({
+    state: 'idle',
+    level: 0,
+    start: vi.fn(),
+    stop: vi.fn(async () => ({ transcript: '', discarded: true })),
+    discard: vi.fn(async () => undefined),
+  }),
+}))
+vi.mock('./useSpeechInterim', () => ({
+  useSpeechInterim: () => undefined,
 }))
 vi.mock('@/features/profile/hooks', () => ({
   useProfile: () => ({ data: undefined }),
@@ -485,5 +494,72 @@ describe('ChatSheet conversation persistence', () => {
     renderSheet('ZMW')
     expect(await screen.findByText('spent K5 on tea')).toBeInTheDocument()
     expect(screen.getByText('Got it.')).toBeInTheDocument()
+  })
+})
+
+describe('ChatSheet assistant seed + portrait', () => {
+  it('injects a portrait message above the seed text', async () => {
+    const onConsumed = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w-portrait"
+            currency="USD"
+            assistantSeed="Hi, I'm Sarge."
+            assistantPortrait="drill_sergeant"
+            onAssistantSeedConsumed={onConsumed}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText("Hi, I'm Sarge.")).toBeInTheDocument()
+    expect(screen.getByAltText('Sarge')).toBeInTheDocument()
+    expect(onConsumed).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not duplicate portrait or seed on reopen with the same props', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w-portrait-dedupe"
+            currency="USD"
+            assistantSeed="Hi again."
+            assistantPortrait="analyst"
+            onAssistantSeedConsumed={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('Hi again.')).toBeInTheDocument()
+    expect(screen.getAllByAltText('Alex')).toHaveLength(1)
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ChatSheet
+            open
+            onOpenChange={() => {}}
+            walletId="w-portrait-dedupe"
+            currency="USD"
+            assistantSeed="Hi again."
+            assistantPortrait="analyst"
+            onAssistantSeedConsumed={() => {}}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getAllByText('Hi again.')).toHaveLength(1)
+    expect(screen.getAllByAltText('Alex')).toHaveLength(1)
   })
 })

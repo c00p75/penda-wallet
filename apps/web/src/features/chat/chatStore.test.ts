@@ -9,6 +9,8 @@ describe('chatStore', () => {
       autoSend: false,
       mode: 'full',
       startRecording: false,
+      assistantSeed: '',
+      assistantPortrait: null,
       newTopicNonce: 0,
     }),
   )
@@ -46,14 +48,38 @@ describe('chatStore', () => {
   })
 
   it('closes via setOpen and clears ephemeral flags', () => {
-    useChatStore.getState().openChat('x', { autoSend: true, startRecording: true })
+    useChatStore.getState().openChat('x', {
+      autoSend: true,
+      startRecording: true,
+      assistantSeed: 'Hi',
+      assistantPortrait: 'drill_sergeant',
+    })
     useChatStore.getState().setOpen(false)
     expect(useChatStore.getState()).toMatchObject({
       open: false,
       autoSend: false,
       startRecording: false,
       prefill: '',
+      assistantSeed: '',
+      assistantPortrait: null,
       mode: 'full',
+    })
+  })
+
+  it('stores assistantPortrait with the seed and clears both on consume', () => {
+    useChatStore.getState().openChat('', {
+      mode: 'full',
+      assistantSeed: 'Hi, I am Sarge',
+      assistantPortrait: 'drill_sergeant',
+    })
+    expect(useChatStore.getState()).toMatchObject({
+      assistantSeed: 'Hi, I am Sarge',
+      assistantPortrait: 'drill_sergeant',
+    })
+    useChatStore.getState().consumeAssistantSeed()
+    expect(useChatStore.getState()).toMatchObject({
+      assistantSeed: '',
+      assistantPortrait: null,
     })
   })
 

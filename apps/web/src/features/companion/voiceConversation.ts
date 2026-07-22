@@ -15,8 +15,8 @@ export function shouldContinueListening(opts: {
   if (opts.error) return false
   // Let the user tap Confirm without the mic fighting them.
   if (opts.hasPendingConfirm) return false
-  // Keep listening when the persona asked something, or always after a voice turn.
-  return true
+  // Only continue when the persona asked something worth answering aloud.
+  return opts.assistantAskedQuestion
 }
 
 export function assistantAskedQuestion(text: string): boolean {

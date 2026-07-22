@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Maximize2, Send, X } from 'lucide-react'
@@ -24,7 +24,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useProfile } from '@/features/profile/hooks'
 import { AiSettingsSheet } from '@/features/profile/AiSettingsSheet'
 import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
-import { personalityMeta } from '@/features/profile/types'
+import { personaPortraitSrc } from '@/features/profile/personaPortraits'
+import { personalityMeta, type ActiveAiPersonality } from '@/features/profile/types'
 import { useCategories } from '@/features/categories/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
@@ -59,6 +60,7 @@ import {
 import type { ChatMode } from './chatStore'
 import { invalidateAfterChatResponse, useConfirmAiAction, useSendChatMessage } from './hooks'
 import { suggestedPromptsFor } from './suggestedPrompts'
+import { useSpeechInterim } from './useSpeechInterim'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
 import { resolveUndoTargets } from './chatUndo'
@@ -96,6 +98,11 @@ interface ChatSheetProps {
   /** Begin hold-style listening when the sheet opens (home mic → chat). */
   startRecording?: boolean
   onStartRecordingConsumed?: () => void
+  /** Penda-speaks-first opener injected as an assistant bubble on open. */
+  assistantSeed?: string
+  /** Optional portrait injected as its own message above the assistant seed. */
+  assistantPortrait?: ActiveAiPersonality | null
+  onAssistantSeedConsumed?: () => void
   /** When bumped, clear the local thread and start a fresh conversation id. */
   newTopicNonce?: number
   onNewTopic?: () => void
@@ -108,6 +115,11 @@ interface ChatSheetProps {
 // A press shorter than this counts as a tap (hands-free record); longer counts
 // as a hold-to-talk that sends on release, WhatsApp-style.
 const HOLD_THRESHOLD_MS = 250
+/** Slide the pointer up this far while holding to cancel (no STT). */
+const CANCEL_SLIDE_PX = 56
+/** RMS-ish level below this counts as silence once speech was heard. */
+const SILENCE_LEVEL = 0.04
+const SILENCE_STOP_MS = 1400
 
 type RecordMode = 'idle' | 'holding' | 'locked'
 
@@ -156,6 +168,9 @@ export function ChatSheet({
   onModeChange,
   startRecording = false,
   onStartRecordingConsumed,
+  assistantSeed,
+  assistantPortrait = null,
+  onAssistantSeedConsumed,
   newTopicNonce = 0,
   onNewTopic,
   currency = 'USD',
@@ -232,6 +247,14 @@ export function ChatSheet({
   const { data: categories = [] } = useCategories(walletId)
   const voiceTurnRef = useRef(false)
   const continuityInjectedRef = useRef(false)
+  const openRef = useRef(open)
+  openRef.current = open
+  const relistenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressRelistenRef = useRef(false)
+  const pressStartYRef = useRef(0)
+  const holdCancelledRef = useRef(false)
+  const speechHeardRef = useRef(false)
+  const silenceSinceRef = useRef<number | null>(null)
   const uploadReceipt = useUploadReceipt(walletId)
   const updateTransaction = useUpdateTransaction(walletId)
   const deleteTransaction = useDeleteTransaction(walletId)
@@ -365,11 +388,37 @@ export function ChatSheet({
   }, [open, initialInput, autoSend])
 
   const voice = useVoiceRecorder({
+    currency,
     onError: (message) => {
       setRecordMode('idle')
       toast.error(message)
     },
   })
+
+  useSpeechInterim({
+    active: open && recordMode !== 'idle' && voice.state === 'recording',
+    onInterim: (text) => {
+      const base = baseInputRef.current
+      setInput(base && text ? `${base} ${text}` : base || text)
+    },
+  })
+
+  // Tear down mic + multi-turn timers whenever the sheet closes.
+  useEffect(() => {
+    if (open) return
+    if (relistenTimeoutRef.current != null) {
+      clearTimeout(relistenTimeoutRef.current)
+      relistenTimeoutRef.current = null
+    }
+    suppressRelistenRef.current = false
+    speechHeardRef.current = false
+    silenceSinceRef.current = null
+    holdCancelledRef.current = false
+    setRecordMode('idle')
+    voiceTurnRef.current = false
+    void voice.discard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Home mic (and similar) open chat already listening, tap mic again to stop.
   useEffect(() => {
@@ -378,15 +427,56 @@ export function ChatSheet({
     baseInputRef.current = input
     setRecordMode('locked')
     voiceTurnRef.current = true
+    speechHeardRef.current = false
+    silenceSinceRef.current = null
     void voice.start().catch(() => setRecordMode('idle'))
     // Only react to the startRecording flag when the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, startRecording])
 
+  // Penda speaks first: inject the onboarding walkthrough opener as a local
+  // assistant bubble (no server round-trip) so setup feels like a guided
+  // conversation, not a form. Optionally prepend a persona portrait message.
+  // Dedupes on exact text / existing portrait so a remount / reopen can't
+  // double-post.
+  useEffect(() => {
+    if (!open || !assistantSeed) return
+    onAssistantSeedConsumed?.()
+    setMessages((prev) => {
+      const hasSeed = prev.some((m) => m.role === 'assistant' && m.text === assistantSeed)
+      const hasPortrait =
+        !!assistantPortrait &&
+        prev.some((m) => m.role === 'assistant' && m.personaPortrait === assistantPortrait)
+      if (hasSeed && (!assistantPortrait || hasPortrait)) return prev
+
+      const next = [...prev]
+      if (assistantPortrait && !hasPortrait) {
+        next.push({
+          id: nextId(),
+          role: 'assistant',
+          text: '',
+          personaPortrait: assistantPortrait,
+        })
+      }
+      if (!hasSeed) {
+        next.push({ id: nextId(), role: 'assistant', text: assistantSeed })
+      }
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, assistantSeed, assistantPortrait])
+
   // Cross-session continuity: when the sheet opens empty after a gap, seed a
   // local assistant opener grounded in memory / active pacts.
   useEffect(() => {
-    if (!open || continuityInjectedRef.current || messages.length > 0 || autoSend || initialInput) {
+    if (
+      !open ||
+      continuityInjectedRef.current ||
+      messages.length > 0 ||
+      autoSend ||
+      initialInput ||
+      assistantSeed
+    ) {
       return
     }
     const prefs = profile?.companion_prefs ?? DEFAULT_COMPANION_PREFS
@@ -572,7 +662,7 @@ export function ChatSheet({
     invalidateAfterChatResponse(queryClient, walletId, result)
     // Completion lives in the ActionTrail (Undo / AI actions), no toast divert.
 
-    // Multi-turn voice: keep listening after a voice turn so conversation continues.
+    // Multi-turn voice: re-listen only when the assistant asked a question.
     const hasPending = (result.pendingActions ?? []).some((a) => !actionStatus[a.id])
     if (
       shouldContinueListening({
@@ -582,10 +672,18 @@ export function ChatSheet({
         assistantAskedQuestion: assistantAskedQuestion(result.reply),
       })
     ) {
-      window.setTimeout(() => {
-        if (!open) return
+      if (relistenTimeoutRef.current != null) clearTimeout(relistenTimeoutRef.current)
+      relistenTimeoutRef.current = setTimeout(() => {
+        relistenTimeoutRef.current = null
+        if (!openRef.current || suppressRelistenRef.current) {
+          voiceTurnRef.current = false
+          return
+        }
         baseInputRef.current = ''
+        setInput('')
         setRecordMode('locked')
+        speechHeardRef.current = false
+        silenceSinceRef.current = null
         void voice.start().catch(() => setRecordMode('idle'))
       }, 400)
     } else {
@@ -870,45 +968,87 @@ export function ChatSheet({
   }
 
   // Merge the just-finished recording's final transcript with whatever the user
-  // had typed beforehand.
+  // had typed beforehand. Whisper always wins over interim browser captions.
   function mergedTranscript(finalText: string) {
     const base = baseInputRef.current
     return base && finalText ? `${base} ${finalText}` : base || finalText
   }
 
+  function resetVoiceUi() {
+    speechHeardRef.current = false
+    silenceSinceRef.current = null
+    holdCancelledRef.current = false
+    setRecordMode('idle')
+  }
+
   async function beginRecording() {
+    suppressRelistenRef.current = false
+    speechHeardRef.current = false
+    silenceSinceRef.current = null
     baseInputRef.current = input
     await voice.start()
   }
 
   async function finishRecording(submit: boolean) {
-    const finalText = await voice.stop()
-    setRecordMode('idle')
-    const combined = mergedTranscript(finalText)
+    const { transcript, discarded } = await voice.stop()
+    resetVoiceUi()
+    if (discarded) {
+      setInput(baseInputRef.current)
+      return
+    }
+    const combined = mergedTranscript(transcript)
+    if (!transcript.trim()) {
+      setInput(baseInputRef.current)
+      toast.error('Could not catch that. Try again a little closer to the mic.')
+      return
+    }
     if (submit) submitText(combined, { fromVoice: true })
     else setInput(combined)
   }
 
-  function onMicPointerDown() {
+  async function cancelRecording() {
+    holdCancelledRef.current = true
+    await voice.discard()
+    resetVoiceUi()
+    setInput(baseInputRef.current)
+    toast.message('Recording cancelled.')
+  }
+
+  function onMicPointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
     pointerHandledRef.current = true
 
     // A tap while already recording hands-free stops and keeps the text for review.
     if (recordMode === 'locked') {
-      finishRecording(false)
+      void finishRecording(false)
       return
     }
     if (recordMode !== 'idle') return
 
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     pressStartRef.current = performance.now()
+    pressStartYRef.current = e.clientY
+    holdCancelledRef.current = false
     setRecordMode('holding')
-    beginRecording()
+    void beginRecording()
+  }
+
+  function onMicPointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
+    if (recordMode !== 'holding' || holdCancelledRef.current) return
+    const dy = pressStartYRef.current - e.clientY
+    if (dy >= CANCEL_SLIDE_PX) {
+      void cancelRecording()
+    }
   }
 
   function onMicPointerUp() {
+    if (holdCancelledRef.current) {
+      holdCancelledRef.current = false
+      return
+    }
     if (recordMode !== 'holding') return
     const held = performance.now() - pressStartRef.current
     if (held >= HOLD_THRESHOLD_MS) {
-      finishRecording(true) // held long enough → send on release
+      void finishRecording(true) // held long enough → send on release
     } else {
       setRecordMode('locked') // quick tap → keep recording hands-free
     }
@@ -916,7 +1056,7 @@ export function ChatSheet({
 
   function onMicPointerCancel() {
     // System interruption (call, app switch): stop but keep the text for review.
-    if (recordMode === 'holding') finishRecording(false)
+    if (recordMode === 'holding' && !holdCancelledRef.current) void finishRecording(false)
   }
 
   // Keyboard activation (Enter/Space) fires click without pointer events; treat
@@ -1063,11 +1203,40 @@ export function ChatSheet({
     }
     if (recordMode === 'idle') {
       setRecordMode('locked')
-      beginRecording()
+      void beginRecording()
     } else {
-      finishRecording(false)
+      void finishRecording(false)
     }
   }
+
+  const silenceStoppingRef = useRef(false)
+
+  // Silence auto-stop once the user has spoken, then gone quiet.
+  useEffect(() => {
+    if (recordMode === 'idle' || voice.state !== 'recording') {
+      speechHeardRef.current = false
+      silenceSinceRef.current = null
+      silenceStoppingRef.current = false
+      return
+    }
+    if (silenceStoppingRef.current) return
+    const level = voice.level
+    if (level >= SILENCE_LEVEL) {
+      speechHeardRef.current = true
+      silenceSinceRef.current = null
+      return
+    }
+    if (!speechHeardRef.current) return
+    const now = performance.now()
+    if (silenceSinceRef.current == null) silenceSinceRef.current = now
+    if (now - silenceSinceRef.current < SILENCE_STOP_MS) return
+    silenceSinceRef.current = null
+    silenceStoppingRef.current = true
+    // Auto-send after silence in hold or locked mode so turns complete naturally.
+    void finishRecording(true)
+    // finishRecording closes over latest voice/recordMode; re-run on level ticks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.level, voice.state, recordMode])
 
   // Drag-to-close on the top handle, iOS/Android bottom-sheet style. Only the
   // handle initiates a drag (not the header or message list) so it doesn't
@@ -1138,9 +1307,9 @@ export function ChatSheet({
   const isRecording = recordMode !== 'idle'
   const statusText =
     voice.state === 'transcribing'
-      ? 'Transcribing…'
+      ? 'Finishing…'
       : recordMode === 'holding'
-        ? 'Listening. Release to send'
+        ? 'Listening. Release to send. Slide up to cancel'
         : recordMode === 'locked'
           ? 'Listening. Tap the mic to stop'
           : null
@@ -1303,6 +1472,22 @@ export function ChatSheet({
                 // Waiting on the first token/action for this bubble: the
                 // Thinking indicator below covers this slot instead.
                 if (m.id === streamingId && m.text === '' && liveActions.length === 0) return null
+                if (m.personaPortrait) {
+                  const portraitMeta = personalityMeta(m.personaPortrait)
+                  return (
+                    <div
+                      key={m.id}
+                      className="mr-auto flex max-w-[85%] flex-col gap-1.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
+                    >
+                      <img
+                        src={personaPortraitSrc(m.personaPortrait)}
+                        alt={portraitMeta.name}
+                        className="max-h-56 w-auto rounded-2xl object-cover shadow-[var(--shadow-soft)] ring-1 ring-border/40"
+                        draggable={false}
+                      />
+                    </div>
+                  )
+                }
                 return (
                   <div key={m.id} className="flex flex-col gap-2">
                     <div
@@ -1417,14 +1602,39 @@ export function ChatSheet({
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
                 </span>
-                {statusText}
+                <span className="min-w-0 flex-1">{statusText}</span>
+                {isRecording && voice.state === 'recording' && (
+                  <span className="flex h-3 items-end gap-0.5" aria-hidden>
+                    {[0.35, 0.7, 1, 0.55, 0.4].map((weight, i) => (
+                      <span
+                        key={i}
+                        className="w-0.5 rounded-full bg-primary transition-[height] duration-75"
+                        style={{ height: `${Math.max(15, Math.round(voice.level * weight * 100))}%` }}
+                      />
+                    ))}
+                  </span>
+                )}
               </div>
             )}
             <div className="flex w-full items-end gap-1 rounded-2xl border border-border/60 bg-secondary/40 p-1.5 shadow-[var(--shadow-soft)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
               <Textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  suppressRelistenRef.current = true
+                  if (relistenTimeoutRef.current != null) {
+                    clearTimeout(relistenTimeoutRef.current)
+                    relistenTimeoutRef.current = null
+                  }
+                  setInput(e.target.value)
+                }}
+                onFocus={() => {
+                  suppressRelistenRef.current = true
+                  if (relistenTimeoutRef.current != null) {
+                    clearTimeout(relistenTimeoutRef.current)
+                    relistenTimeoutRef.current = null
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' || e.shiftKey) return
                   e.preventDefault()
@@ -1453,11 +1663,12 @@ export function ChatSheet({
                 size="icon"
                 disabled={voice.state === 'transcribing' || uploadReceipt.isPending}
                 onPointerDown={onMicPointerDown}
+                onPointerMove={onMicPointerMove}
                 onPointerUp={onMicPointerUp}
                 onPointerCancel={onMicPointerCancel}
                 onContextMenu={(e) => e.preventDefault()}
                 onClick={onMicClick}
-                className={cn('size-10 shrink-0 touch-none self-end rounded-xl', isRecording && 'animate-pulse')}
+                className="size-10 shrink-0 touch-none self-end rounded-xl"
                 aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
                 aria-pressed={isRecording}
               >

@@ -1,9 +1,15 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
 import { loadEngagement } from '../_shared/engagement.ts'
-import { PERSONALITY_NAMES, resolvePersonality } from '../_shared/personas.ts'
+import {
+  GOAL_LABELS,
+  PERSONALITY_NAMES,
+  PERSONALITY_PROMPTS,
+  resolvePersonality,
+} from '../_shared/personas.ts'
 import { normalizeCompanionPrefs } from '../_shared/companionPrefs.ts'
 import {
   classifyPactFollowUp,
@@ -16,6 +22,14 @@ import {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const CRON_SECRET = Deno.env.get('CRON_SECRET')!
+const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')!
+const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
+
+const GEMINI_MODEL = 'gemini-3.1-flash-lite'
+const GROQ_MODEL = 'llama-3.3-70b-versatile'
+// Cron reliability: cap any single model call so one hung request can't stall
+// the whole weekly fan-out. On timeout we fall through Gemini -> Groq -> template.
+const MODEL_TIMEOUT_MS = 12_000
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
@@ -353,11 +367,36 @@ async function letterForWallet(
 ) {
   const { data: members } = await supabase
     .from('wallet_members')
-    .select('user_id, profiles(ai_personality, companion_prefs, notification_opt_in)')
+    .select(
+      'user_id, profiles(ai_personality, companion_prefs, notification_opt_in, primary_goals, primary_goal)',
+    )
     .eq('wallet_id', walletId)
 
   const premiumOrAny = members ?? []
   if (premiumOrAny.length === 0) return { walletId, skipped: 'no_members' }
+
+  // Mirror sendFamilyNudge's savings_goals query. There is no status column, so
+  // an "active" goal is one with a positive target the wallet hasn't hit yet.
+  // Newest first so the letter's next move points at what the user is chasing now.
+  const { data: goals } = await supabase
+    .from('savings_goals')
+    .select('id, name, current_amount_minor, target_amount_minor')
+    .eq('wallet_id', walletId)
+    .order('created_at', { ascending: false })
+
+  const activeGoal = (goals ?? []).find(
+    (g) =>
+      Number(g.target_amount_minor) > 0 &&
+      Number(g.current_amount_minor) < Number(g.target_amount_minor),
+  )
+  const goalContext = activeGoal
+    ? {
+        name: activeGoal.name as string,
+        pct: Math.round(
+          (Number(activeGoal.current_amount_minor) / Number(activeGoal.target_amount_minor)) * 100,
+        ),
+      }
+    : null
 
   const [{ data: txs }, { data: balTxs }] = await Promise.all([
     supabase
@@ -414,6 +453,8 @@ async function letterForWallet(
       ai_personality?: string
       companion_prefs?: unknown
       notification_opt_in?: boolean
+      primary_goals?: unknown
+      primary_goal?: string | null
     } | null
     const prefs = normalizeCompanionPrefs(profile?.companion_prefs)
     if (!prefs.weekly_letter) {
@@ -421,10 +462,13 @@ async function letterForWallet(
       continue
     }
 
-    const persona =
-      PERSONALITY_NAMES[resolvePersonality(profile?.ai_personality)] ?? 'Amara'
+    const personality = resolvePersonality(profile?.ai_personality)
+    const persona = PERSONALITY_NAMES[personality] ?? 'Amara'
     const netLabel = formatMinor(Math.abs(net), currency)
-    const body = [
+
+    // Deterministic fallback body, the pre-AI templated copy kept verbatim, so
+    // the letter still sends when BOTH models fail (cron reliability).
+    const fallbackBody = [
       `Hey. ${persona} here with your week (${periodStart} → ${periodEnd}).`,
       net >= 0
         ? `You came out ~${netLabel} ahead.`
@@ -441,6 +485,36 @@ async function letterForWallet(
       .filter(Boolean)
       .join(' ')
 
+    const goalPhrases = normalizeGoals(profile?.primary_goals, profile?.primary_goal)
+      .map((g) => GOAL_LABELS[g])
+      .filter(Boolean)
+
+    const prompt = buildLetterPrompt({
+      personaName: persona,
+      personalityFragment: PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach,
+      currency,
+      periodStart,
+      periodEnd,
+      income,
+      expense,
+      net,
+      topCategoryName,
+      topCategoryMinor,
+      goal: goalContext,
+      goalPhrases,
+    })
+
+    // AI-written, persona-voiced letter grounded in the real weekly numbers.
+    // Gemini first, Groq on error, and the template if both fail so a send is
+    // never lost.
+    let body: string
+    try {
+      body = (await generateLetterBody(prompt)) || fallbackBody
+    } catch (err) {
+      console.error(`Weekly letter model calls failed for ${m.user_id}, using template:`, err)
+      body = fallbackBody
+    }
+
     const title = `A note from ${persona}`
     const { error: insertError } = await supabase.from('companion_letters').insert({
       user_id: m.user_id,
@@ -455,12 +529,17 @@ async function letterForWallet(
       continue
     }
 
-    // Also stash as a journal note for continuity.
+    // Stash a SHORT factual summary for continuity, NOT the letter prose. This
+    // note feeds the chat assistant's memory prompt (chat-message
+    // fetchMemories), so storing the full letter would pollute future replies.
+    const netSummary = net >= 0 ? `${netLabel} ahead` : `${netLabel} short`
     await supabase.from('ai_memories').insert({
       user_id: m.user_id,
       wallet_id: walletId,
       kind: 'note',
-      content: body,
+      content:
+        `Weekly companion letter sent (${periodStart}→${periodEnd}): ` +
+        `net ${netSummary}, top category ${topCategoryName ?? 'none'}.`,
       mood: null,
     })
 
@@ -543,6 +622,117 @@ function formatMinor(amountMinor: number, currency: string): string {
   } catch {
     return `${currency} ${major.toFixed(0)}`
   }
+}
+
+/** Prefer the multi-goal array; fall back to the legacy single goal column. */
+function normalizeGoals(goals: unknown, legacy: string | null | undefined): string[] {
+  if (Array.isArray(goals)) return goals.filter((g): g is string => typeof g === 'string')
+  return legacy ? [legacy] : []
+}
+
+/** "a", "a and b", "a, b, and c" */
+function joinGoalPhrases(phrases: string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? ''
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`
+}
+
+function buildLetterPrompt(opts: {
+  personaName: string
+  personalityFragment: string
+  currency: string
+  periodStart: string
+  periodEnd: string
+  income: number
+  expense: number
+  net: number
+  topCategoryName: string | null
+  topCategoryMinor: number
+  goal: { name: string; pct: number } | null
+  goalPhrases: string[]
+}): string {
+  const money = (minor: number) => formatMinor(minor, opts.currency)
+  const netLine =
+    opts.net >= 0
+      ? `Net: ${money(opts.net)} ahead for the week.`
+      : `Net: ${money(Math.abs(opts.net))} short for the week.`
+  const topLine = opts.topCategoryName
+    ? `Top spending category: ${opts.topCategoryName} at ${money(opts.topCategoryMinor)}.`
+    : 'No standout spending category this week.'
+  const goalLine = opts.goal
+    ? `They have an active savings goal named "${opts.goal.name}", currently at ${opts.goal.pct}% of target. ` +
+      'Make the one next move about progressing this goal, and name the goal.'
+    : 'They have no active savings goal, so make the one next move a single concrete spending or saving action.'
+
+  const goalContextLine =
+    opts.goalPhrases.length > 0
+      ? `Their stated primary financial ${opts.goalPhrases.length > 1 ? 'goals are' : 'goal is'} to ` +
+        `${joinGoalPhrases(opts.goalPhrases)}. Connect the letter back to ${
+          opts.goalPhrases.length > 1 ? 'them' : 'it'
+        } where it fits naturally.\n`
+      : ''
+
+  return `You are ${opts.personaName}, an AI companion persona in Penda, a personal finance app, writing a
+short, personal weekly letter to the user. Penda is the app, not your name, write in your own voice
+as ${opts.personaName} and never refer to yourself as "Penda". ${opts.personalityFragment}
+${goalContextLine}
+This week (${opts.periodStart} to ${opts.periodEnd}):
+- Income: ${money(opts.income)}
+- Expenses: ${money(opts.expense)}
+- ${netLine}
+- ${topLine}
+${goalLine}
+
+Write the letter in your own voice as ${opts.personaName}: 3 to 5 sentences, under 500 characters.
+Ground it in these exact numbers, name the top spending category and its amount, and close with one
+concrete next move. Do not invent numbers not listed above. Do not use markdown formatting. Do not
+use em dashes. Sign off with your name, ${opts.personaName}.`
+}
+
+async function generateLetterBody(prompt: string): Promise<string> {
+  try {
+    return await withTimeout(generateWithGemini(prompt), MODEL_TIMEOUT_MS, 'Gemini')
+  } catch (error) {
+    console.error('Gemini companion letter generation failed, falling back to Groq:', error)
+    return await withTimeout(generateWithGroq(prompt), MODEL_TIMEOUT_MS, 'Groq')
+  }
+}
+
+async function generateWithGemini(prompt: string): Promise<string> {
+  const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
+  const response = await genAI.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+  })
+  return (response.text ?? '').trim()
+}
+
+async function generateWithGroq(prompt: string): Promise<string> {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: GROQ_MODEL, messages: [{ role: 'user', content: prompt }] }),
+  })
+  if (!res.ok) throw new Error(`Groq error ${res.status}: ${await res.text()}`)
+  const data = await res.json()
+  return (data.choices[0].message.content ?? '').trim()
+}
+
+/** Cap a model call so a hung request can't stall the weekly fan-out. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }
 
 function jsonResponse(body: unknown, status = 200) {

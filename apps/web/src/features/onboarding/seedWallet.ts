@@ -30,7 +30,7 @@ export function intendedAmountFromIncome(incomeRange: IncomeRange | null): numbe
 export async function seedWalletFromOnboarding(input: {
   walletId: string
   userId: string
-  primaryGoal: PrimaryGoal | null
+  primaryGoals: PrimaryGoal[]
   incomeRange: IncomeRange | null
   persona?: AiPersonality | null
 }): Promise<void> {
@@ -55,12 +55,15 @@ export async function seedWalletFromOnboarding(input: {
     })
   }
 
-  const starterGoal = starterGoalFromPrimary(input.primaryGoal)
-  if (starterGoal) {
-    await createSavingsGoal(input.walletId, starterGoal, 0)
+  // Seed a starter savings goal for each picked goal that maps to one.
+  for (const goal of input.primaryGoals) {
+    const starterGoal = starterGoalFromPrimary(goal)
+    if (starterGoal) {
+      await createSavingsGoal(input.walletId, starterGoal, 0)
+    }
   }
 
-  if (input.primaryGoal === 'pay_off_debt') {
+  if (input.primaryGoals.includes('pay_off_debt')) {
     await createDebt(input.walletId, {
       name: 'Debt payoff',
       direction: 'i_owe',

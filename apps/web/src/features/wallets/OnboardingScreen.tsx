@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { cn } from '@/lib/utils'
-import { currencySymbol } from '@/lib/currencies'
 import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
@@ -24,13 +24,20 @@ import {
 } from '@/features/onboarding/gettingStarted'
 import { useOnboardingStore } from '@/features/onboarding/onboardingStore'
 import { seedWalletFromOnboarding } from '@/features/onboarding/seedWallet'
+import {
+  buildBalanceOpener,
+  buildLogOpener,
+  buildPlanOpener,
+} from '@/features/onboarding/walkthroughChat'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useBudgets } from '@/features/budgets/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
+import { useProfile } from '@/features/profile/hooks'
+import { personaFromGoals } from '@/features/profile/personaFromGoals'
+import { resolveAiPersonality, type ActiveAiPersonality } from '@/features/profile/types'
 import { useCreateWallet, useCurrentWallet } from './hooks'
-import { buildPlanChatSeed } from './onboardingChatSeed'
 
 const STEPS = ['wallet', 'goal', 'log', 'balance', 'plan'] as const
 type Step = (typeof STEPS)[number]
@@ -70,14 +77,29 @@ export function OnboardingScreen() {
   const setChatOpen = useChatStore((s) => s.setOpen)
   const setWalkthroughActive = useOnboardingStore((s) => s.setWalkthroughActive)
   const { data: currentWallet } = useCurrentWallet()
+  const { data: profile } = useProfile(userId)
 
   const [stepIndex, setStepIndex] = useState(0)
   const step: Step = STEPS[stepIndex]
 
   const [name, setName] = useState('My Wallet')
   const [currency, setCurrency] = useState('USD')
-  const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoal | null>(null)
+  const [primaryGoals, setPrimaryGoals] = useState<PrimaryGoal[]>([])
+  /** Resolved at provision so the log opener does not race a profile refetch. */
+  const [walkthroughPersonality, setWalkthroughPersonality] = useState<ActiveAiPersonality | null>(
+    null,
+  )
   const [walletId, setWalletId] = useState<string | null>(null)
+
+  const personality =
+    walkthroughPersonality ?? resolveAiPersonality(profile?.ai_personality)
+  /** Prefer local picks; fall back to profile so resume mid-walkthrough keeps goal copy. */
+  const openerGoals = useMemo<PrimaryGoal[]>(() => {
+    if (primaryGoals.length > 0) return primaryGoals
+    if (profile?.primary_goals?.length) return profile.primary_goals
+    if (profile?.primary_goal) return [profile.primary_goal]
+    return []
+  }, [primaryGoals, profile?.primary_goals, profile?.primary_goal])
   const [walkthrough, setWalkthrough] = useState<WalkthroughState | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [resumed, setResumed] = useState(false)
@@ -94,7 +116,6 @@ export function OnboardingScreen() {
   const { data: budgets = [] } = useBudgets(activeWalletId)
   const { data: categories = [] } = useCategories(activeWalletId)
   const { data: latestReconciliation } = useLatestReconciliation(activeWalletId, userId)
-  const sym = currencySymbol(currency)
   const hasLogged = transactions.length > 0
   const hasBalanceSet = !!latestReconciliation || (balanceChatOpened && balanceChatReturned)
 
@@ -122,28 +143,56 @@ export function OnboardingScreen() {
     setResumed(true)
   }, [currentWallet, resumed, setWalkthroughActive])
 
+  // After resume (or late profile load), restore goals + persona for opener copy.
+  useEffect(() => {
+    if (!profile) return
+    if (walkthroughPersonality == null && profile.ai_personality) {
+      setWalkthroughPersonality(resolveAiPersonality(profile.ai_personality))
+    }
+    if (primaryGoals.length === 0) {
+      const fromProfile = profile.primary_goals?.length
+        ? profile.primary_goals
+        : profile.primary_goal
+          ? [profile.primary_goal]
+          : []
+      if (fromProfile.length > 0) setPrimaryGoals(fromProfile)
+    }
+  }, [profile, walkthroughPersonality, primaryGoals.length])
+
   // Chat-first: open Penda once AmbientChat can mount for this wallet.
   useEffect(() => {
     if (!isChatStep(step) || !activeWalletId) return
     if (openedChatForStepRef.current === step) return
     // AmbientChat returns null until the wallet is in the wallets query cache.
     if (!currentWallet || currentWallet.id !== activeWalletId) return
+    // On resume, wait for profile so the log opener has the right persona/goals.
+    if (step === 'log' && walkthroughPersonality == null && !profile) return
 
+    // Penda speaks first each step: a local opener that sells, guides, and asks
+    // for the data this step needs. The user's reply is then handled live.
     function openForStep(target: ChatStep) {
       if (openedChatForStepRef.current === target) return
       openedChatForStepRef.current = target
       if (target === 'log') {
-        openChat(`I spent ${sym}`, { mode: 'quick' })
+        openChat('', {
+          mode: 'full',
+          assistantPortrait: personality,
+          assistantSeed: buildLogOpener({
+            personality,
+            goals: openerGoals,
+            currency,
+          }),
+        })
       } else if (target === 'balance') {
         setBalanceChatOpened(true)
-        openChat(`My balance is ${sym}`, { mode: 'full' })
+        openChat('', { mode: 'full', assistantSeed: buildBalanceOpener(currency) })
       } else {
-        openChat(buildPlanChatSeed(budgetPreview, currency), { autoSend: true, mode: 'full' })
+        openChat('', { mode: 'full', assistantSeed: buildPlanOpener(budgetPreview, currency) })
       }
     }
 
-    // Plan: wait for seeded budgets so the auto-sent draft lists real amounts.
-    // If budgets never arrive (seed failed), still open with the generic draft.
+    // Plan: wait for seeded budgets so Penda's draft lists real amounts.
+    // If budgets never arrive (seed failed), still open with the Plan-tab draft.
     if (step === 'plan' && budgets.length === 0) {
       const timer = window.setTimeout(() => openForStep('plan'), PLAN_BUDGET_WAIT_MS)
       return () => window.clearTimeout(timer)
@@ -151,15 +200,32 @@ export function OnboardingScreen() {
 
     const timer = window.setTimeout(() => openForStep(step), CHAT_OPEN_DELAY_MS)
     return () => window.clearTimeout(timer)
-    // buildPlanChatSeed reads latest budgets/categories via closure when timer fires.
+    // buildPlanOpener reads the latest budgetPreview via closure when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, activeWalletId, currentWallet?.id, openChat, sym, budgets.length, currency])
+  }, [
+    step,
+    activeWalletId,
+    currentWallet?.id,
+    openChat,
+    personality,
+    openerGoals,
+    budgets.length,
+    currency,
+    walkthroughPersonality,
+    profile,
+  ])
 
   // When user closes balance chat after opening it, treat as engaged enough to continue.
   useEffect(() => {
     if (step !== 'balance' || chatOpen || !balanceChatOpened) return
     setBalanceChatReturned(true)
   }, [step, chatOpen, balanceChatOpened])
+
+  function toggleGoal(value: PrimaryGoal) {
+    setPrimaryGoals((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    )
+  }
 
   function goNext() {
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1))
@@ -229,6 +295,9 @@ export function OnboardingScreen() {
     if (!userId) return
     setSubmitting(true)
     try {
+      const personalityPick = personaFromGoals(primaryGoals)
+      setWalkthroughPersonality(personalityPick)
+
       const wallet = await createWallet.mutateAsync({
         name: name.trim() || 'My Wallet',
         baseCurrency: currency,
@@ -237,7 +306,10 @@ export function OnboardingScreen() {
       await updateProfile.mutateAsync({
         mode: 'individual',
         household_size: null,
-        primary_goal: primaryGoal,
+        ai_personality: personalityPick,
+        // Keep `primary_goal` as the top-priority pick for edge-function context.
+        primary_goal: primaryGoals[0] ?? null,
+        primary_goals: primaryGoals.length > 0 ? primaryGoals : null,
         income_range: null,
         gender: 'prefer_not_to_say',
         notification_opt_in: false,
@@ -248,7 +320,7 @@ export function OnboardingScreen() {
           {
             mode: 'individual',
             householdSize: null,
-            primaryGoal,
+            primaryGoals,
             incomeRange: null,
             gender: 'prefer_not_to_say',
           },
@@ -263,8 +335,9 @@ export function OnboardingScreen() {
         await seedWalletFromOnboarding({
           walletId: wallet.id,
           userId,
-          primaryGoal,
+          primaryGoals,
           incomeRange: null,
+          persona: personalityPick,
         })
         await queryClient.invalidateQueries({ queryKey: ['budgets', wallet.id] })
       } catch {
@@ -291,14 +364,24 @@ export function OnboardingScreen() {
     }
   }
 
+  // Reopen with the same opener. ChatSheet dedupes on exact text / portrait, so
+  // the persisted thread is restored without re-posting Penda's message.
   function reopenChat() {
-    if (step === 'log') openChat(`I spent ${sym}`, { mode: 'quick' })
-    else if (step === 'balance') {
+    if (step === 'log') {
+      openChat('', {
+        mode: 'full',
+        assistantPortrait: personality,
+        assistantSeed: buildLogOpener({
+          personality,
+          goals: openerGoals,
+          currency,
+        }),
+      })
+    } else if (step === 'balance') {
       setBalanceChatOpened(true)
-      openChat(`My balance is ${sym}`, { mode: 'full' })
+      openChat('', { mode: 'full', assistantSeed: buildBalanceOpener(currency) })
     } else {
-      // First plan open auto-sends; manual reopen only prefills so we don't spam the draft.
-      openChat(buildPlanChatSeed(budgetPreview, currency), { mode: 'full' })
+      openChat('', { mode: 'full', assistantSeed: buildPlanOpener(budgetPreview, currency) })
     }
   }
 
@@ -334,7 +417,8 @@ export function OnboardingScreen() {
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="Set up" light="your wallet" />
             <p className="text-sm text-muted-foreground">
-              Pick a currency. You can rename this wallet anytime in Settings.
+              Penda is your AI money companion. It logs, plans, and watches your back, all from a
+              chat. Start by naming your wallet and picking a currency.
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -363,25 +447,39 @@ export function OnboardingScreen() {
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="What matters" light="most right now?" />
             <p className="text-sm text-muted-foreground">
-              Optional. Helps Penda seed a starting plan for you.
+              Tell Penda what you&apos;re working toward and it builds your starter plan around it.
+              Pick as many as apply, or continue and decide later.
             </p>
           </div>
           <div className="flex flex-col gap-2">
             {GOAL_OPTIONS.map((g) => {
-              const active = primaryGoal === g.value
+              const active = primaryGoals.includes(g.value)
               return (
                 <button
                   key={g.value}
                   type="button"
-                  onClick={() => setPrimaryGoal(active ? null : g.value)}
+                  onClick={() => toggleGoal(g.value)}
                   aria-pressed={active}
                   className={cn(
-                    'flex flex-col gap-0.5 rounded-2xl border p-3 text-left transition-colors',
+                    'flex items-start gap-3 rounded-2xl border p-3 text-left transition-colors',
                     active ? 'border-primary bg-[var(--iris-soft)]' : 'border-border/60 bg-background',
                   )}
                 >
-                  <span className="text-sm font-medium">{g.label}</span>
-                  <span className="text-xs text-muted-foreground">{g.description}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-sm font-medium">{g.label}</span>
+                    <span className="text-xs text-muted-foreground">{g.description}</span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                      active
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border/70 bg-background',
+                    )}
+                  >
+                    {active && <Check className="size-3.5" strokeWidth={3} />}
+                  </span>
                 </button>
               )
             })}
@@ -406,7 +504,8 @@ export function OnboardingScreen() {
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="Log your" light="first purchase" />
             <p className="text-sm text-muted-foreground">
-              Chat with Penda, type or talk. We&apos;ll move on when it&apos;s logged.
+              This is the whole app in one move: you talk, Penda logs. Type or talk in the chat, and
+              we&apos;ll move on the moment it&apos;s in.
             </p>
           </div>
           {hasLogged ? (
@@ -448,7 +547,7 @@ export function OnboardingScreen() {
                 <p className="text-sm text-muted-foreground">
                   {balanceChatReturned
                     ? 'Share your balance in chat, then continue when you are ready.'
-                    : 'Tell Penda your balance in chat so the numbers stay honest.'}
+                    : 'Tell Penda what you actually have in the chat. It powers your safe-to-spend, so every number after this is real.'}
                 </p>
               </>
             )}
@@ -487,7 +586,8 @@ export function OnboardingScreen() {
           <div className="flex flex-col items-center gap-2 text-center">
             <StepHeading bold="Your starter" light="plan" />
             <p className="text-sm text-muted-foreground">
-              Penda just messaged you the draft. Reply in chat, or finish when it looks right.
+              Penda drafted this from your goals and messaged you in chat. Tell it what you earn to
+              tune it, tweak any line, or finish when it looks right.
             </p>
           </div>
           {budgetPreview.length > 0 && (

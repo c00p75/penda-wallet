@@ -7,11 +7,12 @@ interface ChatState {
   open: boolean;
   prefill: string;
   autoSend: boolean;
+  startRecording: boolean;
   messages: ChatMessage[];
   conversationId: string | undefined;
   streamingId: string | null;
   actionStatus: Record<string, 'confirmed' | 'cancelled'>;
-  openChat: (prefill?: string, opts?: { autoSend?: boolean }) => void;
+  openChat: (prefill?: string, opts?: { autoSend?: boolean; startRecording?: boolean }) => void;
   closeChat: () => void;
   setMessages: (messages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
   setConversationId: (id: string | undefined) => void;
@@ -30,12 +31,14 @@ interface ChatState {
   setActionStatus: (actionId: string, status: 'confirmed' | 'cancelled') => void;
   clearConversation: () => void;
   consumeAutoSend: () => void;
+  consumeStartRecording: () => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set) => ({
   open: false,
   prefill: '',
   autoSend: false,
+  startRecording: false,
   messages: [],
   conversationId: undefined,
   streamingId: null,
@@ -46,6 +49,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       open: true,
       prefill,
       autoSend: opts?.autoSend ?? false,
+      startRecording: opts?.startRecording ?? false,
     }),
 
   closeChat: () =>
@@ -53,6 +57,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       open: false,
       prefill: '',
       autoSend: false,
+      startRecording: false,
       streamingId: null,
     }),
 
@@ -118,4 +123,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }),
 
   consumeAutoSend: () => set({ autoSend: false }),
+  consumeStartRecording: () => set({ startRecording: false }),
 }));

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { assistantAskedQuestion, shouldContinueListening } from './voiceConversation'
 
 describe('shouldContinueListening', () => {
-  it('continues after a successful voice turn', () => {
+  it('continues only when the assistant asked a question', () => {
+    expect(
+      shouldContinueListening({
+        voiceConversationEnabled: true,
+        wasVoiceTurn: true,
+        hasPendingConfirm: false,
+        assistantAskedQuestion: true,
+      }),
+    ).toBe(true)
     expect(
       shouldContinueListening({
         voiceConversationEnabled: true,
@@ -10,10 +18,10 @@ describe('shouldContinueListening', () => {
         hasPendingConfirm: false,
         assistantAskedQuestion: false,
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it('stops for pending confirms or errors', () => {
+  it('stops for pending confirms, errors, or non-voice turns', () => {
     expect(
       shouldContinueListening({
         voiceConversationEnabled: true,
@@ -29,6 +37,14 @@ describe('shouldContinueListening', () => {
         hasPendingConfirm: false,
         assistantAskedQuestion: true,
         error: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldContinueListening({
+        voiceConversationEnabled: true,
+        wasVoiceTurn: false,
+        hasPendingConfirm: false,
+        assistantAskedQuestion: true,
       }),
     ).toBe(false)
   })

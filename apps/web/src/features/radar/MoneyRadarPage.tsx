@@ -60,6 +60,9 @@ export function MoneyRadarPage() {
   const monthSpent = transactions
     .filter((t) => t.type === 'expense' && t.transaction_date.startsWith(monthPrefix))
     .reduce((s, t) => s + (t.converted_amount_minor ?? t.amount_minor), 0)
+  const monthIncome = transactions
+    .filter((t) => t.type === 'income' && t.transaction_date.startsWith(monthPrefix))
+    .reduce((s, t) => s + (t.converted_amount_minor ?? t.amount_minor), 0)
   const fixed = upcomingFixedCosts(recurring, today, localMonthEnd(now))
   const safe = plan
     ? computeSafeToSpend({
@@ -116,7 +119,7 @@ export function MoneyRadarPage() {
   })
 
   const merchants = detectMerchantSignals(transactions, { now })
-  const benchmarks = peerBenchmarksForBand(profile?.income_range)
+  const benchmarks = peerBenchmarksForBand(profile?.income_range, monthIncome)
   const life = profile?.life_event
   const lifeOn = lifeEventActive(life, today)
 
@@ -245,17 +248,16 @@ export function MoneyRadarPage() {
         <section>
           <SectionHeader title="Soft benchmarks" />
           <p className="mb-2 text-xs text-muted-foreground">
-            Illustrative shares for your income band, not other users’ data.
+            Illustrative healthy shares based on your income, not other users’ data.
           </p>
           <div className="flex flex-col gap-2.5">
             {benchmarks.map((b) => {
-              const token = b.category.split(/[\s&]/)[0]!.toLowerCase()
               const spent = transactions
                 .filter(
                   (t) =>
                     t.type === 'expense' &&
                     t.transaction_date.startsWith(monthPrefix) &&
-                    (t.category?.name ?? '').toLowerCase().includes(token),
+                    b.matchKeywords.some((kw) => (t.category?.name ?? '').toLowerCase().includes(kw)),
                 )
                 .reduce((s, t) => s + (t.converted_amount_minor ?? t.amount_minor), 0)
               const cmp = compareSpendToBenchmark(spent, b.amountMinor)

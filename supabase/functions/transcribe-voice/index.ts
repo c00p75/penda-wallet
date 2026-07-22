@@ -6,13 +6,38 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 
-const GROQ_WHISPER_MODEL = 'whisper-large-v3-turbo'
+const GROQ_WHISPER_MODEL = 'whisper-large-v3'
 
-// Voice is free/ungated (below), so this is the only cost guard on it , 
+// Voice is free/ungated (below), so this is the only cost guard on it,
 // looser than chat's since a single utterance is cheap, but still bounded.
 const VOICE_RATE_LIMITS = {
   burst: { maxRequests: 30, windowMinutes: 5 },
   daily: { maxRequests: 300, windowMinutes: 60 * 24 },
+}
+
+const CURRENCY_NAMES: Record<string, string> = {
+  USD: 'US Dollar',
+  EUR: 'Euro',
+  GBP: 'British Pound',
+  ZAR: 'South African Rand',
+  ZMW: 'Zambian Kwacha',
+  NGN: 'Nigerian Naira',
+  KES: 'Kenyan Shilling',
+  GHS: 'Ghanaian Cedi',
+}
+
+const DOMAIN_MERCHANTS =
+  'Shoprite, Spar, Pick n Pay, Airtel Money, MTN MoMo, Zanaco, FNB, Game, Choppies, Zesco'
+
+function buildWhisperPrompt(currencyRaw: string | null): string {
+  const currency = (currencyRaw ?? '').trim().toUpperCase() || 'USD'
+  const name = CURRENCY_NAMES[currency] ?? currency
+  return `Expense diary. Currency ${currency} / ${name}. Merchants: ${DOMAIN_MERCHANTS}.`
+}
+
+function formString(form: FormData, key: string): string | null {
+  const value = form.get(key)
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 Deno.serve(async (req) => {
@@ -55,10 +80,20 @@ Deno.serve(async (req) => {
     if (!(audio instanceof File)) {
       return respond({ error: 'audio file is required' }, 400)
     }
+    if (audio.size <= 0) {
+      return respond({ error: 'audio file is empty' }, 400)
+    }
+
+    // locale reserved for future language selection; English is primary today.
+    const currency = formString(incomingForm, 'currency')
+    void formString(incomingForm, 'locale')
 
     const groqForm = new FormData()
     groqForm.append('file', audio, audio.name || 'audio.webm')
     groqForm.append('model', GROQ_WHISPER_MODEL)
+    groqForm.append('language', 'en')
+    groqForm.append('temperature', '0')
+    groqForm.append('prompt', buildWhisperPrompt(currency))
 
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',

@@ -21,14 +21,29 @@ async function unwrapFunctionError(error: unknown): Promise<Error> {
   return error instanceof Error ? error : new Error(String(error))
 }
 
-export async function transcribeVoice(audio: Blob, filename: string): Promise<string> {
+export interface TranscribeVoiceOptions {
+  currency?: string
+  locale?: string
+  signal?: AbortSignal
+}
+
+export async function transcribeVoice(
+  audio: Blob,
+  filename: string,
+  opts?: TranscribeVoiceOptions,
+): Promise<string> {
   const formData = new FormData()
   formData.append('audio', audio, filename)
+  if (opts?.currency) formData.append('currency', opts.currency)
+  if (opts?.locale) formData.append('locale', opts.locale)
+
+  if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
   const { data, error } = await supabase.functions.invoke<{ transcript: string }>('transcribe-voice', {
     body: formData,
   })
 
+  if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   if (error) throw await unwrapFunctionError(error)
   if (!data) throw new Error('Empty response from transcribe-voice function')
   return data.transcript

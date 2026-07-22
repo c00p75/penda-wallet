@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { Text } from '@/src/components/ui';
 import { colors, radius, shadows, spacing } from '@/src/lib/theme';
+import { useChatStore } from '@/src/store/chatStore';
 
 type TabKey = 'index' | 'budgets' | 'goals' | 'analytics';
 
@@ -38,6 +39,7 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyp
 export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const openChat = useChatStore((s) => s.openChat);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
@@ -79,7 +81,10 @@ export function FloatingTabBar({ state, navigation }: FloatingTabBarProps) {
 
         <View style={styles.centerSlot}>
           <AnimatedPressable
-            onPress={() => router.push('/chat')}
+            onPress={() => {
+              openChat();
+              router.push('/chat');
+            }}
             style={styles.orbPressable}
             scaleTo={0.92}
           >

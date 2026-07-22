@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createMission, deleteMission, fetchMissions, updateMissionStatus } from './api'
+import {
+  createMission,
+  deleteMission,
+  fetchMissions,
+  generateMissionSuggestions,
+  updateMissionStatus,
+} from './api'
 import type { FinancialMissionInput, MissionStatus } from './types'
 
 function missionsKey(walletId: string | undefined) {
@@ -27,6 +33,12 @@ export function useUpdateMissionStatus(walletId: string | undefined) {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: MissionStatus }) => updateMissionStatus(id, status),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: missionsKey(walletId) }),
+  })
+}
+
+export function useGenerateMissions(walletId: string | undefined) {
+  return useMutation({
+    mutationFn: () => generateMissionSuggestions(walletId!),
   })
 }
 

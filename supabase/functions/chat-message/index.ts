@@ -864,7 +864,7 @@ async function fetchCategorizationRules(supabase: SupabaseClient, walletId: stri
 interface ChatProfile {
   personality: string
   mode: string
-  primaryGoal: string | null
+  primaryGoals: string[]
   householdSize: number | null
   incomeRange: string | null
   gender: string
@@ -873,17 +873,30 @@ interface ChatProfile {
 async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<ChatProfile> {
   const { data } = await supabase
     .from('profiles')
-    .select('ai_personality, mode, primary_goal, household_size, income_range, gender')
+    .select('ai_personality, mode, primary_goal, primary_goals, household_size, income_range, gender')
     .eq('id', userId)
     .maybeSingle()
   return {
     personality: data?.ai_personality ?? 'balanced_coach',
     mode: data?.mode ?? 'individual',
-    primaryGoal: data?.primary_goal ?? null,
+    primaryGoals: normalizeGoals(data?.primary_goals, data?.primary_goal),
     householdSize: data?.household_size ?? null,
     incomeRange: data?.income_range ?? null,
     gender: data?.gender ?? 'prefer_not_to_say',
   }
+}
+
+/** Prefer the multi-goal array; fall back to the legacy single goal column. */
+function normalizeGoals(goals: unknown, legacy: string | null | undefined): string[] {
+  if (Array.isArray(goals)) return goals.filter((g): g is string => typeof g === 'string')
+  return legacy ? [legacy] : []
+}
+
+/** "a", "a and b", "a, b, and c" */
+function joinGoalPhrases(phrases: string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? ''
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`
 }
 
 // Onboarding-collected context, woven into the system prompt. The gender line
@@ -893,9 +906,15 @@ async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<C
 function buildUserContextSection(profile: ChatProfile): string {
   const lines: string[] = []
 
-  if (profile.primaryGoal && GOAL_LABELS[profile.primaryGoal]) {
+  const goalPhrases = profile.primaryGoals.map((g) => GOAL_LABELS[g]).filter(Boolean)
+  if (goalPhrases.length > 0) {
+    const isPlural = goalPhrases.length > 1
     lines.push(
-      `Their stated primary financial goal right now is to ${GOAL_LABELS[profile.primaryGoal]}. Where relevant, connect your guidance back to this without being repetitive about it.`,
+      `Their stated primary financial ${isPlural ? 'goals' : 'goal'} right now ${
+        isPlural ? 'are' : 'is'
+      } to ${joinGoalPhrases(goalPhrases)}. Where relevant, connect your guidance back to ${
+        isPlural ? 'these' : 'this'
+      } without being repetitive about it.`,
     )
   }
 
@@ -1035,6 +1054,16 @@ When the user describes a purchase, payment, or income (e.g. "I spent 12 on coff
 "got paid 2000"), call the create_transaction tool with your best judgment for amount, type,
 category, merchant, and date.
 
+When the user tells you their actual current balance or total, what they HAVE right now rather than
+a single transaction (e.g. "my balance is 1200", "I have about 350 in mobile money", "roughly 5k in
+total"), call set_balance with that number. Do NOT log it as an income transaction: set_balance
+reconciles the running total to reality and posts any balancing entry for you.
+
+Tell apart a payment that just happened from a description of their situation. "Got paid 2000" is a
+real income event, log it with create_transaction. "I usually earn about 2000 a month" or "I get
+paid on the 25th" is a durable fact, not a transaction: save it with save_memory (kind "fact") so
+you can plan around their income and payday, and do NOT create a transaction for it.
+
 Some messages imply more than one thing happened to the money, reason about what actually
 happened and record all of it:
 - Borrowing ("I borrowed K500 from Amara", "took a loan") or lending / being owed ("I lent Tich
@@ -1115,6 +1144,25 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           },
         },
         required: ['type', 'amount', 'category', 'transaction_date'],
+      },
+    },
+    {
+      name: 'set_balance',
+      description:
+        'Record what the user ACTUALLY has right now across their money (their real balance), e.g. ' +
+        '"my balance is 1200", "I have about 350 in mobile money", "roughly 5k in total". This is the ' +
+        'trust anchor: it reconciles Penda\'s running total to reality and quietly posts a balancing ' +
+        'entry for any gap, so safe-to-spend and every downstream number stays honest. Use this ' +
+        'whenever the user states their current total balance, NOT create_transaction. Runs immediately.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          amount: {
+            type: 'number',
+            description: 'The actual total balance right now, as a decimal number, e.g. 1200 or 349.50.',
+          },
+        },
+        required: ['amount'],
       },
     },
     {
@@ -1316,6 +1364,7 @@ const STAGING_TOOLS = new Set(['update_record', 'delete_record'])
 
 const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
   create_transaction: { domain: 'transaction', label: 'Logged transaction' },
+  set_balance: { domain: 'reconciliation', label: 'Set your balance' },
   create_debt: { domain: 'debt', label: 'Recorded debt' },
   log_borrowed_or_lent_money: { domain: 'debt', label: 'Recorded loan' },
   create_budget: { domain: 'budget', label: 'Created budget' },
@@ -1330,7 +1379,7 @@ const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
 
 function toolFailed(result: string, threw: boolean): boolean {
   if (threw) return true
-  return /^(Failed|Tool "|Amount must|Debt amount|Budget amount|Goal target|A category|A memory|I can't|I need|Nothing to|Unknown tool|Deleting )/i
+  return /^(Failed|Tool "|Amount must|Debt amount|Budget amount|Goal target|A balance|A category|A memory|I can't|I need|Nothing to|Unknown tool|Deleting )/i
     .test(result)
 }
 
@@ -1372,6 +1421,17 @@ function buildCompletedAction(
       if (typeof args.transaction_date === 'string') details.Date = args.transaction_date
       const tx = ctx.createdTransaction
       if (tx && typeof tx.id === 'string') targetId = tx.id
+      break
+    }
+    case 'set_balance': {
+      const amount = Number(args.amount)
+      label = 'Set your balance'
+      summary = Number.isFinite(amount)
+        ? `Balance set to ${fmtAmount(amount, ctx.symbol)}`
+        : failed
+          ? 'Couldn’t set that'
+          : 'Balance saved'
+      if (Number.isFinite(amount)) details.Balance = fmtAmount(amount, ctx.symbol)
       break
     }
     case 'create_debt': {
@@ -1525,6 +1585,11 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       }
       return result.summary
     }
+    case 'set_balance': {
+      const result = await handleSetBalance(ctx, args)
+      if (result.transaction) ctx.createdTransaction = result.transaction
+      return result.summary
+    }
     case 'create_debt': {
       const result = await handleCreateDebt(ctx.supabase, ctx.walletId, args)
       if (result.id) ctx.createdIds.debt = result.id
@@ -1636,6 +1701,78 @@ async function handleCreateTransaction(
   }
 
   return { transaction: data, summary, habits }
+}
+
+// The "my balance is X" trust anchor. Reconciles Penda's running total to what
+// the user actually has, posting a single balancing entry for any gap so
+// safe-to-spend and everything downstream stays honest. Mirrors the client
+// ReconcilePrompt (balance_reconciliations row + adjustment transaction).
+async function handleSetBalance(
+  ctx: ToolContext,
+  input: Record<string, unknown>,
+): Promise<{ transaction: Record<string, unknown> | null; summary: string }> {
+  const amount = Number(input.amount)
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { transaction: null, summary: 'A balance must be a number that is zero or more.' }
+  }
+  const actualMinor = Math.round(amount * 100)
+
+  const { data: rows, error: readError } = await ctx.supabase
+    .from('transactions')
+    .select('amount_minor, converted_amount_minor, type')
+    .eq('wallet_id', ctx.walletId)
+  if (readError) {
+    return { transaction: null, summary: `Failed to read the wallet balance: ${readError.message}` }
+  }
+
+  const computedMinor = (rows ?? []).reduce((sum, tx) => {
+    const amt = (tx.converted_amount_minor as number | null) ?? (tx.amount_minor as number)
+    if (tx.type === 'income') return sum + amt
+    if (tx.type === 'expense') return sum - amt
+    return sum
+  }, 0)
+
+  const deltaMinor = actualMinor - computedMinor
+  let adjustment: Record<string, unknown> | null = null
+
+  if (deltaMinor !== 0) {
+    const { data: adj, error: adjError } = await ctx.supabase
+      .from('transactions')
+      .insert({
+        wallet_id: ctx.walletId,
+        created_by: ctx.userId,
+        category_id: null,
+        amount_minor: Math.abs(deltaMinor),
+        currency: ctx.currency,
+        type: deltaMinor > 0 ? 'income' : 'expense',
+        merchant: null,
+        description: 'Balance reconciliation adjustment',
+        transaction_date: today(),
+        source: 'chat',
+      })
+      .select('*')
+      .single()
+    if (adjError) {
+      return { transaction: null, summary: `Failed to set the balance: ${adjError.message}` }
+    }
+    adjustment = adj
+  }
+
+  const { error: reconError } = await ctx.supabase.from('balance_reconciliations').insert({
+    wallet_id: ctx.walletId,
+    user_id: ctx.userId,
+    computed_balance_minor: computedMinor,
+    actual_balance_minor: actualMinor,
+    status: deltaMinor === 0 ? 'confirmed' : 'adjusted',
+  })
+  if (reconError) {
+    return { transaction: adjustment, summary: `Failed to record the balance: ${reconError.message}` }
+  }
+
+  return {
+    transaction: adjustment,
+    summary: `Balance set to ${fmt(actualMinor, ctx.symbol)} (Penda had ${fmt(computedMinor, ctx.symbol)}).`,
+  }
 }
 
 async function handleCreateDebt(

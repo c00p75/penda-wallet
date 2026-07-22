@@ -13,7 +13,7 @@ export function parseHouseholdSize(raw: string): number | null {
 export interface OnboardingAnswers {
   mode: ProfileMode
   householdSize: number | null
-  primaryGoal: PrimaryGoal | null
+  primaryGoals: PrimaryGoal[]
   incomeRange: IncomeRange | null
   gender: Gender
 }
@@ -27,6 +27,13 @@ const GOAL_MEMORY_PHRASE: Record<PrimaryGoal, string> = {
   track_spending: 'track their spending more closely',
 }
 
+/** "a", "a and b", "a, b, and c" */
+function joinPhrases(phrases: string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? ''
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`
+}
+
 function incomeRangeLabel(range: IncomeRange): string {
   return INCOME_RANGE_OPTIONS.find((r) => r.value === range)?.label ?? range
 }
@@ -38,11 +45,15 @@ function genderLabel(gender: Gender): string {
 export function buildOnboardingMemories(answers: OnboardingAnswers, walletId: string | null): AiMemoryInput[] {
   const memories: AiMemoryInput[] = []
 
-  if (answers.primaryGoal) {
+  if (answers.primaryGoals.length > 0) {
+    const phrases = answers.primaryGoals.map((g) => GOAL_MEMORY_PHRASE[g])
+    const isPlural = phrases.length > 1
     memories.push({
       wallet_id: walletId,
       kind: 'fact',
-      content: `Their main financial goal right now is to ${GOAL_MEMORY_PHRASE[answers.primaryGoal]}.`,
+      content: `Their main financial ${isPlural ? 'goals' : 'goal'} right now ${
+        isPlural ? 'are' : 'is'
+      } to ${joinPhrases(phrases)}.`,
       mood: null,
     })
   }

@@ -22,10 +22,13 @@ export function AmbientChat() {
   const autoSend = useChatStore((s) => s.autoSend)
   const mode = useChatStore((s) => s.mode)
   const startRecording = useChatStore((s) => s.startRecording)
+  const assistantSeed = useChatStore((s) => s.assistantSeed)
+  const assistantPortrait = useChatStore((s) => s.assistantPortrait)
   const newTopicNonce = useChatStore((s) => s.newTopicNonce)
   const setOpen = useChatStore((s) => s.setOpen)
   const setMode = useChatStore((s) => s.setMode)
   const consumeAutoSend = useChatStore((s) => s.consumeAutoSend)
+  const consumeAssistantSeed = useChatStore((s) => s.consumeAssistantSeed)
   const consumeStartRecording = useChatStore((s) => s.consumeStartRecording)
   const startNewTopic = useChatStore((s) => s.startNewTopic)
 
@@ -48,6 +51,9 @@ export function AmbientChat() {
       onModeChange={setMode}
       startRecording={startRecording}
       onStartRecordingConsumed={consumeStartRecording}
+      assistantSeed={assistantSeed}
+      assistantPortrait={assistantPortrait}
+      onAssistantSeedConsumed={consumeAssistantSeed}
       newTopicNonce={newTopicNonce}
       onNewTopic={startNewTopic}
       currency={wallet.base_currency}

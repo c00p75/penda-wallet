@@ -55,6 +55,14 @@ function invalidateForDomain(queryClient: QueryClient, domain: string, walletId:
     case 'category':
       keys.push(['categories', walletId], ['transactions', walletId])
       break
+    case 'reconciliation':
+      // Prefix match also busts ['balance-reconciliation', walletId, userId].
+      keys.push(
+        ['balance-reconciliation', walletId],
+        ['transactions', walletId],
+        ['budget-progress', walletId],
+      )
+      break
     case 'wallet':
       keys.push(['wallets'])
       break

@@ -20,7 +20,7 @@ describe('buildOnboardingMemories', () => {
   const base: OnboardingAnswers = {
     mode: 'individual',
     householdSize: null,
-    primaryGoal: null,
+    primaryGoals: [],
     incomeRange: null,
     gender: 'prefer_not_to_say',
   }
@@ -29,10 +29,26 @@ describe('buildOnboardingMemories', () => {
     expect(buildOnboardingMemories(base, 'wallet-1')).toEqual([])
   })
 
-  it('seeds a fact for a stated primary goal', () => {
-    const memories = buildOnboardingMemories({ ...base, primaryGoal: 'pay_off_debt' }, 'wallet-1')
+  it('seeds a fact for a single stated primary goal', () => {
+    const memories = buildOnboardingMemories({ ...base, primaryGoals: ['pay_off_debt'] }, 'wallet-1')
     expect(memories).toEqual([
       { wallet_id: 'wallet-1', kind: 'fact', content: 'Their main financial goal right now is to pay off debt.', mood: null },
+    ])
+  })
+
+  it('seeds a single fact listing multiple stated goals', () => {
+    const memories = buildOnboardingMemories(
+      { ...base, primaryGoals: ['build_emergency_fund', 'pay_off_debt', 'track_spending'] },
+      'wallet-1',
+    )
+    expect(memories).toEqual([
+      {
+        wallet_id: 'wallet-1',
+        kind: 'fact',
+        content:
+          'Their main financial goals right now are to build an emergency fund, pay off debt, and track their spending more closely.',
+        mood: null,
+      },
     ])
   })
 
@@ -74,14 +90,14 @@ describe('buildOnboardingMemories', () => {
 
   it('combines multiple answered fields', () => {
     const memories = buildOnboardingMemories(
-      { mode: 'family', householdSize: 5, primaryGoal: 'build_emergency_fund', incomeRange: 'tight', gender: 'woman' },
+      { mode: 'family', householdSize: 5, primaryGoals: ['build_emergency_fund'], incomeRange: 'tight', gender: 'woman' },
       'wallet-1',
     )
     expect(memories).toHaveLength(4)
   })
 
   it('passes through a null wallet id', () => {
-    const memories = buildOnboardingMemories({ ...base, primaryGoal: 'track_spending' }, null)
+    const memories = buildOnboardingMemories({ ...base, primaryGoals: ['track_spending'] }, null)
     expect(memories[0].wallet_id).toBeNull()
   })
 })

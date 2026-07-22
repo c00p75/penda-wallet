@@ -95,7 +95,10 @@ export interface Profile {
   ai_personality: AiPersonality
   mode: ProfileMode
   household_size: number | null
+  /** Top-priority goal (first of `primary_goals`), kept for edge-function context. */
   primary_goal: PrimaryGoal | null
+  /** Full set of goals picked during onboarding. */
+  primary_goals: PrimaryGoal[] | null
   income_range: IncomeRange | null
   gender: Gender
   notification_opt_in: boolean
@@ -118,6 +121,7 @@ export interface ProfileInput {
   mode?: ProfileMode
   household_size?: number | null
   primary_goal?: PrimaryGoal | null
+  primary_goals?: PrimaryGoal[] | null
   income_range?: IncomeRange | null
   gender?: Gender
   notification_opt_in?: boolean

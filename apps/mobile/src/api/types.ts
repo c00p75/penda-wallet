@@ -123,6 +123,7 @@ export interface Profile {
   mode: string;
   household_size: number | null;
   primary_goal: string | null;
+  primary_goals: string[] | null;
   income_range: string | null;
   gender: string;
   notification_opt_in: boolean;
