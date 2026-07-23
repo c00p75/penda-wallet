@@ -15,7 +15,7 @@ import {
 } from './undoLogic'
 
 export type AiPendingActionStatus = 'pending' | 'confirmed' | 'cancelled' | 'auto_applied'
-export type AiPendingActionKind = 'update' | 'delete'
+export type AiPendingActionKind = 'update' | 'delete' | 'reconcile'
 
 export interface AiPendingAction {
   id: string
@@ -121,6 +121,13 @@ export async function undoCreatedEntity(
 export async function undoAiAction(action: AiPendingAction, userId: string): Promise<void> {
   if (!canUndoAiActionPure(action)) {
     throw new Error("This action can't be undone.")
+  }
+
+  // Reconcile (set_balance) undo = soft-delete the adjustment transaction it
+  // created; not a generic CRUD domain so it skips the isUndoDomain check below.
+  if (action.kind === 'reconcile') {
+    await softDeleteCreatedTransaction(action.target_id, userId)
+    return
   }
 
   if (!isUndoDomain(action.domain)) {

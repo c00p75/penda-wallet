@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, type TouchEvent, type WheelEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Lightbulb } from '@/components/icons/product'
 import { AiMark, type InsightTone } from '@/components/AiInsight'
@@ -154,12 +154,27 @@ function InsightCardView({ card }: { card: InsightCard }) {
   )
 }
 
+/** How long each card stays up before auto-advancing. */
+const ADVANCE_MS = 6000
+/** Ignore further edge-wrap triggers for a bit so one swipe doesn't fire twice. */
+const WRAP_COOLDOWN_MS = 600
+const SWIPE_THRESHOLD_PX = 40
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /**
  * Swipeable Penda insights: the grounded weekly brief leads, followed by
  * companion signals and pro tips. One card shows at a time with page dots.
+ * Auto-advances every few seconds (pausing whenever the user navigates
+ * manually) and wraps at both ends, so swiping past the last card lands on
+ * the first and swiping back from the first lands on the last.
  */
 export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const touchStartXRef = useRef<number | null>(null)
+  const wrapCooldownRef = useRef(false)
   const [active, setActive] = useState(0)
 
   function handleScroll() {
@@ -174,6 +189,58 @@ export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
     el.scrollTo({ left: index * el.clientWidth, behavior: 'smooth' })
   }
 
+  // Every manual or automatic move restarts this effect, which is what gives
+  // manual navigation its "pause" - the next auto-advance is always a full
+  // ADVANCE_MS after whatever last changed `active`.
+  useEffect(() => {
+    if (cards.length <= 1 || prefersReducedMotion()) return
+    const id = setInterval(() => {
+      goTo(active === cards.length - 1 ? 0 : active + 1)
+    }, ADVANCE_MS)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, cards.length])
+
+  function triggerWrap(index: number) {
+    if (wrapCooldownRef.current) return
+    wrapCooldownRef.current = true
+    goTo(index)
+    setTimeout(() => {
+      wrapCooldownRef.current = false
+    }, WRAP_COOLDOWN_MS)
+  }
+
+  function edgePositions() {
+    const el = scrollerRef.current
+    if (!el) return { atStart: false, atEnd: false }
+    return {
+      atStart: el.scrollLeft <= 1,
+      atEnd: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
+    }
+  }
+
+  function handleWheel(e: WheelEvent<HTMLDivElement>) {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
+    const { atStart, atEnd } = edgePositions()
+    if (atEnd && e.deltaX > 0) triggerWrap(0)
+    else if (atStart && e.deltaX < 0) triggerWrap(cards.length - 1)
+  }
+
+  function handleTouchStart(e: TouchEvent<HTMLDivElement>) {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null
+  }
+
+  function handleTouchEnd(e: TouchEvent<HTMLDivElement>) {
+    const startX = touchStartXRef.current
+    touchStartXRef.current = null
+    if (startX == null) return
+    const endX = e.changedTouches[0]?.clientX ?? startX
+    const delta = startX - endX
+    const { atStart, atEnd } = edgePositions()
+    if (atEnd && delta > SWIPE_THRESHOLD_PX) triggerWrap(0)
+    else if (atStart && delta < -SWIPE_THRESHOLD_PX) triggerWrap(cards.length - 1)
+  }
+
   if (cards.length === 0) return null
 
   return (
@@ -181,6 +248,9 @@ export function InsightCarousel({ cards }: { cards: InsightCard[] }) {
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {cards.map((card) => (

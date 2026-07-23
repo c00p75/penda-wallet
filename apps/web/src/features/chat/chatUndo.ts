@@ -27,7 +27,7 @@ export function undoTargetsFromChatActions(actions: ChatAction[] | undefined): C
       continue
     }
 
-    if (a.tool === 'update_record' || a.tool === 'delete_record') {
+    if (a.tool === 'update_record' || a.tool === 'delete_record' || a.tool === 'set_balance') {
       if ((a.status === 'done' || a.status === 'confirmed') && a.id) {
         const key = `pending:${a.id}`
         if (!seen.has(key)) {

@@ -40,7 +40,7 @@ export interface ChatMessage {
 /** An edit or deletion the agent proposed; it is applied only if the user confirms. */
 export interface PendingAction {
   id: string
-  kind: 'update' | 'delete'
+  kind: 'update' | 'delete' | 'reconcile'
   domain: string
   summary: string
   targetId?: string
@@ -56,8 +56,8 @@ export interface ChatAction {
   status: 'running' | 'done' | 'error' | 'pending' | 'confirmed' | 'cancelled'
   targetId?: string
   viewHref?: string
-  /** For pending update/delete rows. */
-  pendingKind?: 'update' | 'delete'
+  /** For pending update/delete/reconcile rows. */
+  pendingKind?: 'update' | 'delete' | 'reconcile'
   /** Optional key/value rows shown when the step is expanded. */
   details?: Record<string, string>
 }
@@ -79,5 +79,5 @@ export interface ConfirmActionResponse {
   domain: string
   summary: string
   targetId?: string
-  kind?: 'update' | 'delete'
+  kind?: 'update' | 'delete' | 'reconcile'
 }

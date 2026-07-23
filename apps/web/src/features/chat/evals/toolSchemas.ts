@@ -5,6 +5,7 @@
 
 export const TOOL_NAMES = [
   'create_transaction',
+  'set_balance',
   'create_debt',
   'log_borrowed_or_lent_money',
   'create_budget',
@@ -21,7 +22,7 @@ export const TOOL_NAMES = [
 export type ToolName = (typeof TOOL_NAMES)[number]
 
 /** Tools that stage a confirm card instead of applying immediately. */
-export const STAGING_TOOLS = new Set<ToolName>(['update_record', 'delete_record'])
+export const STAGING_TOOLS = new Set<ToolName>(['update_record', 'delete_record', 'set_balance'])
 
 /** Tools that run immediately (lookups / memory / creates that may still confirm). */
 export const IMMEDIATE_LOOKUP_TOOLS = new Set<ToolName>(['query_records', 'get_spending_summary'])
@@ -173,6 +174,12 @@ export function validateToolArgs(
       }
       return { ok: true }
     }
+    case 'set_balance': {
+      const amount = requireNumber(args, 'amount')
+      if (typeof amount !== 'number') return amount
+      if (amount < 0) return fail('amount', 'must be >= 0')
+      return { ok: true }
+    }
     case 'update_record': {
       const domains = ['transaction', 'debt', 'budget', 'goal', 'category', 'wallet'] as const
       if (!domains.includes(args.domain as (typeof domains)[number])) {
@@ -264,6 +271,15 @@ export function inferPreferredTool(utterance: string): ToolName | null {
   }
   if (/\b(find|show|list|look\s+up)\b.*\b(transaction|debt|budget|goal|categor)/.test(u)) {
     return 'query_records'
+  }
+  if (
+    /\d/.test(u) &&
+    (/\bmy\s+balance\s+is\b/.test(u) ||
+      /\bi\s+have\s+about\b/.test(u) ||
+      /\broughly\b/.test(u) ||
+      /\bin\s+total\b/.test(u))
+  ) {
+    return 'set_balance'
   }
   if (/\bdelete\b|\bremove\b/.test(u) && /\b(transaction|debt|budget|goal|categor)/.test(u)) {
     return 'delete_record'

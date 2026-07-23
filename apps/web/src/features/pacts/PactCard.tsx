@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Ban, Check, X } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatMoney } from '@/lib/money'
 import type { Category } from '@/features/categories/types'
 import type { Transaction } from '@/features/transactions/types'
@@ -23,6 +25,7 @@ export function PactCard({ pact, transactions, category, currency, onDelete }: P
   const result = computePactStatus(pact, transactions, new Date())
   const style = STATUS_STYLE[result.status]
   const Icon = style.icon
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   return (
     <div className="flex items-center gap-3 rounded-2xl border bg-card p-4">
@@ -53,12 +56,24 @@ export function PactCard({ pact, transactions, category, currency, onDelete }: P
       </div>
       <button
         type="button"
-        onClick={onDelete}
+        onClick={() => setConfirmOpen(true)}
         className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
         aria-label="Remove pact"
       >
         Remove
       </button>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={`Remove "${pact.description}"?`}
+        description="This removes the pact. Any transactions it tracked aren't affected."
+        confirmLabel="Remove"
+        onConfirm={() => {
+          setConfirmOpen(false)
+          onDelete()
+        }}
+      />
     </div>
   )
 }

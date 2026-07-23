@@ -9,6 +9,7 @@ export interface FinancialMission {
   start_date: string
   end_date: string
   status: MissionStatus
+  archived_at: string | null
   created_at: string
 }
 

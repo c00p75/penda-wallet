@@ -22,6 +22,7 @@ import {
   type AiTrust,
 } from '../_shared/aiTrust.ts'
 import { executePendingAction } from '../_shared/executePendingAction.ts'
+import { computeWalletBalanceMinor } from '../_shared/walletBalance.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -154,11 +155,12 @@ interface ModelTurn {
   toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }>
 }
 
-// A staged update/delete surfaced to the client as a Yes/Cancel card. The tool
-// layer NEVER executes these, confirm-ai-action does, on an explicit user tap.
+// A staged update/delete/reconcile surfaced to the client as a Yes/Cancel card.
+// The tool layer NEVER executes these, confirm-ai-action does, on an explicit
+// user tap.
 interface PendingAction {
   id: string
-  kind: 'update' | 'delete'
+  kind: 'update' | 'delete' | 'reconcile'
   domain: string
   summary: string
   targetId: string
@@ -1151,9 +1153,11 @@ function buildTools(categories: Category[]): ToolDefinition[] {
       description:
         'Record what the user ACTUALLY has right now across their money (their real balance), e.g. ' +
         '"my balance is 1200", "I have about 350 in mobile money", "roughly 5k in total". This is the ' +
-        'trust anchor: it reconciles Penda\'s running total to reality and quietly posts a balancing ' +
-        'entry for any gap, so safe-to-spend and every downstream number stays honest. Use this ' +
-        'whenever the user states their current total balance, NOT create_transaction. Runs immediately.',
+        'trust anchor: it reconciles Penda\'s running total to reality and posts a balancing entry for ' +
+        'any gap, so safe-to-spend and every downstream number stays honest. Use this whenever the user ' +
+        'states their current total balance, NOT create_transaction. ALWAYS stages a confirmation card ' +
+        '(never applies immediately, even for trusted users): phrase your reply as the pending question ' +
+        '(e.g. "Set your balance to K10,000?"). Do not say it\'s done until they confirm.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1360,11 +1364,10 @@ function buildTools(categories: Category[]): ToolDefinition[] {
 
 // --- Action trail (UI) -----------------------------------------------------
 
-const STAGING_TOOLS = new Set(['update_record', 'delete_record'])
+const STAGING_TOOLS = new Set(['update_record', 'delete_record', 'set_balance'])
 
 const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
   create_transaction: { domain: 'transaction', label: 'Logged transaction' },
-  set_balance: { domain: 'reconciliation', label: 'Set your balance' },
   create_debt: { domain: 'debt', label: 'Recorded debt' },
   log_borrowed_or_lent_money: { domain: 'debt', label: 'Recorded loan' },
   create_budget: { domain: 'budget', label: 'Created budget' },
@@ -1421,17 +1424,6 @@ function buildCompletedAction(
       if (typeof args.transaction_date === 'string') details.Date = args.transaction_date
       const tx = ctx.createdTransaction
       if (tx && typeof tx.id === 'string') targetId = tx.id
-      break
-    }
-    case 'set_balance': {
-      const amount = Number(args.amount)
-      label = 'Set your balance'
-      summary = Number.isFinite(amount)
-        ? `Balance set to ${fmtAmount(amount, ctx.symbol)}`
-        : failed
-          ? 'Couldn’t set that'
-          : 'Balance saved'
-      if (Number.isFinite(amount)) details.Balance = fmtAmount(amount, ctx.symbol)
       break
     }
     case 'create_debt': {
@@ -1585,11 +1577,8 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       }
       return result.summary
     }
-    case 'set_balance': {
-      const result = await handleSetBalance(ctx, args)
-      if (result.transaction) ctx.createdTransaction = result.transaction
-      return result.summary
-    }
+    case 'set_balance':
+      return await stageSetBalance(ctx, args)
     case 'create_debt': {
       const result = await handleCreateDebt(ctx.supabase, ctx.walletId, args)
       if (result.id) ctx.createdIds.debt = result.id
@@ -1703,76 +1692,33 @@ async function handleCreateTransaction(
   return { transaction: data, summary, habits }
 }
 
-// The "my balance is X" trust anchor. Reconciles Penda's running total to what
-// the user actually has, posting a single balancing entry for any gap so
-// safe-to-spend and everything downstream stays honest. Mirrors the client
-// ReconcilePrompt (balance_reconciliations row + adjustment transaction).
-async function handleSetBalance(
-  ctx: ToolContext,
-  input: Record<string, unknown>,
-): Promise<{ transaction: Record<string, unknown> | null; summary: string }> {
-  const amount = Number(input.amount)
+// The "my balance is X" trust anchor. Stages a confirmation card; on confirm,
+// executePendingAction's reconcile branch posts a single balancing entry for
+// any gap between what the user says they have and Penda's running total, so
+// safe-to-spend and everything downstream stays honest.
+async function stageSetBalance(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
+  const amount = Number(args.amount)
   if (!Number.isFinite(amount) || amount < 0) {
-    return { transaction: null, summary: 'A balance must be a number that is zero or more.' }
+    return 'A balance must be a number that is zero or more.'
   }
   const actualMinor = Math.round(amount * 100)
 
-  const { data: rows, error: readError } = await ctx.supabase
-    .from('transactions')
-    .select('amount_minor, converted_amount_minor, type')
-    .eq('wallet_id', ctx.walletId)
-  if (readError) {
-    return { transaction: null, summary: `Failed to read the wallet balance: ${readError.message}` }
-  }
+  const computedMinor = await computeWalletBalanceMinor(ctx.supabase, ctx.walletId)
+  const summary =
+    computedMinor === actualMinor
+      ? `Confirm the balance is ${fmt(actualMinor, ctx.symbol)} (matches what Penda already shows).`
+      : `Set your balance to ${fmt(actualMinor, ctx.symbol)} (Penda currently shows ${fmt(computedMinor, ctx.symbol)}).`
 
-  const computedMinor = (rows ?? []).reduce((sum, tx) => {
-    const amt = (tx.converted_amount_minor as number | null) ?? (tx.amount_minor as number)
-    if (tx.type === 'income') return sum + amt
-    if (tx.type === 'expense') return sum - amt
-    return sum
-  }, 0)
-
-  const deltaMinor = actualMinor - computedMinor
-  let adjustment: Record<string, unknown> | null = null
-
-  if (deltaMinor !== 0) {
-    const { data: adj, error: adjError } = await ctx.supabase
-      .from('transactions')
-      .insert({
-        wallet_id: ctx.walletId,
-        created_by: ctx.userId,
-        category_id: null,
-        amount_minor: Math.abs(deltaMinor),
-        currency: ctx.currency,
-        type: deltaMinor > 0 ? 'income' : 'expense',
-        merchant: null,
-        description: 'Balance reconciliation adjustment',
-        transaction_date: today(),
-        source: 'chat',
-      })
-      .select('*')
-      .single()
-    if (adjError) {
-      return { transaction: null, summary: `Failed to set the balance: ${adjError.message}` }
-    }
-    adjustment = adj
-  }
-
-  const { error: reconError } = await ctx.supabase.from('balance_reconciliations').insert({
-    wallet_id: ctx.walletId,
-    user_id: ctx.userId,
-    computed_balance_minor: computedMinor,
-    actual_balance_minor: actualMinor,
-    status: deltaMinor === 0 ? 'confirmed' : 'adjusted',
-  })
-  if (reconError) {
-    return { transaction: adjustment, summary: `Failed to record the balance: ${reconError.message}` }
-  }
-
-  return {
-    transaction: adjustment,
-    summary: `Balance set to ${fmt(actualMinor, ctx.symbol)} (Penda had ${fmt(computedMinor, ctx.symbol)}).`,
-  }
+  ctx.pendingActions.push(
+    await insertPendingAction(ctx, {
+      kind: 'reconcile',
+      domain: 'reconciliation',
+      targetId: ctx.walletId,
+      patch: { amount: actualMinor },
+      summary,
+    }),
+  )
+  return `Staged, NOT applied: ${summary} The user must confirm it on the card. Ask them to confirm; do not say it's done.`
 }
 
 async function handleCreateDebt(
@@ -2056,7 +2002,7 @@ async function loadTarget(ctx: ToolContext, cfg: DomainCfg, domain: string, id: 
 async function insertPendingAction(
   ctx: ToolContext,
   input: {
-    kind: 'update' | 'delete'
+    kind: 'update' | 'delete' | 'reconcile'
     domain: string
     targetId: string
     patch: Record<string, unknown> | null
@@ -2122,6 +2068,8 @@ async function autoApplyUpdate(
       kind: 'update',
       domain: input.domain,
       target_id: input.targetId,
+      wallet_id: ctx.walletId,
+      user_id: ctx.userId,
       patch: input.patch,
       summary: input.summary,
       status: 'auto_applied',

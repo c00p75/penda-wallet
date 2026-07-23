@@ -25,6 +25,8 @@ import { useEntitlement } from '@/features/entitlements/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
 import type { CoachingAction } from '@/features/coaching/detectCoachingInsights'
 import { InsightCarousel, type InsightCard } from '@/features/coaching/InsightCarousel'
+import { buildExploreNudgeCard } from '@/features/coaching/exploreNudge'
+import { useFeatureVisits } from '@/features/coaching/featureVisits/hooks'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
 import { loadNeedsYou } from '@/features/chat/pendingNeedsYou'
@@ -43,6 +45,7 @@ import { useUploadReceipt } from '@/features/receipts/hooks'
 import { formatMoney, fromMinorUnits } from '@/lib/money'
 import { localDateStr, localMonthEnd, localMonthPrefix, localMonthStart } from '@/lib/dates'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
+import { BalanceVisibilityToggle } from '@/components/BalanceVisibilityToggle'
 import { useCategories } from '@/features/categories/hooks'
 import { suggestBufferFromIncome } from '@/features/planning/bufferSuggest'
 import { useSpendingPlan } from '@/features/planning/hooks'
@@ -106,6 +109,25 @@ function splitBalance(amountMinor: number, currency: string): { whole: string; d
   return { symbol: leadingSymbol || symbol, whole: whole || '0', decimal }
 }
 
+/** Big whole-number amount with a smaller, muted decimal suffix, for hero card figures. */
+function BigAmount({
+  parts,
+  negative,
+}: {
+  parts: { whole: string; decimal: string; symbol: string }
+  negative?: boolean
+}) {
+  return (
+    <span>
+      {negative ? '−' : ''}
+      <span className="text-2xl font-semibold opacity-80">{parts.symbol}</span>
+      {parts.symbol.endsWith(' ') ? '' : ' '}
+      {parts.whole}
+      {parts.decimal && <span className="text-2xl font-semibold opacity-80">{parts.decimal}</span>}
+    </span>
+  )
+}
+
 function greetingLabel(now = new Date()): string {
   const h = now.getHours()
   if (h < 12) return 'Morning'
@@ -159,6 +181,7 @@ export function HomePage() {
   const { data: weeklyLetter } = useLatestWeeklyLetter(wallet?.id)
   const respondCheckin = useRespondToCheckin(wallet?.id)
   const { data: latestReconciliation } = useLatestReconciliation(wallet?.id, session?.user.id)
+  const { data: featureVisits = [] } = useFeatureVisits(wallet?.id)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -447,6 +470,7 @@ export function HomePage() {
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0)
   const balanceParts = splitBalance(balanceMinor, currency)
+  const monthSpendingParts = splitBalance(monthSpending, currency)
   const isNegative = balanceMinor < 0
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -607,6 +631,16 @@ export function HomePage() {
           }
         })
 
+  const exploreCard = dayZero
+    ? null
+    : buildExploreNudgeCard({
+        visitedPages: new Set(featureVisits.map((v) => v.page)),
+        persona,
+        today: localDateStr(now),
+        onExplore: (route) => navigate(route),
+        onWhy: (id) => setWhyInsightId(id),
+      })
+
   const insightCards: InsightCard[] = [
     {
       id: 'week-read',
@@ -662,6 +696,7 @@ export function HomePage() {
                   : { label: 'Ask Penda', onTap: () => askAboutInsight(insight.text) },
                 onWhy: () => setWhyInsightId(insight.id),
               }))),
+          ...(exploreCard ? [exploreCard] : []),
         ]),
   ]
 
@@ -834,23 +869,23 @@ export function HomePage() {
                       ? 'Safe to spend'
                       : 'Balance'
               }
+              corner={
+                !blindBudgeting && (
+                  <BalanceVisibilityToggle
+                    id={dayZero || !hasBudgets ? 'balance' : 'safe-to-spend'}
+                    className="size-5 text-white/85 transition-colors hover:text-white"
+                  />
+                )
+              }
               value={
                 dayZero || (!hasBudgets && !blindBudgeting) ? (
-                  <HiddenAmount>
-                    <span>
-                      {isNegative ? '−' : ''}
-                      {balanceParts.symbol}
-                      {balanceParts.symbol.endsWith(' ') ? '' : '\u00A0'}
-                      {balanceParts.whole}
-                      {balanceParts.decimal && (
-                        <span className="text-lg font-semibold opacity-80">{balanceParts.decimal}</span>
-                      )}
-                    </span>
+                  <HiddenAmount id="balance">
+                    <BigAmount parts={balanceParts} negative={isNegative} />
                   </HiddenAmount>
                 ) : blindBudgeting ? (
                   auraLabel
                 ) : (
-                  <HiddenAmount>
+                  <HiddenAmount id="safe-to-spend">
                     <span>
                       {formatMoney(safeToSpendPerDayMinor, currency)}
                       <span className="text-sm font-medium opacity-80">{'\u00A0'}/day</span>
@@ -870,17 +905,10 @@ export function HomePage() {
                   })
                 }
                 label="Balance"
+                corner={<BalanceVisibilityToggle id="balance" className="size-5 text-white/85 transition-colors hover:text-white" />}
                 value={
-                  <HiddenAmount>
-                    <span>
-                      {isNegative ? '−' : ''}
-                      {balanceParts.symbol}
-                      {balanceParts.symbol.endsWith(' ') ? '' : '\u00A0'}
-                      {balanceParts.whole}
-                      {balanceParts.decimal && (
-                        <span className="text-lg font-semibold opacity-80">{balanceParts.decimal}</span>
-                      )}
-                    </span>
+                  <HiddenAmount id="balance">
+                    <BigAmount parts={balanceParts} negative={isNegative} />
                   </HiddenAmount>
                 }
               />
@@ -899,8 +927,9 @@ export function HomePage() {
                   })
                 }
                 label={topGoal.name}
+                corner={<BalanceVisibilityToggle id={`goal-${topGoal.id}`} className="size-5 text-white/85 transition-colors hover:text-white" />}
                 value={
-                  <HiddenAmount>
+                  <HiddenAmount id={`goal-${topGoal.id}`}>
                     <span>
                       {topGoalPct ?? 0}
                       <span className="text-lg font-semibold opacity-80">%</span>
@@ -920,11 +949,14 @@ export function HomePage() {
                   })
                 }
                 label="This month"
+                corner={!blindBudgeting && <BalanceVisibilityToggle id="month" className="size-5 text-white/85 transition-colors hover:text-white" />}
                 value={
                   blindBudgeting ? (
                     '···'
                   ) : (
-                    <HiddenAmount>{formatMoney(monthSpending, currency)}</HiddenAmount>
+                    <HiddenAmount id="month">
+                      <BigAmount parts={monthSpendingParts} />
+                    </HiddenAmount>
                   )
                 }
               />

@@ -8,9 +8,12 @@ import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { colors, spacing } from '@/src/lib/theme';
 import { localDateStr } from '@/src/lib/dates';
 import {
+  archiveMission,
   createMission,
+  fetchArchivedMissions,
   fetchMissions,
   generateMissionSuggestions,
+  unarchiveMission,
   updateMissionStatus,
   type SuggestedMission,
 } from '@/src/api/missions';
@@ -40,6 +43,12 @@ export default function MissionsScreen() {
   const { data: missions = [], isLoading } = useQuery({
     queryKey: ['missions', wallet?.id],
     queryFn: () => fetchMissions(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const { data: archivedMissions = [] } = useQuery({
+    queryKey: ['missions-archived', wallet?.id],
+    queryFn: () => fetchArchivedMissions(wallet!.id),
     enabled: !!wallet?.id,
   });
 
@@ -107,6 +116,24 @@ export default function MissionsScreen() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['missions', wallet?.id] }),
   });
 
+  const archiveMut = useMutation({
+    mutationFn: (id: string) => archiveMission(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['missions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['missions-archived', wallet?.id] });
+    },
+    onError: (err) => Alert.alert('Error', err instanceof Error ? err.message : 'Could not archive'),
+  });
+
+  const unarchiveMut = useMutation({
+    mutationFn: (id: string) => unarchiveMission(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['missions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['missions-archived', wallet?.id] });
+    },
+    onError: (err) => Alert.alert('Error', err instanceof Error ? err.message : 'Could not restore'),
+  });
+
   if (isLoading) return <LoadingView />;
 
   const active = missions.filter((m) => m.status === 'active');
@@ -114,6 +141,13 @@ export default function MissionsScreen() {
   function cycleStatus(id: string, current: MissionStatus) {
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(current) + 1) % STATUS_CYCLE.length];
     statusMut.mutate({ id, status: next });
+  }
+
+  function openMissionMenu(id: string, missionTitle: string) {
+    Alert.alert(missionTitle, undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Archive', onPress: () => archiveMut.mutate(id) },
+    ]);
   }
 
   return (
@@ -125,6 +159,10 @@ export default function MissionsScreen() {
         <Text variant="h2">Missions</Text>
         <View style={styles.spacer} />
       </View>
+
+      <Text variant="body" color={colors.textSecondary} style={styles.subtitle}>
+        Small commitments that compound
+      </Text>
 
       <Card style={styles.hero}>
         <Text variant="caption" color={colors.textSecondary}>
@@ -163,12 +201,23 @@ export default function MissionsScreen() {
         missions.map((m) => (
           <Card key={m.id} style={styles.mission}>
             <View style={styles.missionHeader}>
-              <Text variant="bodyMedium" style={{ flex: 1 }}>
+              <View style={styles.missionIcon}>
+                <Ionicons name="flag-outline" size={16} color={colors.iris} />
+              </View>
+              <Text variant="bodyMedium" style={{ flex: 1 }} numberOfLines={1}>
                 {m.title}
               </Text>
               <AnimatedPressable onPress={() => cycleStatus(m.id, m.status)}>
                 <Badge label={m.status} tone={STATUS_TONE[m.status]} />
               </AnimatedPressable>
+              {(m.status === 'kept' || m.status === 'broken') && (
+                <AnimatedPressable
+                  onPress={() => openMissionMenu(m.id, m.title)}
+                  accessibilityLabel={`Options for ${m.title}`}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+                </AnimatedPressable>
+              )}
             </View>
             {m.description ? (
               <Text variant="caption" color={colors.textMuted}>
@@ -181,6 +230,33 @@ export default function MissionsScreen() {
           </Card>
         ))
       )}
+
+      {archivedMissions.length > 0 && (
+        <>
+          <Text variant="label" color={colors.textMuted} style={styles.archivedHeader}>
+            Archived
+          </Text>
+          {archivedMissions.map((m) => (
+            <Card key={m.id} style={styles.mission}>
+              <View style={styles.missionHeader}>
+                <View style={styles.missionIcon}>
+                  <Ionicons name="flag-outline" size={16} color={colors.iris} />
+                </View>
+                <Text variant="bodyMedium" style={{ flex: 1 }} numberOfLines={1}>
+                  {m.title}
+                </Text>
+                <Badge label={m.status} tone={STATUS_TONE[m.status]} />
+              </View>
+              <Button
+                title="Restore"
+                variant="secondary"
+                onPress={() => unarchiveMut.mutate(m.id)}
+                loading={unarchiveMut.isPending}
+              />
+            </Card>
+          ))}
+        </>
+      )}
     </Screen>
   );
 }
@@ -191,9 +267,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   spacer: { width: 22 },
+  subtitle: { marginBottom: spacing.lg },
   hero: { gap: spacing.xs, marginBottom: spacing.lg },
   suggestBtn: { marginBottom: spacing.md },
   createBtn: { marginBottom: spacing.lg },
@@ -201,4 +278,13 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: spacing.xl },
   mission: { marginBottom: spacing.sm, gap: spacing.xs },
   missionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  archivedHeader: { marginTop: spacing.md, marginBottom: spacing.sm },
+  missionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.irisSoft,
+  },
 });

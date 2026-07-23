@@ -6,7 +6,20 @@ export async function fetchSavingsGoals(walletId: string): Promise<SavingsGoal[]
     .from('savings_goals')
     .select('*')
     .eq('wallet_id', walletId)
+    .is('archived_at', null)
     .order('created_at');
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchArchivedSavingsGoals(walletId: string): Promise<SavingsGoal[]> {
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
 
   if (error) throw error;
   return data;
@@ -44,7 +57,15 @@ export async function addContribution(goalId: string, amountMinor: number, date:
   if (error) throw error;
 }
 
-export async function deleteSavingsGoal(id: string): Promise<void> {
-  const { error } = await supabase.from('savings_goals').delete().eq('id', id);
+export async function archiveSavingsGoal(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('savings_goals')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function unarchiveSavingsGoal(id: string): Promise<void> {
+  const { error } = await supabase.from('savings_goals').update({ archived_at: null }).eq('id', id);
   if (error) throw error;
 }

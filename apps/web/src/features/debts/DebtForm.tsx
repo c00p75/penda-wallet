@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/sheet'
 import { ArrowUpRightIcon } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -21,7 +22,7 @@ interface DebtFormProps {
   currency: string
   debt?: Debt | null
   onSubmit: (input: DebtInput) => Promise<void>
-  onDelete?: () => Promise<void>
+  onArchive?: () => Promise<void>
   isSubmitting?: boolean
   /** Leave chat and go to the list/hub page (label e.g. "View debts"). */
   onOpenInApp?: () => void
@@ -34,7 +35,7 @@ export function DebtForm({
   currency,
   debt,
   onSubmit,
-  onDelete,
+  onArchive,
   isSubmitting,
   onOpenInApp,
   openInAppLabel = 'View debts',
@@ -45,6 +46,7 @@ export function DebtForm({
   const [principal, setPrincipal] = useState('')
   const [interestRate, setInterestRate] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -165,9 +167,9 @@ export function DebtForm({
           <p className="text-xs text-muted-foreground">Amounts are in {currency}.</p>
 
           <SheetFooter className="flex-row gap-2 px-0">
-            {debt && onDelete && (
-              <Button type="button" variant="destructive" onClick={onDelete} className="flex-1">
-                Delete
+            {debt && onArchive && (
+              <Button type="button" variant="destructive" onClick={() => setConfirmOpen(true)} className="flex-1">
+                Archive
               </Button>
             )}
             <SheetClose asChild>
@@ -193,6 +195,21 @@ export function DebtForm({
           )}
         </form>
       </SheetContent>
+
+      {onArchive && (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={`Archive "${debt?.name}"?`}
+          description="This hides it from your debts list. Its payment history is kept, and you can restore it later."
+          confirmLabel="Archive"
+          isPending={isSubmitting}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            void onArchive()
+          }}
+        />
+      )}
     </Sheet>
   )
 }

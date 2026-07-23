@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Maximize2, Send, X } from 'lucide-react'
-import { Camera, Microphone } from '@/components/icons/product'
+import { Camera, Microphone, Stop } from '@/components/icons/product'
 import { toast } from 'sonner'
 import {
   fetchAiPendingAction,
@@ -35,10 +35,10 @@ import { BudgetForm } from '@/features/budgets/BudgetForm'
 import { useDeleteBudget, useUpdateBudget } from '@/features/budgets/hooks'
 import type { Budget, BudgetInput } from '@/features/budgets/types'
 import { DebtForm } from '@/features/debts/DebtForm'
-import { useDeleteDebt, useUpdateDebt } from '@/features/debts/hooks'
+import { useArchiveDebt, useUpdateDebt } from '@/features/debts/hooks'
 import type { Debt, DebtInput } from '@/features/debts/types'
 import { GoalForm } from '@/features/goals/GoalForm'
-import { useDeleteSavingsGoal, useUpdateSavingsGoal } from '@/features/goals/hooks'
+import { useArchiveSavingsGoal, useUpdateSavingsGoal } from '@/features/goals/hooks'
 import type { SavingsGoal, SavingsGoalInput } from '@/features/goals/types'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
 import {
@@ -52,6 +52,7 @@ import { ActionTrail } from './ActionTrail'
 import {
   finalizeLiveActions,
   mergeTrailActions,
+  pendingTool,
   toolUi,
   listHrefFor,
   listLabelFor,
@@ -262,9 +263,9 @@ export function ChatSheet({
   const updateBudget = useUpdateBudget(walletId)
   const deleteBudget = useDeleteBudget(walletId)
   const updateDebt = useUpdateDebt(walletId)
-  const deleteDebt = useDeleteDebt(walletId)
+  const archiveDebt = useArchiveDebt(walletId)
   const updateGoal = useUpdateSavingsGoal(walletId)
-  const deleteGoal = useDeleteSavingsGoal(walletId)
+  const archiveGoal = useArchiveSavingsGoal(walletId)
 
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
@@ -869,9 +870,14 @@ export function ChatSheet({
               {
                 // Keep the pending-action id so Undo can call undoAiAction.
                 id: action.id,
-                tool: action.kind === 'delete' ? 'delete_record' : 'update_record',
+                tool: pendingTool(action.kind),
                 domain: res.domain,
-                label: action.kind === 'delete' ? 'Deleted' : 'Updated',
+                label:
+                  action.kind === 'delete'
+                    ? 'Deleted'
+                    : action.kind === 'reconcile'
+                      ? 'Set balance'
+                      : 'Updated',
                 summary: res.summary,
                 status: 'done' as const,
                 targetId,
@@ -1163,11 +1169,11 @@ export function ChatSheet({
     }
   }
 
-  async function deleteOverlayDebt() {
+  async function archiveOverlayDebt() {
     if (!overlayDebt) return
     try {
-      await deleteDebt.mutateAsync(overlayDebt.id)
-      toast('Debt deleted.')
+      await archiveDebt.mutateAsync(overlayDebt.id)
+      toast('Debt archived.')
       setOverlayDebt(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1185,11 +1191,11 @@ export function ChatSheet({
     }
   }
 
-  async function deleteOverlayGoal() {
+  async function archiveOverlayGoal() {
     if (!overlayGoal) return
     try {
-      await deleteGoal.mutateAsync(overlayGoal.id)
-      toast('Goal deleted.')
+      await archiveGoal.mutateAsync(overlayGoal.id)
+      toast('Goal archived.')
       setOverlayGoal(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1672,7 +1678,11 @@ export function ChatSheet({
                 aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
                 aria-pressed={isRecording}
               >
-                <Microphone className="size-4" weight="fill" />
+                {recordMode === 'locked' ? (
+                  <Stop className="size-4" weight="fill" />
+                ) : (
+                  <Microphone className="size-4" weight="fill" />
+                )}
               </Button>
               <Button
                 type="submit"
@@ -1750,12 +1760,12 @@ export function ChatSheet({
             currency={currency}
             debt={overlayDebt}
             onSubmit={saveOverlayDebt}
-            onDelete={overlayDebt ? deleteOverlayDebt : undefined}
+            onArchive={overlayDebt ? archiveOverlayDebt : undefined}
             onOpenInApp={
               overlayDebt ? () => openInApp(listHrefFor('debt') ?? '/goals?tab=debts') : undefined
             }
             openInAppLabel={listLabelFor('debt')}
-            isSubmitting={updateDebt.isPending || deleteDebt.isPending}
+            isSubmitting={updateDebt.isPending || archiveDebt.isPending}
           />
 
           {walletId && (
@@ -1768,12 +1778,12 @@ export function ChatSheet({
               currency={currency}
               goal={overlayGoal}
               onSubmit={saveOverlayGoal}
-              onDelete={overlayGoal ? deleteOverlayGoal : undefined}
+              onArchive={overlayGoal ? archiveOverlayGoal : undefined}
               onOpenInApp={
                 overlayGoal ? () => openInApp(listHrefFor('goal') ?? '/goals') : undefined
               }
               openInAppLabel={listLabelFor('goal')}
-              isSubmitting={updateGoal.isPending || deleteGoal.isPending}
+              isSubmitting={updateGoal.isPending || archiveGoal.isPending}
             />
           )}
         </div>

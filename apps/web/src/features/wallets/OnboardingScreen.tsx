@@ -43,6 +43,10 @@ const STEPS = ['wallet', 'goal', 'log', 'balance', 'plan'] as const
 type Step = (typeof STEPS)[number]
 type ChatStep = 'log' | 'balance' | 'plan'
 
+/** Wallet + goal are the form-based "onboarding" phase; the rest is the chat phase that follows it. */
+const ONBOARDING_STEPS: readonly Step[] = ['wallet', 'goal']
+const CHAT_PHASE_STEPS: readonly Step[] = ['log', 'balance', 'plan']
+
 /** Delay so the sheet can mount after the step card paints. */
 const CHAT_OPEN_DELAY_MS = 400
 /** Max wait for seeded budgets before the plan step auto-sends a generic draft. */
@@ -400,10 +404,10 @@ export function OnboardingScreen() {
 
       <div className="relative flex flex-col items-center gap-2 text-center">
         <span className="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] ring-1 ring-border/50">
-          Welcome to Penda
+          {isChatStep(step) ? "Onboarding complete — let's finish setup in chat" : 'Welcome to Penda'}
         </span>
         <div className="flex gap-1.5">
-          {STEPS.map((s) => (
+          {(isChatStep(step) ? CHAT_PHASE_STEPS : ONBOARDING_STEPS).map((s) => (
             <span
               key={s}
               className={cn('h-1.5 w-6 rounded-full transition-colors', s === step ? 'bg-primary' : 'bg-muted')}

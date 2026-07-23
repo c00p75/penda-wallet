@@ -147,6 +147,17 @@ describe('canUndoAiAction', () => {
   ] as const)('%s %s %s → %s', (status, kind, domain, patch, expected) => {
     expect(canUndoAiAction({ status, kind, domain, patch: patch as never })).toBe(expected)
   })
+
+  it.each([
+    ['confirmed', { amount: 1000000, __hasAdjustment: true }, true],
+    ['confirmed', { amount: 1000000, __hasAdjustment: false }, false],
+    ['confirmed', { amount: 1000000 }, false],
+    ['pending', { amount: 1000000, __hasAdjustment: true }, false],
+  ] as const)('reconcile %s %j → %s', (status, patch, expected) => {
+    expect(
+      canUndoAiAction({ status, kind: 'reconcile', domain: 'reconciliation', patch: patch as never }),
+    ).toBe(expected)
+  })
 })
 
 describe('isUndoDomain', () => {

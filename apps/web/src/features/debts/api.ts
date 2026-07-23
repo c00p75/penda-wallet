@@ -6,7 +6,20 @@ export async function fetchDebts(walletId: string): Promise<Debt[]> {
     .from('debts')
     .select('*')
     .eq('wallet_id', walletId)
+    .is('archived_at', null)
     .order('created_at')
+
+  if (error) throw error
+  return data
+}
+
+export async function fetchArchivedDebts(walletId: string): Promise<Debt[]> {
+  const { data, error } = await supabase
+    .from('debts')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false })
 
   if (error) throw error
   return data
@@ -41,8 +54,16 @@ export async function updateDebt(id: string, input: DebtInput): Promise<Debt> {
   return data
 }
 
-export async function deleteDebt(id: string): Promise<void> {
-  const { error } = await supabase.from('debts').delete().eq('id', id)
+export async function archiveDebt(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('debts')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function unarchiveDebt(id: string): Promise<void> {
+  const { error } = await supabase.from('debts').update({ archived_at: null }).eq('id', id)
   if (error) throw error
 }
 

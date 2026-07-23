@@ -1,9 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { addPayment, createDebt, deleteDebt, fetchDebts, fetchPayments, updateDebt } from './api'
+import {
+  addPayment,
+  archiveDebt,
+  createDebt,
+  fetchArchivedDebts,
+  fetchDebts,
+  fetchPayments,
+  unarchiveDebt,
+  updateDebt,
+} from './api'
 import type { DebtInput } from './types'
 
 function debtsKey(walletId: string | undefined) {
   return ['debts', walletId] as const
+}
+
+function archivedDebtsKey(walletId: string | undefined) {
+  return ['debts-archived', walletId] as const
 }
 
 function paymentsKey(debtId: string | undefined) {
@@ -14,6 +27,14 @@ export function useDebts(walletId: string | undefined) {
   return useQuery({
     queryKey: debtsKey(walletId),
     queryFn: () => fetchDebts(walletId!),
+    enabled: !!walletId,
+  })
+}
+
+export function useArchivedDebts(walletId: string | undefined) {
+  return useQuery({
+    queryKey: archivedDebtsKey(walletId),
+    queryFn: () => fetchArchivedDebts(walletId!),
     enabled: !!walletId,
   })
 }
@@ -42,11 +63,25 @@ export function useUpdateDebt(walletId: string | undefined) {
   })
 }
 
-export function useDeleteDebt(walletId: string | undefined) {
+export function useArchiveDebt(walletId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteDebt(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: debtsKey(walletId) }),
+    mutationFn: (id: string) => archiveDebt(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: debtsKey(walletId) })
+      queryClient.invalidateQueries({ queryKey: archivedDebtsKey(walletId) })
+    },
+  })
+}
+
+export function useUnarchiveDebt(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unarchiveDebt(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: debtsKey(walletId) })
+      queryClient.invalidateQueries({ queryKey: archivedDebtsKey(walletId) })
+    },
   })
 }
 

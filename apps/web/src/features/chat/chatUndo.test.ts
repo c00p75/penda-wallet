@@ -26,6 +26,19 @@ describe('undoTargetsFromChatActions', () => {
     ).toEqual([{ type: 'pending_action', actionId: 'pending-1' }])
   })
 
+  it('collects confirmed set_balance pending action ids', () => {
+    expect(
+      undoTargetsFromChatActions([
+        action({
+          id: 'pending-2',
+          tool: 'set_balance',
+          status: 'confirmed',
+          targetId: 'tx2',
+        }),
+      ]),
+    ).toEqual([{ type: 'pending_action', actionId: 'pending-2' }])
+  })
+
   it('collects created transactions for soft-delete undo', () => {
     expect(
       undoTargetsFromChatActions([

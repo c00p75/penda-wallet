@@ -67,11 +67,11 @@ vi.mock('@/features/budgets/hooks', () => ({
 }))
 vi.mock('@/features/debts/hooks', () => ({
   useUpdateDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useArchiveDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/features/goals/hooks', () => ({
   useUpdateSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useArchiveSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUploadGoalImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/features/transactions/api', async () => {

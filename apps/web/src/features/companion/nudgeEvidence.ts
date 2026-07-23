@@ -151,6 +151,14 @@ export function evidenceForInsight(
     }
   }
 
+  if (insightId.startsWith('explore:')) {
+    return {
+      insightId,
+      summary: 'A part of Penda you haven’t visited yet.',
+      bullets: ['Picked from features tied to your wallet that have no recorded visits.'],
+    }
+  }
+
   if (insightId === 'safe-to-spend') {
     return {
       insightId,

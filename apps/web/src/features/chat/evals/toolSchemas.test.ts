@@ -13,12 +13,12 @@ const CATS = ['Food', 'Transport', 'Income', 'Transfer']
 
 describe('tool catalog', () => {
   it('lists every chat-message tool once', () => {
-    expect(TOOL_NAMES).toHaveLength(12)
-    expect(new Set(TOOL_NAMES).size).toBe(12)
+    expect(TOOL_NAMES).toHaveLength(13)
+    expect(new Set(TOOL_NAMES).size).toBe(13)
   })
 
-  it('only stages update/delete', () => {
-    expect([...STAGING_TOOLS].sort()).toEqual(['delete_record', 'update_record'])
+  it('only stages update/delete/set_balance', () => {
+    expect([...STAGING_TOOLS].sort()).toEqual(['delete_record', 'set_balance', 'update_record'])
     for (const name of TOOL_NAMES) {
       if (STAGING_TOOLS.has(name)) continue
       expect(STAGING_TOOLS.has(name)).toBe(false)
@@ -42,6 +42,7 @@ describe('validateToolArgs happy paths', () => {
       'create_transaction',
       { type: 'income', amount: 500, category: 'Income', merchant: 'Payroll', transaction_date: '2026-07-01' },
     ],
+    ['set_balance', { amount: 1200 }],
     ['create_debt', { name: 'Loan from Amara', direction: 'i_owe', amount: 200 }],
     [
       'log_borrowed_or_lent_money',
@@ -73,6 +74,7 @@ describe('validateToolArgs reject corpus', () => {
     ['create_transaction', { type: 'expense', amount: -5, category: 'Food', transaction_date: '2026-07-14' }, 'amount'],
     ['create_transaction', { type: 'expense', amount: 1, category: 'Unknown', transaction_date: '2026-07-14' }, 'category'],
     ['create_transaction', { type: 'expense', amount: 1, category: 'Food', transaction_date: '14/07/2026' }, 'transaction_date'],
+    ['set_balance', { amount: -5 }, 'amount'],
     ['create_debt', { name: '', direction: 'i_owe', amount: 10 }, 'name'],
     ['create_debt', { name: 'X', direction: 'they_owe', amount: 10 }, 'direction'],
     ['create_budget', { amount: 10, period: 'yearly' }, 'period'],
@@ -141,6 +143,9 @@ describe('inferPreferredTool utterance goldens', () => {
     ['How much did I spend this week?', 'get_spending_summary'],
     ['Show my transactions at Shoprite', 'query_records'],
     ['Find the debt with Amara', 'query_records'],
+    ['My balance is K1200', 'set_balance'],
+    ['I have about 350 in mobile money', 'set_balance'],
+    ['Roughly 5k in total', 'set_balance'],
     ['Rename my emergency fund goal', 'update_record'],
     ['Delete that lunch transaction', 'delete_record'],
     ['Remember that I freelance on Fridays', 'save_memory'],

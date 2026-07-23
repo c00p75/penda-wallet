@@ -4,6 +4,7 @@ import { HomePage } from '@/features/home/HomePage'
 import { AmbientChat } from '@/features/chat/AmbientChat'
 import { LockPrompt } from '@/features/lock/UnlockSheet'
 import { useOfflineQueueSync } from '@/pwa/useOfflineQueue'
+import { RouteVisitTracker } from '@/features/coaching/featureVisits/RouteVisitTracker'
 
 // Every other route is code-split, the home dashboard is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
@@ -16,6 +17,9 @@ const BudgetsPage = lazy(() => import('@/features/budgets/BudgetsPage').then((m)
 const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })))
 const GoalDetailPage = lazy(() =>
   import('@/features/goals/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
+)
+const BalanceDetailPage = lazy(() =>
+  import('@/features/reconciliation/BalanceDetailPage').then((m) => ({ default: m.BalanceDetailPage })),
 )
 const ChallengesPage = lazy(() =>
   import('@/features/challenges/ChallengesPage').then((m) => ({ default: m.ChallengesPage })),
@@ -65,6 +69,7 @@ function App() {
   return (
     <>
       <OfflineQueueHost />
+      <RouteVisitTracker />
       <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -74,6 +79,7 @@ function App() {
           <Route path="/budgets" element={<BudgetsPage />} />
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/goals/:id" element={<GoalDetailPage />} />
+          <Route path="/balance" element={<BalanceDetailPage />} />
           <Route path="/challenges" element={<ChallengesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />

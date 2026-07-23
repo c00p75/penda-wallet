@@ -6,8 +6,15 @@ import { NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies'
 
 declare const self: ServiceWorkerGlobalScope
 
-self.skipWaiting()
 clientsClaim()
+
+// With registerType 'prompt', the new SW must wait until the user accepts the
+// "reload" toast (main.tsx) instead of taking over mid-session — e.g. while a
+// receipt photo upload is in flight. workbox-window sends this message when
+// the user clicks Reload.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
+})
 
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)

@@ -5,7 +5,19 @@ export async function fetchChallenges(): Promise<Challenge[]> {
   const { data, error } = await supabase
     .from('budget_challenges')
     .select('*')
+    .is('archived_at', null)
     .order('end_date', { ascending: false });
+
+  if (error) throw error;
+  return data as unknown as Challenge[];
+}
+
+export async function fetchArchivedChallenges(): Promise<Challenge[]> {
+  const { data, error } = await supabase
+    .from('budget_challenges')
+    .select('*')
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
 
   if (error) throw error;
   return data as unknown as Challenge[];
@@ -41,8 +53,19 @@ export async function leaveChallenge(challengeId: string, userId: string): Promi
   if (error) throw error;
 }
 
-export async function deleteChallenge(challengeId: string): Promise<void> {
-  const { error } = await supabase.from('budget_challenges').delete().eq('id', challengeId);
+export async function archiveChallenge(challengeId: string): Promise<void> {
+  const { error } = await supabase
+    .from('budget_challenges')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', challengeId);
+  if (error) throw error;
+}
+
+export async function unarchiveChallenge(challengeId: string): Promise<void> {
+  const { error } = await supabase
+    .from('budget_challenges')
+    .update({ archived_at: null })
+    .eq('id', challengeId);
   if (error) throw error;
 }
 

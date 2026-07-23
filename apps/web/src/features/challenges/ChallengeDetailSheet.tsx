@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Copy, Crown, Trash2 } from 'lucide-react'
 import { SignOut } from '@/components/icons/product'
 import { toast } from 'sonner'
@@ -8,6 +9,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useLeaderboard } from './hooks'
@@ -19,7 +21,7 @@ interface ChallengeDetailSheetProps {
   onOpenChange: (open: boolean) => void
   currentUserId: string
   onLeave: (challenge: Challenge) => void
-  onDelete: (challenge: Challenge) => void
+  onArchive: (challenge: Challenge) => void
 }
 
 function formatDate(dateStr: string) {
@@ -31,9 +33,10 @@ export function ChallengeDetailSheet({
   onOpenChange,
   currentUserId,
   onLeave,
-  onDelete,
+  onArchive,
 }: ChallengeDetailSheetProps) {
   const { data: leaderboard = [], isLoading } = useLeaderboard(challenge?.id)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   if (!challenge) return null
 
@@ -158,9 +161,9 @@ export function ChallengeDetailSheet({
 
           <div className="flex gap-2">
             {isCreator ? (
-              <Button variant="destructive" className="flex-1" onClick={() => onDelete(challenge)}>
+              <Button variant="destructive" className="flex-1" onClick={() => setConfirmOpen(true)}>
                 <Trash2 className="size-4" />
-                Delete challenge
+                Archive challenge
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" onClick={() => onLeave(challenge)}>
@@ -171,6 +174,18 @@ export function ChallengeDetailSheet({
           </div>
         </div>
       </SheetContent>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={`Archive "${challenge.name}"?`}
+        description="This hides it from everyone's challenge list. The leaderboard and history are kept, and you can restore it later."
+        confirmLabel="Archive"
+        onConfirm={() => {
+          setConfirmOpen(false)
+          onArchive(challenge)
+        }}
+      />
     </Sheet>
   )
 }

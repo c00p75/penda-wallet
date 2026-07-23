@@ -17,7 +17,9 @@ import { Text, Input, Button } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { colors, radius, spacing } from '@/src/lib/theme';
 import { useChatStore } from '@/src/store/chatStore';
+import { useAuthStore } from '@/src/store/authStore';
 import { confirmAiAction, sendChatMessageStream } from '@/src/api/chat';
+import { fetchAiPendingAction, undoAiAction } from '@/src/api/audit';
 import type { ChatMessage, PendingAction } from '@/src/api/types';
 import { parseMoMoText } from '@/src/lib/momoParser';
 import { useVoiceRecorder } from '@/src/hooks/useVoiceRecorder';
@@ -43,6 +45,7 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const queryClient = useQueryClient();
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const session = useAuthStore((s) => s.session);
 
   const messages = useChatStore((s) => s.messages);
   const conversationId = useChatStore((s) => s.conversationId);
@@ -66,6 +69,7 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const [sending, setSending] = useState(false);
   const [recordMode, setRecordMode] = useState<RecordMode>('idle');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [undoingId, setUndoingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const baseInputRef = useRef('');
@@ -255,6 +259,24 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
     }
   };
 
+  const handleUndo = async (action: PendingAction) => {
+    if (!session?.user.id) return;
+    setUndoingId(action.id);
+    try {
+      const full = await fetchAiPendingAction(action.id);
+      if (!full) throw new Error('That change is no longer available to undo.');
+      await undoAiAction(full, session.user.id);
+      setActionStatus(action.id, 'undone');
+      void queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
+      void queryClient.invalidateQueries({ queryKey: ['profile', session.user.id] });
+      void queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', session.user.id] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not undo.');
+    } finally {
+      setUndoingId(null);
+    }
+  };
+
   function mergedTranscript(finalText: string) {
     const base = baseInputRef.current;
     return base && finalText ? `${base} ${finalText}` : base || finalText;
@@ -399,9 +421,22 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
               return (
                 <View key={action.id} style={styles.pendingCard}>
                   <Text variant="small">{action.summary}</Text>
-                  {status ? (
+                  {status === 'confirmed' ? (
+                    <View style={styles.pendingActions}>
+                      <Text variant="caption" color={colors.textMuted}>
+                        Confirmed
+                      </Text>
+                      <Button
+                        title="Undo"
+                        variant="secondary"
+                        onPress={() => void handleUndo(action)}
+                        loading={undoingId === action.id}
+                        style={styles.pendingBtn}
+                      />
+                    </View>
+                  ) : status ? (
                     <Text variant="caption" color={colors.textMuted}>
-                      {status === 'confirmed' ? 'Confirmed' : 'Cancelled'}
+                      {status === 'undone' ? 'Undone' : 'Cancelled'}
                     </Text>
                   ) : (
                     <View style={styles.pendingActions}>
@@ -517,7 +552,11 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
             {voice.state === 'transcribing' ? (
               <ActivityIndicator color="#FFF" size="small" />
             ) : (
-              <Ionicons name="mic" size={22} color={isRecording ? '#FFF' : colors.iris} />
+              <Ionicons
+                name={recordMode === 'locked' ? 'stop' : 'mic'}
+                size={22}
+                color={isRecording ? '#FFF' : colors.iris}
+              />
             )}
           </AnimatedPressable>
           <Input

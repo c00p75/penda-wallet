@@ -9,6 +9,7 @@ import {
   SheetClose,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmojiPicker, type EmojiGroup } from '@/components/EmojiPicker'
@@ -89,6 +90,7 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
   const [name, setName] = useState('')
   const [icon, setIcon] = useState<string | null>(null)
   const [color, setColor] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -150,16 +152,9 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
             </div>
           </div>
 
-          {category && onDelete && (
-            <p className="text-xs text-muted-foreground">
-              Deleting this category also removes any budgets and auto-categorize rules set for
-              it. Transactions using it become Uncategorized instead of being deleted.
-            </p>
-          )}
-
           <SheetFooter className="flex-row gap-2 px-0">
             {category && onDelete && (
-              <Button type="button" variant="destructive" onClick={onDelete} className="flex-1">
+              <Button type="button" variant="destructive" onClick={() => setConfirmOpen(true)} className="flex-1">
                 Delete
               </Button>
             )}
@@ -174,6 +169,21 @@ export function CategoryForm({ open, onOpenChange, category, onSubmit, onDelete,
           </SheetFooter>
         </form>
       </SheetContent>
+
+      {onDelete && (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={`Delete "${category?.name}"?`}
+          description="This also removes any budgets and auto-categorize rules set for it. Transactions using it become Uncategorized instead of being deleted."
+          confirmLabel="Delete"
+          isPending={isSubmitting}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            void onDelete()
+          }}
+        />
+      )}
     </Sheet>
   )
 }

@@ -159,7 +159,7 @@ export function buildReinsertRow(
 
 export type UndoActionLike = {
   status: string
-  kind: 'update' | 'delete'
+  kind: 'update' | 'delete' | 'reconcile'
   domain: string
   patch: Record<string, unknown> | null
 }
@@ -167,6 +167,14 @@ export type UndoActionLike = {
 /** Whether a resolved AI action can be undone from the AI actions page. */
 export function canUndoAiAction(action: UndoActionLike): boolean {
   if (action.status !== 'confirmed' && action.status !== 'auto_applied') return false
+
+  // Reconcile (set_balance) isn't a generic CRUD domain: its undo is "soft-delete
+  // the adjustment transaction it created", not "restore previous column values",
+  // so it skips the isUndoDomain/DOMAIN_TABLES check below entirely.
+  if (action.kind === 'reconcile') {
+    return action.patch?.__hasAdjustment === true
+  }
+
   if (!isUndoDomain(action.domain)) return false
   const cfg = DOMAIN_TABLES[action.domain]
   const before = action.patch?.__before

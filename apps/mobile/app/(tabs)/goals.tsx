@@ -9,7 +9,13 @@ import { ProgressBar } from '@/src/components/ProgressBar';
 import { colors, spacing } from '@/src/lib/theme';
 import { formatMoney, toMinorUnits } from '@/src/lib/money';
 import { localDateStr } from '@/src/lib/dates';
-import { addContribution, deleteSavingsGoal, fetchSavingsGoals } from '@/src/api/goals';
+import {
+  addContribution,
+  archiveSavingsGoal,
+  fetchArchivedSavingsGoals,
+  fetchSavingsGoals,
+  unarchiveSavingsGoal,
+} from '@/src/api/goals';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 
 export default function GoalsScreen() {
@@ -22,6 +28,12 @@ export default function GoalsScreen() {
   const { data: goals = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['goals', wallet?.id],
     queryFn: () => fetchSavingsGoals(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const { data: archivedGoals = [] } = useQuery({
+    queryKey: ['goals-archived', wallet?.id],
+    queryFn: () => fetchArchivedSavingsGoals(wallet!.id),
     enabled: !!wallet?.id,
   });
 
@@ -38,34 +50,33 @@ export default function GoalsScreen() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteSavingsGoal(id),
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => archiveSavingsGoal(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['goals', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['goals-archived', wallet?.id] });
       setContributingId(null);
     },
     onError: (err) => {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete goal');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not archive goal');
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (id: string) => unarchiveSavingsGoal(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['goals', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['goals-archived', wallet?.id] });
+    },
+    onError: (err) => {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not restore goal');
     },
   });
 
   function openGoalMenu(goalId: string, name: string) {
     Alert.alert(name, undefined, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('Delete goal?', `Remove "${name}" and its contributions?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: () => deleteMutation.mutate(goalId),
-            },
-          ]);
-        },
-      },
+      { text: 'Archive', onPress: () => archiveMutation.mutate(goalId) },
     ]);
   }
 
@@ -182,6 +193,36 @@ export default function GoalsScreen() {
             </Card>
           );
         })
+      )}
+
+      {archivedGoals.length > 0 && (
+        <>
+          <Text variant="label" color={colors.textMuted}>
+            Archived
+          </Text>
+          {archivedGoals.map((goal) => (
+            <Card key={goal.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleBlock}>
+                  <Text variant="h3">
+                    {goal.icon ? `${goal.icon} ` : ''}
+                    {goal.name}
+                  </Text>
+                </View>
+              </View>
+              <Text variant="body" color={colors.textSecondary}>
+                {formatMoney(goal.current_amount_minor, currency)} of{' '}
+                {formatMoney(goal.target_amount_minor, currency)}
+              </Text>
+              <Button
+                title="Restore"
+                variant="secondary"
+                onPress={() => unarchiveMutation.mutate(goal.id)}
+                loading={unarchiveMutation.isPending}
+              />
+            </Card>
+          ))}
+        </>
       )}
     </ScrollView>
   );

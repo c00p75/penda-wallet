@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sheet'
 import { ArrowUpRightIcon } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,7 +34,7 @@ interface GoalFormProps {
   currency: string
   goal?: SavingsGoal | null
   onSubmit: (input: SavingsGoalInput, initialAmountMinor: number) => Promise<void>
-  onDelete?: () => Promise<void>
+  onArchive?: () => Promise<void>
   isSubmitting?: boolean
   /** Leave chat and go to the list/hub page (label e.g. "View goals"). */
   onOpenInApp?: () => void
@@ -47,7 +48,7 @@ export function GoalForm({
   currency,
   goal,
   onSubmit,
-  onDelete,
+  onArchive,
   isSubmitting,
   onOpenInApp,
   openInAppLabel = 'View goals',
@@ -60,6 +61,7 @@ export function GoalForm({
   const [motivation, setMotivation] = useState('')
   const [imagePath, setImagePath] = useState<string | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const uploadImage = useUploadGoalImage(walletId)
 
@@ -259,9 +261,9 @@ export function GoalForm({
           <p className="text-xs text-muted-foreground">Amounts are in {currency}.</p>
 
           <SheetFooter className="flex-row gap-2 px-0">
-            {goal && onDelete && (
-              <Button type="button" variant="destructive" onClick={onDelete} className="flex-1">
-                Delete
+            {goal && onArchive && (
+              <Button type="button" variant="destructive" onClick={() => setConfirmOpen(true)} className="flex-1">
+                Archive
               </Button>
             )}
             <SheetClose asChild>
@@ -287,6 +289,21 @@ export function GoalForm({
           )}
         </form>
       </SheetContent>
+
+      {onArchive && (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={`Archive "${goal?.name}"?`}
+          description="This hides it from your goals list. Its contribution history is kept, and you can restore it later."
+          confirmLabel="Archive"
+          isPending={isSubmitting}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            void onArchive()
+          }}
+        />
+      )}
     </Sheet>
   )
 }

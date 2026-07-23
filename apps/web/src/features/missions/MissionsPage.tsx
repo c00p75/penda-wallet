@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Check, X } from 'lucide-react'
+import { Check, MoreVertical, X } from 'lucide-react'
 import { Path, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { HeroCard } from '@/components/ui/hero-card'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SectionHeader } from '@/components/ui/section-header'
 import { BottomNav } from '@/components/BottomNav'
 import { PageHeader } from '@/components/PageHeader'
@@ -12,9 +14,18 @@ import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { cn } from '@/lib/utils'
-import { useCreateMission, useGenerateMissions, useMissions, useUpdateMissionStatus } from './hooks'
+import {
+  useArchivedMissions,
+  useArchiveMission,
+  useCreateMission,
+  useGenerateMissions,
+  useMissions,
+  useUnarchiveMission,
+  useUpdateMissionStatus,
+} from './hooks'
+import { MissionForm } from './MissionForm'
 import { suggestMissions, type SuggestedMission } from './suggestMissions'
-import type { MissionStatus } from './types'
+import type { FinancialMissionInput, MissionStatus } from './types'
 
 const STATUS_CYCLE: MissionStatus[] = ['active', 'kept', 'broken', 'dismissed']
 
@@ -25,15 +36,56 @@ const STATUS_STYLE: Record<MissionStatus, { label: string; color: string }> = {
   dismissed: { label: 'Dismissed', color: 'var(--muted-foreground)' },
 }
 
+function MissionOverflowMenu({
+  disabled,
+  onArchive,
+}: {
+  disabled?: boolean
+  onArchive: () => void | Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Mission options"
+          className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          <MoreVertical className="size-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 gap-0 p-1.5">
+        <button
+          type="button"
+          className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-muted"
+          onClick={() => {
+            setOpen(false)
+            void onArchive()
+          }}
+        >
+          Archive mission
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function MissionsPage() {
   const session = useAuthStore((s) => s.session)
   const userId = session?.user.id
   const { data: wallet } = useCurrentWallet()
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: missions = [] } = useMissions(wallet?.id)
+  const { data: archivedMissions = [] } = useArchivedMissions(wallet?.id)
   const createMission = useCreateMission(wallet?.id, userId)
   const updateStatus = useUpdateMissionStatus(wallet?.id)
+  const archiveMission = useArchiveMission(wallet?.id)
+  const unarchiveMission = useUnarchiveMission(wallet?.id)
   const generateMissions = useGenerateMissions(wallet?.id)
+  const [formOpen, setFormOpen] = useState(false)
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
@@ -81,6 +133,33 @@ export function MissionsPage() {
     }
   }
 
+  async function handleCreate(input: FinancialMissionInput) {
+    try {
+      await createMission.mutateAsync(input)
+      toast(`Mission added: ${input.title}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleArchive(id: string, title: string) {
+    try {
+      await archiveMission.mutateAsync(id)
+      toast(`Archived "${title}".`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleUnarchive(id: string, title: string) {
+    try {
+      await unarchiveMission.mutateAsync(id)
+      toast(`Restored "${title}".`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
   const active = missions.filter((m) => m.status === 'active')
 
   return (
@@ -105,18 +184,23 @@ export function MissionsPage() {
           : 'Missions are short, concrete challenges, five no-spend days, cook at home this week. Want one?'}
       </AiInsight>
 
-      <Button
-        onClick={handleSuggest}
-        disabled={createMission.isPending || generateMissions.isPending}
-        className="gap-1.5 rounded-full"
-      >
-        <Sparkle className="size-4" weight="fill" />
-        {generateMissions.isPending ? 'Thinking of one…' : 'Suggest a mission'}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleSuggest}
+          disabled={createMission.isPending || generateMissions.isPending}
+          className="flex-1 gap-1.5 rounded-full"
+        >
+          <Sparkle className="size-4" weight="fill" />
+          {generateMissions.isPending ? 'Thinking of one…' : 'Suggest a mission'}
+        </Button>
+        <Button variant="outline" className="rounded-full" onClick={() => setFormOpen(true)}>
+          New mission
+        </Button>
+      </div>
 
       {missions.length === 0 ? (
         <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          No missions yet. Tap suggest and I'll pick one from your spending.
+          No missions yet. Tap suggest and I'll pick one from your spending, or add your own.
         </p>
       ) : (
         <section>
@@ -129,14 +213,11 @@ export function MissionsPage() {
                   key={m.id}
                   className="flex flex-col gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{m.title}</p>
-                      {m.description && <p className="mt-0.5 text-sm text-muted-foreground">{m.description}</p>}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {m.start_date} → {m.end_date}
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+                      <Path className="size-4" weight="duotone" />
+                    </span>
+                    <p className="min-w-0 flex-1 truncate font-semibold">{m.title}</p>
                     <button
                       type="button"
                       onClick={() => cycleStatus(m.id, m.status)}
@@ -148,22 +229,34 @@ export function MissionsPage() {
                     >
                       {style.label}
                     </button>
+                    {(m.status === 'kept' || m.status === 'broken') && (
+                      <MissionOverflowMenu
+                        disabled={archiveMission.isPending}
+                        onArchive={() => handleArchive(m.id, m.title)}
+                      />
+                    )}
                   </div>
+                  {m.description && <p className="text-sm text-muted-foreground">{m.description}</p>}
+                  <p className="text-xs text-muted-foreground">
+                    {m.start_date} → {m.end_date}
+                  </p>
                   {m.status === 'active' && (
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
                       <Button
-                        size="sm"
+                        type="button"
                         variant="outline"
-                        className="flex-1 gap-1 rounded-full"
+                        size="sm"
                         onClick={() => updateStatus.mutate({ id: m.id, status: 'kept' })}
+                        style={{ color: 'var(--mint)' }}
                       >
                         <Check className="size-3.5" /> Kept
                       </Button>
                       <Button
-                        size="sm"
+                        type="button"
                         variant="outline"
-                        className="flex-1 gap-1 rounded-full"
+                        size="sm"
                         onClick={() => updateStatus.mutate({ id: m.id, status: 'broken' })}
+                        style={{ color: 'var(--rose)' }}
                       >
                         <X className="size-3.5" /> Broken
                       </Button>
@@ -175,6 +268,55 @@ export function MissionsPage() {
           </ul>
         </section>
       )}
+
+      {archivedMissions.length > 0 && (
+        <section>
+          <SectionHeader title="Archived" />
+          <ul className="flex flex-col gap-2.5">
+            {archivedMissions.map((m) => {
+              const style = STATUS_STYLE[m.status]
+              return (
+                <li
+                  key={m.id}
+                  className="flex items-center gap-2 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--iris-soft)] text-[var(--iris)]">
+                    <Path className="size-4" weight="duotone" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{m.title}</p>
+                    <p
+                      className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        background: `color-mix(in srgb, ${style.color} 16%, transparent)`,
+                        color: style.color,
+                      }}
+                    >
+                      {style.label}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 rounded-full"
+                    disabled={unarchiveMission.isPending}
+                    onClick={() => handleUnarchive(m.id, m.title)}
+                  >
+                    Restore
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
+      <MissionForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        onSubmit={handleCreate}
+        isSubmitting={createMission.isPending}
+      />
 
       <BottomNav />
     </main>

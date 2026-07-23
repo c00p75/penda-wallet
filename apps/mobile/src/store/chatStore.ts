@@ -11,7 +11,7 @@ interface ChatState {
   messages: ChatMessage[];
   conversationId: string | undefined;
   streamingId: string | null;
-  actionStatus: Record<string, 'confirmed' | 'cancelled'>;
+  actionStatus: Record<string, 'confirmed' | 'cancelled' | 'undone'>;
   openChat: (prefill?: string, opts?: { autoSend?: boolean; startRecording?: boolean }) => void;
   closeChat: () => void;
   setMessages: (messages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
@@ -28,7 +28,7 @@ interface ChatState {
       autoApplied?: boolean;
     },
   ) => void;
-  setActionStatus: (actionId: string, status: 'confirmed' | 'cancelled') => void;
+  setActionStatus: (actionId: string, status: 'confirmed' | 'cancelled' | 'undone') => void;
   clearConversation: () => void;
   consumeAutoSend: () => void;
   consumeStartRecording: () => void;

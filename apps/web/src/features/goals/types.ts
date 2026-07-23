@@ -9,6 +9,7 @@ export interface SavingsGoal {
   target_date: string | null
   motivation: string | null
   assigned_member_id: string | null
+  archived_at: string | null
   created_at: string
   updated_at: string
 }

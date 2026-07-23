@@ -9,12 +9,14 @@ import { colors, radius, spacing } from '@/src/lib/theme';
 import { formatMoney } from '@/src/lib/money';
 import { localDateStr } from '@/src/lib/dates';
 import {
+  archiveChallenge,
   createChallenge,
-  deleteChallenge,
+  fetchArchivedChallenges,
   fetchChallenges,
   fetchLeaderboard,
   joinChallenge,
   leaveChallenge,
+  unarchiveChallenge,
 } from '@/src/api/challenges';
 import { useAuthStore } from '@/src/store/authStore';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
@@ -70,6 +72,11 @@ export default function ChallengesScreen() {
     queryFn: fetchChallenges,
   });
 
+  const { data: archivedChallenges = [] } = useQuery({
+    queryKey: ['challenges-archived'],
+    queryFn: fetchArchivedChallenges,
+  });
+
   const createMut = useMutation({
     mutationFn: () => {
       const today = localDateStr();
@@ -109,14 +116,33 @@ export default function ChallengesScreen() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   });
 
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteChallenge(id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['challenges'] }),
+  const archiveMut = useMutation({
+    mutationFn: (id: string) => archiveChallenge(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['challenges'] });
+      void queryClient.invalidateQueries({ queryKey: ['challenges-archived'] });
+    },
   });
+
+  const unarchiveMut = useMutation({
+    mutationFn: (id: string) => unarchiveChallenge(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['challenges'] });
+      void queryClient.invalidateQueries({ queryKey: ['challenges-archived'] });
+    },
+  });
+
+  function confirmArchive(id: string, name: string) {
+    Alert.alert(`Archive "${name}"?`, 'This hides it from the challenge list. The leaderboard and history are kept, and you can restore it later.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Archive', onPress: () => archiveMut.mutate(id) },
+    ]);
+  }
 
   if (isLoading) return <LoadingView />;
 
   const active = challenges.filter((c) => !hasEnded(c));
+  const myArchivedChallenges = archivedChallenges.filter((c) => c.creator_id === session?.user.id);
 
   return (
     <Screen scroll>
@@ -127,6 +153,10 @@ export default function ChallengesScreen() {
         <Text variant="h2">Challenges</Text>
         <View style={styles.spacer} />
       </View>
+
+      <Text variant="body" color={colors.textSecondary} style={styles.subtitle}>
+        Compete with friends on savings goals
+      </Text>
 
       <View style={styles.actions}>
         <Button title="Create" onPress={() => setShowCreate(true)} style={styles.actionBtn} />
@@ -183,13 +213,41 @@ export default function ChallengesScreen() {
                 <View style={styles.challengeActions}>
                   <Button title="Leave" variant="secondary" onPress={() => leaveMut.mutate(c.id)} />
                   {c.creator_id === session?.user.id ? (
-                    <Button title="Delete" variant="danger" onPress={() => deleteMut.mutate(c.id)} />
+                    <Button title="Archive" variant="danger" onPress={() => confirmArchive(c.id, c.name)} />
                   ) : null}
                 </View>
               </View>
             ) : null}
           </Card>
         ))
+      )}
+
+      {myArchivedChallenges.length > 0 && (
+        <>
+          <Text variant="label" color={colors.textMuted} style={styles.archivedHeader}>
+            Archived
+          </Text>
+          {myArchivedChallenges.map((c) => (
+            <Card key={c.id} style={styles.challenge}>
+              <View style={styles.challengeHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyMedium">{c.name}</Text>
+                  <Text variant="caption" color={colors.textMuted}>
+                    Code: {c.invite_code}
+                  </Text>
+                </View>
+                <Badge label={c.type.replace(/_/g, ' ')} tone="muted" />
+              </View>
+              <Button
+                title="Restore"
+                variant="secondary"
+                onPress={() => unarchiveMut.mutate(c.id)}
+                loading={unarchiveMut.isPending}
+                style={{ marginTop: spacing.sm }}
+              />
+            </Card>
+          ))}
+        </>
       )}
     </Screen>
   );
@@ -201,9 +259,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   spacer: { width: 22 },
+  subtitle: { marginBottom: spacing.lg },
+  archivedHeader: { marginTop: spacing.md, marginBottom: spacing.sm },
   actions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   actionBtn: { flex: 1 },
   form: { gap: spacing.md, marginBottom: spacing.lg },

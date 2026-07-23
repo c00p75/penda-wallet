@@ -100,6 +100,7 @@ export interface SavingsGoal {
   target_date: string | null;
   motivation: string | null;
   assigned_member_id: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -226,6 +227,7 @@ export interface FinancialMission {
   start_date: string;
   end_date: string;
   status: MissionStatus;
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -255,6 +257,7 @@ export interface Challenge {
   end_date: string;
   invite_code: string;
   wallet_id: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -313,7 +316,7 @@ export interface PlanShare {
 }
 
 export type AiPendingActionStatus = 'pending' | 'confirmed' | 'cancelled' | 'auto_applied';
-export type AiPendingActionKind = 'update' | 'delete';
+export type AiPendingActionKind = 'update' | 'delete' | 'reconcile';
 
 export interface AiPendingAction {
   id: string;
@@ -382,7 +385,7 @@ export interface ChatMessage {
 
 export interface PendingAction {
   id: string;
-  kind: 'update' | 'delete';
+  kind: 'update' | 'delete' | 'reconcile';
   domain: string;
   summary: string;
   targetId?: string;
@@ -397,7 +400,7 @@ export interface ChatAction {
   status: 'running' | 'done' | 'error' | 'pending' | 'confirmed' | 'cancelled';
   targetId?: string;
   viewHref?: string;
-  pendingKind?: 'update' | 'delete';
+  pendingKind?: 'update' | 'delete' | 'reconcile';
   details?: Record<string, string>;
 }
 
@@ -416,5 +419,5 @@ export interface ConfirmActionResponse {
   domain: string;
   summary: string;
   targetId?: string;
-  kind?: 'update' | 'delete';
+  kind?: 'update' | 'delete' | 'reconcile';
 }

@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
 
     const { data: action, error: loadError } = await supabase
       .from('ai_pending_actions')
-      .select('id, kind, domain, target_id, patch, summary, status')
+      .select('id, kind, domain, target_id, wallet_id, user_id, patch, summary, status')
       .eq('id', body.actionId)
       .maybeSingle()
 
@@ -94,8 +94,10 @@ Deno.serve(async (req) => {
       })
     }
 
+    let targetId = pending.target_id
     try {
-      await executePendingAction(supabase, pending)
+      const execResult = await executePendingAction(supabase, pending)
+      if (execResult?.targetId) targetId = execResult.targetId
     } catch (error) {
       await supabase
         .from('ai_pending_actions')
@@ -112,7 +114,7 @@ Deno.serve(async (req) => {
       status: 'confirmed',
       domain: pending.domain,
       summary: pending.summary,
-      targetId: pending.target_id,
+      targetId,
       kind: pending.kind,
     })
   } catch (error) {

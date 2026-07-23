@@ -21,12 +21,27 @@ import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
-import { useAddContribution, useContributions, useCreateSavingsGoal, useSavingsGoals } from './hooks'
+import {
+  useAddContribution,
+  useArchivedSavingsGoals,
+  useContributions,
+  useCreateSavingsGoal,
+  useSavingsGoals,
+  useUnarchiveSavingsGoal,
+} from './hooks'
 import { GoalForm } from './GoalForm'
 import { ContributionForm } from './ContributionForm'
 import { GoalProgressCard } from './GoalProgressCard'
 import type { SavingsGoal, SavingsGoalInput } from './types'
-import { useAddPayment, useCreateDebt, useDebts, useDeleteDebt, useUpdateDebt } from '@/features/debts/hooks'
+import {
+  useAddPayment,
+  useArchiveDebt,
+  useArchivedDebts,
+  useCreateDebt,
+  useDebts,
+  useUnarchiveDebt,
+  useUpdateDebt,
+} from '@/features/debts/hooks'
 import { DebtForm } from '@/features/debts/DebtForm'
 import { PaymentForm } from '@/features/debts/PaymentForm'
 import { DebtProgressCard } from '@/features/debts/DebtProgressCard'
@@ -76,12 +91,16 @@ export function GoalsPage() {
   const tabParam = searchParams.get('tab')
 
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
+  const { data: archivedGoals = [] } = useArchivedSavingsGoals(wallet?.id)
   const createGoal = useCreateSavingsGoal(wallet?.id)
+  const unarchiveGoal = useUnarchiveSavingsGoal(wallet?.id)
 
   const { data: debts = [] } = useDebts(wallet?.id)
+  const { data: archivedDebts = [] } = useArchivedDebts(wallet?.id)
   const createDebt = useCreateDebt(wallet?.id)
   const updateDebt = useUpdateDebt(wallet?.id)
-  const deleteDebt = useDeleteDebt(wallet?.id)
+  const archiveDebt = useArchiveDebt(wallet?.id)
+  const unarchiveDebt = useUnarchiveDebt(wallet?.id)
 
   const [tab, setTab] = useState<'goals' | 'debts'>(() =>
     tabParam === 'debts' || deepLinkDebtId ? 'debts' : 'goals',
@@ -134,6 +153,15 @@ export function GoalsPage() {
     }
   }
 
+  async function handleGoalRestore(id: string, name: string) {
+    try {
+      await unarchiveGoal.mutateAsync(id)
+      toast(`Restored "${name}".`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
   async function handleContribution(amountMinor: number, date: string) {
     try {
       await addContribution.mutateAsync({ amountMinor, date })
@@ -157,12 +185,21 @@ export function GoalsPage() {
     }
   }
 
-  async function handleDebtDelete() {
+  async function handleDebtArchive() {
     if (!editingDebt) return
     try {
-      await deleteDebt.mutateAsync(editingDebt.id)
-      toast('Debt deleted.')
+      await archiveDebt.mutateAsync(editingDebt.id)
+      toast('Debt archived.')
       setDebtFormOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleDebtRestore(id: string, name: string) {
+    try {
+      await unarchiveDebt.mutateAsync(id)
+      toast(`Restored "${name}".`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -406,6 +443,38 @@ export function GoalsPage() {
               />
             ))}
           </section>
+
+          {archivedGoals.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <SectionHeader title="Archived" />
+              {archivedGoals.map((goal) => (
+                <div
+                  key={goal.id}
+                  className="flex items-center gap-3 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">
+                      {goal.icon ? `${goal.icon} ` : ''}
+                      {goal.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatMoney(goal.current_amount_minor, wallet.base_currency)} of{' '}
+                      {formatMoney(goal.target_amount_minor, wallet.base_currency)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 rounded-full"
+                    disabled={unarchiveGoal.isPending}
+                    onClick={() => handleGoalRestore(goal.id, goal.name)}
+                  >
+                    Restore
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
         </>
       )}
 
@@ -517,6 +586,35 @@ export function GoalsPage() {
               />
             ))}
           </section>
+
+          {archivedDebts.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <SectionHeader title="Archived" />
+              {archivedDebts.map((debt) => (
+                <div
+                  key={debt.id}
+                  className="flex items-center gap-3 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{debt.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {debt.direction === 'i_owe' ? 'You owed' : 'Owed to you'}
+                      {debt.counterparty ? ` · ${debt.counterparty}` : ''}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 rounded-full"
+                    disabled={unarchiveDebt.isPending}
+                    onClick={() => handleDebtRestore(debt.id, debt.name)}
+                  >
+                    Restore
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
         </>
       )}
 
@@ -562,7 +660,7 @@ export function GoalsPage() {
         currency={wallet.base_currency}
         debt={editingDebt}
         onSubmit={handleDebtSubmit}
-        onDelete={editingDebt ? handleDebtDelete : undefined}
+        onArchive={editingDebt ? handleDebtArchive : undefined}
         isSubmitting={createDebt.isPending || updateDebt.isPending}
       />
 

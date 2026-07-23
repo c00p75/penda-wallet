@@ -10,6 +10,7 @@ export interface Debt {
   balance_minor: number
   interest_rate: number | null
   due_date: string | null
+  archived_at: string | null
   created_at: string
   updated_at: string
 }

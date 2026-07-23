@@ -1,9 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createReconciliation, fetchLatestReconciliation } from './api'
-import type { ReconciliationStatus } from './types'
+import { useQuery } from '@tanstack/react-query'
+import { fetchLatestReconciliation, fetchReconciliations } from './api'
 
 function reconciliationKey(walletId: string | undefined, userId: string | undefined) {
   return ['balance-reconciliation', walletId, userId] as const
+}
+
+function reconciliationsListKey(walletId: string | undefined, userId: string | undefined) {
+  return ['balance-reconciliations', walletId, userId] as const
 }
 
 export function useLatestReconciliation(walletId: string | undefined, userId: string | undefined) {
@@ -14,11 +17,10 @@ export function useLatestReconciliation(walletId: string | undefined, userId: st
   })
 }
 
-export function useCreateReconciliation(walletId: string | undefined, userId: string | undefined) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { computedBalanceMinor: number; actualBalanceMinor: number; status: ReconciliationStatus }) =>
-      createReconciliation({ walletId: walletId!, userId: userId!, ...input }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: reconciliationKey(walletId, userId) }),
+export function useReconciliations(walletId: string | undefined, userId: string | undefined) {
+  return useQuery({
+    queryKey: reconciliationsListKey(walletId, userId),
+    queryFn: () => fetchReconciliations(walletId!, userId!),
+    enabled: !!walletId && !!userId,
   })
 }

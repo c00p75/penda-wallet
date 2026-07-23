@@ -17,7 +17,7 @@ import { PactCard } from '@/features/pacts/PactCard'
 import { PactForm } from '@/features/pacts/PactForm'
 import type { CommitmentPactInput } from '@/features/pacts/types'
 import { useChatStore } from '@/features/chat/chatStore'
-import { useAddContribution, useContributions, useSavingsGoals, useUpdateSavingsGoal, useDeleteSavingsGoal } from './hooks'
+import { useAddContribution, useArchiveSavingsGoal, useContributions, useSavingsGoals, useUpdateSavingsGoal } from './hooks'
 import { getGoalImageUrl } from './api'
 import { GoalForm } from './GoalForm'
 import { ContributionForm } from './ContributionForm'
@@ -45,7 +45,7 @@ export function GoalDetailPage() {
   const { data: pacts = [] } = usePacts(wallet?.id)
 
   const updateGoal = useUpdateSavingsGoal(wallet?.id)
-  const deleteGoal = useDeleteSavingsGoal(wallet?.id)
+  const archiveGoal = useArchiveSavingsGoal(wallet?.id)
   const addContribution = useAddContribution(wallet?.id, goal?.id)
   const createPact = useCreatePact(wallet?.id)
   const deletePact = useDeletePact(wallet?.id)
@@ -83,10 +83,10 @@ export function GoalDetailPage() {
     }
   }
 
-  async function handleGoalDelete() {
+  async function handleGoalArchive() {
     try {
-      await deleteGoal.mutateAsync(goal!.id)
-      toast('Goal deleted.')
+      await archiveGoal.mutateAsync(goal!.id)
+      toast('Goal archived.')
       navigate('/goals', { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -300,7 +300,7 @@ export function GoalDetailPage() {
         currency={currency}
         goal={goal}
         onSubmit={handleGoalSubmit}
-        onDelete={handleGoalDelete}
+        onArchive={handleGoalArchive}
         isSubmitting={updateGoal.isPending}
       />
 

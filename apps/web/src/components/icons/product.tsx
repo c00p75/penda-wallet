@@ -45,6 +45,7 @@ import {
   SignOut,
   Sparkle,
   SquaresFour,
+  Stop,
   Sun,
   Target,
   Ticket,
@@ -191,4 +192,5 @@ export {
   Robot,
   ArrowDownLeft,
   ArrowUpRight,
+  Stop,
 }

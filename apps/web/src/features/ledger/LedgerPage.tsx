@@ -343,18 +343,6 @@ export function LedgerPage() {
     latestReconciliation !== undefined &&
     shouldPromptReconciliation(latestReconciliation, new Date())
 
-  async function handleReconcileAdjust(deltaMinor: number) {
-    await createTransaction.mutateAsync({
-      category_id: null,
-      amount_minor: Math.abs(deltaMinor),
-      currency,
-      type: deltaMinor > 0 ? 'income' : 'expense',
-      merchant: null,
-      description: 'Balance reconciliation adjustment',
-      transaction_date: localDateStr(),
-    })
-  }
-
   const coachingInsights = detectCoachingInsights({ transactions, budgets, goals, currency }).filter(
     (insight) => !dismissedInsightIds.has(insight.id),
   )
@@ -489,7 +477,6 @@ export function LedgerPage() {
           currency={currency}
           computedBalanceMinor={balanceMinor}
           onResolved={() => {}}
-          onAdjust={handleReconcileAdjust}
         />
       )}
 

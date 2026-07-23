@@ -120,8 +120,14 @@ export function HeroDetailSheet({
   onNavigate: (href: string) => void
 }) {
   const open = !!detail
-  useCloseOnBack(open, () => onOpenChange(false))
+  const { prepareNavigateAway } = useCloseOnBack(open, () => onOpenChange(false))
   const drag = useBottomSheetDrag(() => onOpenChange(false))
+
+  function navigateTo(href: string) {
+    prepareNavigateAway()
+    onOpenChange(false)
+    onNavigate(href)
+  }
 
   if (!detail) return null
 
@@ -246,24 +252,11 @@ export function HeroDetailSheet({
 
         <div className="border-t border-border/50 px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           <div className="flex flex-col gap-2">
-            <Button
-              type="button"
-              onClick={() => {
-                onOpenChange(false)
-                onNavigate(primaryHref)
-              }}
-            >
+            <Button type="button" onClick={() => navigateTo(primaryHref)}>
               {copy.primary}
             </Button>
             {detail.kind === 'goal' && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  onOpenChange(false)
-                  onNavigate('/goals')
-                }}
-              >
+              <Button type="button" variant="outline" onClick={() => navigateTo('/goals')}>
                 All goals
               </Button>
             )}
@@ -271,12 +264,14 @@ export function HeroDetailSheet({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  onOpenChange(false)
-                  onNavigate(detail.kind === 'safe-to-spend' ? '/transactions' : '/budgets')
-                }}
+                onClick={() => navigateTo(detail.kind === 'safe-to-spend' ? '/transactions' : '/budgets')}
               >
                 {detail.kind === 'safe-to-spend' ? 'View activity' : 'Open budgets'}
+              </Button>
+            )}
+            {detail.kind === 'balance' && (
+              <Button type="button" variant="ghost" onClick={() => navigateTo('/balance')}>
+                Edit balance
               </Button>
             )}
           </div>

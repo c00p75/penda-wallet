@@ -4,7 +4,7 @@ import { Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatMoney, fromMinorUnits, toMinorUnits } from '@/lib/money'
-import { useCreateReconciliation } from './hooks'
+import { useSetBalance } from './useSetBalance'
 
 interface ReconcilePromptProps {
   walletId: string
@@ -15,8 +15,6 @@ interface ReconcilePromptProps {
   suggestedActualMinor?: number | null
   /** Called after the user resolves the prompt (confirmed or adjusted), dismiss the card. */
   onResolved: () => void
-  /** Create a balancing transaction for the difference when the user reports a different actual balance. */
-  onAdjust: (deltaMinor: number) => Promise<void>
 }
 
 /**
@@ -32,7 +30,6 @@ export function ReconcilePrompt({
   computedBalanceMinor,
   suggestedActualMinor = null,
   onResolved,
-  onAdjust,
 }: ReconcilePromptProps) {
   const [fixing, setFixing] = useState(
     () => suggestedActualMinor != null && suggestedActualMinor !== computedBalanceMinor,
@@ -40,14 +37,14 @@ export function ReconcilePrompt({
   const [actual, setActual] = useState(() =>
     suggestedActualMinor != null ? fromMinorUnits(suggestedActualMinor).toString() : '',
   )
-  const createReconciliation = useCreateReconciliation(walletId, userId)
+  const setBalance = useSetBalance(walletId, userId)
 
   async function confirmMatch() {
     try {
-      await createReconciliation.mutateAsync({
+      await setBalance.mutateAsync({
         computedBalanceMinor,
         actualBalanceMinor: computedBalanceMinor,
-        status: 'confirmed',
+        currency,
       })
       onResolved()
     } catch (error) {
@@ -58,13 +55,7 @@ export function ReconcilePrompt({
   async function submitFix() {
     const actualMinor = toMinorUnits(Number(actual) || 0)
     try {
-      const delta = actualMinor - computedBalanceMinor
-      if (delta !== 0) await onAdjust(delta)
-      await createReconciliation.mutateAsync({
-        computedBalanceMinor,
-        actualBalanceMinor: actualMinor,
-        status: 'adjusted',
-      })
+      await setBalance.mutateAsync({ computedBalanceMinor, actualBalanceMinor: actualMinor, currency })
       toast('Balance reconciled.')
       onResolved()
     } catch (error) {
@@ -85,7 +76,7 @@ export function ReconcilePrompt({
             onChange={(e) => setActual(e.target.value)}
             placeholder={fromMinorUnits(computedBalanceMinor).toString()}
           />
-          <Button onClick={submitFix} disabled={createReconciliation.isPending}>
+          <Button onClick={submitFix} disabled={setBalance.isPending}>
             Save
           </Button>
         </div>
@@ -107,7 +98,7 @@ export function ReconcilePrompt({
           <X className="size-3.5" />
           Fix
         </Button>
-        <Button size="sm" onClick={confirmMatch} disabled={createReconciliation.isPending} className="gap-1 active:scale-95">
+        <Button size="sm" onClick={confirmMatch} disabled={setBalance.isPending} className="gap-1 active:scale-95">
           <Check className="size-3.5" />
           Yes
         </Button>

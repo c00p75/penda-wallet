@@ -116,6 +116,7 @@ export function toolUi(tool: string): ToolUiMeta {
 export function viewHrefFor(domain: string, targetId?: string): string | undefined {
   switch (domain) {
     case 'transaction':
+    case 'reconciliation':
       return targetId
         ? `/transactions?tx=${encodeURIComponent(targetId)}`
         : '/transactions'
@@ -142,6 +143,7 @@ export function viewHrefFor(domain: string, targetId?: string): string | undefin
 export function listHrefFor(domain: string): string | undefined {
   switch (domain) {
     case 'transaction':
+    case 'reconciliation':
       return '/transactions'
     case 'budget':
       return '/budgets'
@@ -163,6 +165,7 @@ export function listHrefFor(domain: string): string | undefined {
 export function listLabelFor(domain: string): string | undefined {
   switch (domain) {
     case 'transaction':
+    case 'reconciliation':
       return 'View transactions'
     case 'budget':
       return 'View budgets'
@@ -198,9 +201,21 @@ export function withViewHrefs(actions: ChatAction[]): ChatAction[] {
 export function finalizeLiveActions(steps: ChatAction[]): ChatAction[] {
   return withViewHrefs(
     steps
-      .filter((s) => s.tool !== 'update_record' && s.tool !== 'delete_record')
+      .filter((s) => s.tool !== 'update_record' && s.tool !== 'delete_record' && s.tool !== 'set_balance')
       .map((s) => (s.status === 'running' ? { ...s, status: 'done' as const } : s)),
   )
+}
+
+export function pendingTool(kind: PendingAction['kind']): string {
+  if (kind === 'delete') return 'delete_record'
+  if (kind === 'reconcile') return 'set_balance'
+  return 'update_record'
+}
+
+function pendingLabel(kind: PendingAction['kind']): string {
+  if (kind === 'delete') return 'Proposed deletion'
+  if (kind === 'reconcile') return 'Confirm balance'
+  return 'Proposed update'
 }
 
 /** Map staged pending actions into trail rows so confirms live in one composition. */
@@ -212,9 +227,9 @@ export function pendingToTrailActions(
     const resolved = statusMap[p.id]
     return {
       id: p.id,
-      tool: p.kind === 'delete' ? 'delete_record' : 'update_record',
+      tool: pendingTool(p.kind),
       domain: p.domain,
-      label: p.kind === 'delete' ? 'Proposed deletion' : 'Proposed update',
+      label: pendingLabel(p.kind),
       summary: p.summary,
       status: resolved ?? 'pending',
       pendingKind: p.kind,
@@ -223,7 +238,12 @@ export function pendingToTrailActions(
         resolved === 'confirmed'
           ? p.kind === 'delete'
             ? listHrefFor(p.domain)
-            : viewHrefFor(p.domain, p.targetId)
+            : p.kind === 'reconcile'
+              ? // targetId here is still the stage-time wallet-id placeholder, not
+                // the adjustment transaction confirm creates; the fresh "Done"
+                // message built from the confirm response carries the real link.
+                undefined
+              : viewHrefFor(p.domain, p.targetId)
           : undefined,
     }
   })

@@ -18,6 +18,23 @@ export async function fetchLatestReconciliation(
   return data
 }
 
+export async function fetchReconciliations(
+  walletId: string,
+  userId: string,
+  limit = 50,
+): Promise<BalanceReconciliation[]> {
+  const { data, error } = await supabase
+    .from('balance_reconciliations')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data
+}
+
 export async function createReconciliation(input: {
   walletId: string
   userId: string

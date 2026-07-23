@@ -21,11 +21,13 @@ import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import {
+  useArchivedChallenges,
+  useArchiveChallenge,
   useChallenges,
   useCreateChallenge,
-  useDeleteChallenge,
   useJoinChallenge,
   useLeaveChallenge,
+  useUnarchiveChallenge,
 } from './hooks'
 import { ChallengeForm } from './ChallengeForm'
 import { ChallengeDetailSheet } from './ChallengeDetailSheet'
@@ -48,10 +50,12 @@ export function ChallengesContent() {
   const { data: wallet } = useCurrentWallet()
 
   const { data: challenges = [] } = useChallenges()
+  const { data: archivedChallenges = [] } = useArchivedChallenges()
   const createChallenge = useCreateChallenge()
   const joinChallenge = useJoinChallenge()
   const leaveChallenge = useLeaveChallenge()
-  const deleteChallenge = useDeleteChallenge()
+  const archiveChallenge = useArchiveChallenge()
+  const unarchiveChallenge = useUnarchiveChallenge()
 
   const [formOpen, setFormOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
@@ -64,6 +68,7 @@ export function ChallengesContent() {
   const userId = session.user.id
   const active = challenges.filter((c) => !hasEnded(c))
   const ended = challenges.filter((c) => hasEnded(c))
+  const myArchivedChallenges = archivedChallenges.filter((c) => c.creator_id === userId)
 
   async function handleCreate(input: ChallengeInput) {
     try {
@@ -97,11 +102,20 @@ export function ChallengesContent() {
     }
   }
 
-  async function handleDelete(challenge: Challenge) {
+  async function handleArchive(challenge: Challenge) {
     try {
-      await deleteChallenge.mutateAsync(challenge.id)
-      toast(`Deleted "${challenge.name}".`)
+      await archiveChallenge.mutateAsync(challenge.id)
+      toast(`Archived "${challenge.name}".`)
       setSelected(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
+  async function handleRestore(challenge: Challenge) {
+    try {
+      await unarchiveChallenge.mutateAsync(challenge.id)
+      toast(`Restored "${challenge.name}".`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
@@ -202,6 +216,36 @@ export function ChallengesContent() {
         </div>
       )}
 
+      {myArchivedChallenges.length > 0 && (
+        <section>
+          <SectionHeader title="Archived" />
+          <div className="flex flex-col gap-2.5">
+            {myArchivedChallenges.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 rounded-[1.35rem] bg-card p-4 shadow-[var(--shadow-soft)] ring-1 ring-border/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{c.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {TYPE_LABELS[c.type]} · {formatTarget(c)}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 rounded-full"
+                  disabled={unarchiveChallenge.isPending}
+                  onClick={() => handleRestore(c)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <Button
         onClick={(e) => {
           captureOverlayOrigin(e.currentTarget)
@@ -256,7 +300,7 @@ export function ChallengesContent() {
         onOpenChange={(open) => !open && setSelected(null)}
         currentUserId={userId}
         onLeave={handleLeave}
-        onDelete={handleDelete}
+        onArchive={handleArchive}
       />
     </>
   )

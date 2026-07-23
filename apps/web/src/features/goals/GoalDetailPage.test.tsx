@@ -17,7 +17,7 @@ vi.mock('./hooks', () => ({
   useContributions: () => ({ data: [] }),
   useAddContribution: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useArchiveSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('./api', () => ({ getGoalImageUrl: () => undefined }))
 vi.mock('@/lib/supabase/client', () => ({ supabase: {} }))

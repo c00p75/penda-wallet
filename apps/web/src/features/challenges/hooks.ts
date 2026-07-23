@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  archiveChallenge,
   createChallenge,
-  deleteChallenge,
+  fetchArchivedChallenges,
   fetchChallenges,
   fetchLeaderboard,
   joinChallenge,
   leaveChallenge,
+  unarchiveChallenge,
 } from './api'
 import type { ChallengeInput } from './types'
 
 const challengesKey = ['challenges'] as const
+const archivedChallengesKey = ['challenges-archived'] as const
 
 function leaderboardKey(challengeId: string | undefined) {
   return ['challenge-leaderboard', challengeId] as const
@@ -17,6 +20,10 @@ function leaderboardKey(challengeId: string | undefined) {
 
 export function useChallenges() {
   return useQuery({ queryKey: challengesKey, queryFn: fetchChallenges })
+}
+
+export function useArchivedChallenges() {
+  return useQuery({ queryKey: archivedChallengesKey, queryFn: fetchArchivedChallenges })
 }
 
 export function useLeaderboard(challengeId: string | undefined) {
@@ -52,10 +59,24 @@ export function useLeaveChallenge() {
   })
 }
 
-export function useDeleteChallenge() {
+export function useArchiveChallenge() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (challengeId: string) => deleteChallenge(challengeId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: challengesKey }),
+    mutationFn: (challengeId: string) => archiveChallenge(challengeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: challengesKey })
+      queryClient.invalidateQueries({ queryKey: archivedChallengesKey })
+    },
+  })
+}
+
+export function useUnarchiveChallenge() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (challengeId: string) => unarchiveChallenge(challengeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: challengesKey })
+      queryClient.invalidateQueries({ queryKey: archivedChallengesKey })
+    },
   })
 }

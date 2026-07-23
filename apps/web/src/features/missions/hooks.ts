@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  archiveMission,
   createMission,
-  deleteMission,
+  fetchArchivedMissions,
   fetchMissions,
   generateMissionSuggestions,
+  unarchiveMission,
   updateMissionStatus,
 } from './api'
 import type { FinancialMissionInput, MissionStatus } from './types'
@@ -12,10 +14,22 @@ function missionsKey(walletId: string | undefined) {
   return ['financial-missions', walletId] as const
 }
 
+function archivedMissionsKey(walletId: string | undefined) {
+  return ['financial-missions-archived', walletId] as const
+}
+
 export function useMissions(walletId: string | undefined) {
   return useQuery({
     queryKey: missionsKey(walletId),
     queryFn: () => fetchMissions(walletId!),
+    enabled: !!walletId,
+  })
+}
+
+export function useArchivedMissions(walletId: string | undefined) {
+  return useQuery({
+    queryKey: archivedMissionsKey(walletId),
+    queryFn: () => fetchArchivedMissions(walletId!),
     enabled: !!walletId,
   })
 }
@@ -42,10 +56,24 @@ export function useGenerateMissions(walletId: string | undefined) {
   })
 }
 
-export function useDeleteMission(walletId: string | undefined) {
+export function useArchiveMission(walletId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteMission(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: missionsKey(walletId) }),
+    mutationFn: (id: string) => archiveMission(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: missionsKey(walletId) })
+      queryClient.invalidateQueries({ queryKey: archivedMissionsKey(walletId) })
+    },
+  })
+}
+
+export function useUnarchiveMission(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unarchiveMission(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: missionsKey(walletId) })
+      queryClient.invalidateQueries({ queryKey: archivedMissionsKey(walletId) })
+    },
   })
 }

@@ -17,6 +17,7 @@ export interface Challenge {
   invite_code: string
   /** Wallet that scopes leaderboard scoring; null on legacy challenges. */
   wallet_id: string | null
+  archived_at: string | null
   created_at: string
   updated_at: string
 }

@@ -4,6 +4,7 @@ import {
   listHrefFor,
   listLabelFor,
   mergeTrailActions,
+  pendingTool,
   pendingToTrailActions,
   viewHrefFor,
   withViewHrefs,
@@ -14,6 +15,8 @@ describe('viewHrefFor', () => {
   it.each([
     ['transaction', undefined, '/transactions'],
     ['transaction', 'tx1', '/transactions?tx=tx1'],
+    ['reconciliation', undefined, '/transactions'],
+    ['reconciliation', 'tx1', '/transactions?tx=tx1'],
     ['budget', undefined, '/budgets'],
     ['budget', 'b1', '/budgets?budget=b1'],
     ['goal', 'g1', '/goals/g1'],
@@ -32,6 +35,7 @@ describe('viewHrefFor', () => {
 describe('listHrefFor / listLabelFor', () => {
   it.each([
     ['transaction', '/transactions', 'View transactions'],
+    ['reconciliation', '/transactions', 'View transactions'],
     ['budget', '/budgets', 'View budgets'],
     ['goal', '/goals', 'View goals'],
     ['debt', '/goals?tab=debts', 'View debts'],
@@ -83,6 +87,23 @@ describe('pendingToTrailActions / mergeTrailActions', () => {
     })
   })
 
+  it('maps a reconcile (set_balance) pending action to the set_balance tool', () => {
+    expect(pendingTool('reconcile')).toBe('set_balance')
+    const rows = pendingToTrailActions(
+      [{ id: 'p3', kind: 'reconcile', domain: 'reconciliation', summary: 'Set balance to K10,000', targetId: 'w1' }],
+      { p3: 'confirmed' },
+    )
+    expect(rows[0]).toMatchObject({
+      id: 'p3',
+      tool: 'set_balance',
+      label: 'Confirm balance',
+      pendingKind: 'reconcile',
+    })
+    // targetId is still the stage-time wallet-id placeholder here, not the
+    // adjustment transaction confirm creates, so no viewHref is derived from it.
+    expect(rows[0]?.viewHref).toBeUndefined()
+  })
+
   it('appends pending rows after completed tool steps', () => {
     const completed: ChatAction[] = [
       {
@@ -124,6 +145,14 @@ describe('finalizeLiveActions', () => {
         tool: 'update_record',
         domain: 'goal',
         label: 'Update',
+        summary: 'x',
+        status: 'running',
+      },
+      {
+        id: '3',
+        tool: 'set_balance',
+        domain: 'reconciliation',
+        label: 'Set balance',
         summary: 'x',
         status: 'running',
       },

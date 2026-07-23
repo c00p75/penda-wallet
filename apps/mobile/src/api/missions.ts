@@ -27,6 +27,7 @@ export async function fetchMissions(walletId: string): Promise<FinancialMission[
     .from('financial_missions')
     .select('*')
     .eq('wallet_id', walletId)
+    .is('archived_at', null)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -68,9 +69,32 @@ export async function updateMissionStatus(id: string, status: MissionStatus): Pr
   return data as FinancialMission;
 }
 
-export async function deleteMission(id: string): Promise<void> {
-  const { error } = await supabase.from('financial_missions').delete().eq('id', id);
+export async function archiveMission(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('financial_missions')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id);
   if (error) throw error;
+}
+
+export async function unarchiveMission(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('financial_missions')
+    .update({ archived_at: null })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchArchivedMissions(walletId: string): Promise<FinancialMission[]> {
+  const { data, error } = await supabase
+    .from('financial_missions')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throw error;
+  return data as FinancialMission[];
 }
 
 /**
