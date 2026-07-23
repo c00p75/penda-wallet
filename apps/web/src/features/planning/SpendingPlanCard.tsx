@@ -326,7 +326,9 @@ export function SpendingPlanCard({
             type="number"
             inputMode="decimal"
             min="0"
-            autoFocus
+            // Focus only when the user deliberately taps Edit, not on the initial
+            // "set a limit" card, so opening Plan doesn't pop the keyboard.
+            autoFocus={isEdit}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             onFocus={(e) => e.currentTarget.select()}

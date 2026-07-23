@@ -22,15 +22,15 @@ type Tab = {
   match?: string[]
 } & ({ icon: PhosphorTabIcon; glyph?: 'phosphor' } | { icon: LucideTabIcon; glyph: 'lucide' })
 
-// Home · Plan · Ask · Insights · Goals. Ask stays the raised center; Compete /
+// Home · Plan · Ask · Goals · Insights. Ask stays the raised center; Compete /
 // suite hubs live in the menu so chrome stays companion-first.
 const LEFT: Tab[] = [
   { to: '/', label: 'Home', icon: WalletIcon },
   { to: '/budgets', label: 'Plan', icon: PiggyBankIcon, match: ['/budgets', '/cashflow'] },
 ]
 const RIGHT: Tab[] = [
-  { to: '/analytics', label: 'Insights', icon: ChartColumn, glyph: 'lucide' },
   { to: '/goals', label: 'Goals', icon: TargetIcon, match: ['/goals'] },
+  { to: '/analytics', label: 'Insights', icon: ChartColumn, glyph: 'lucide' },
 ]
 
 export function BottomNav() {

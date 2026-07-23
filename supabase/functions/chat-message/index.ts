@@ -1077,6 +1077,13 @@ happened and record all of it:
 - If money was only promised and hasn't moved yet, record just the debt with create_debt.
 Never record only one half of a two-sided event.
 
+Repaying or settling a debt is its own action ("I paid K200 toward the Jumo loan", "settle the
+loan", "I cleared my debt with Amara", "mark it paid off"): find the debt id with query_records,
+then call log_debt_payment. Pass the amount paid, or omit amount to settle the full balance. This
+is the ONLY correct way to pay down or clear a debt, it drops the balance and fills the card's
+progress bar. Never settle a debt by editing its principal to 0 with update_record, and never
+delete the debt to mark it paid: both leave the card wrong and lose the repayment history.
+
 If you are genuinely unsure how to record something, the type is ambiguous, you can't tell whether
 it's a debt, or no category fits, ask ONE short clarifying question instead of guessing or doing
 nothing. A quick question beats a wrong entry or silence. (A merely uncertain amount is the
@@ -1213,6 +1220,34 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           },
         },
         required: ['direction', 'amount', 'name'],
+      },
+    },
+    {
+      name: 'log_debt_payment',
+      description:
+        'Record a repayment against an existing debt/loan: money the user paid toward what they owe, ' +
+        'or a repayment they received on money owed to them. This is what "I paid 200 toward the Jumo ' +
+        'loan", "settle the loan", "I cleared my debt with Amara", or "mark it paid off" mean. It logs ' +
+        'a payment so the debt balance drops and the card\'s progress bar fills, exactly like tapping ' +
+        '"Log a payment" on the debt. Find the debt id first with query_records. To settle a debt in ' +
+        'full, omit amount and the entire outstanding balance is paid. Runs immediately. This is the ' +
+        'ONLY correct way to pay down or settle a debt: never edit the principal with update_record ' +
+        'and never delete the debt to mark it paid.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The debt id from query_records.' },
+          amount: {
+            type: 'number',
+            description:
+              'Payment amount as a decimal, e.g. 200. Omit to settle the full outstanding balance.',
+          },
+          paid_date: {
+            type: 'string',
+            description: 'ISO date YYYY-MM-DD the payment was made. Defaults to today.',
+          },
+        },
+        required: ['id'],
       },
     },
     {
@@ -1370,6 +1405,7 @@ const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
   create_transaction: { domain: 'transaction', label: 'Logged transaction' },
   create_debt: { domain: 'debt', label: 'Recorded debt' },
   log_borrowed_or_lent_money: { domain: 'debt', label: 'Recorded loan' },
+  log_debt_payment: { domain: 'debt', label: 'Logged payment' },
   create_budget: { domain: 'budget', label: 'Created budget' },
   create_goal: { domain: 'goal', label: 'Created goal' },
   create_category: { domain: 'category', label: 'Created category' },
@@ -1451,6 +1487,14 @@ function buildCompletedAction(
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
       const tx = ctx.createdTransaction
       if (tx && typeof tx.id === 'string') targetId = tx.id
+      break
+    }
+    case 'log_debt_payment': {
+      label = 'Logged payment'
+      // summary already carries the handler's human sentence (amount + what's left).
+      const amount = Number(args.amount)
+      if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
+      targetId = ctx.createdIds.debt
       break
     }
     case 'create_budget': {
@@ -1587,6 +1631,11 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
     case 'log_borrowed_or_lent_money': {
       const result = await handleLogBorrowOrLend(ctx, args)
       ctx.createdTransaction = result.transaction
+      if (result.debtId) ctx.createdIds.debt = result.debtId
+      return result.summary
+    }
+    case 'log_debt_payment': {
+      const result = await handleLogDebtPayment(ctx, args)
       if (result.debtId) ctx.createdIds.debt = result.debtId
       return result.summary
     }
@@ -1762,6 +1811,63 @@ async function handleCreateDebt(
   }
 
   return { summary: `Saved debt: ${JSON.stringify(data)}`, id: data.id as string }
+}
+
+// Repaying / settling a debt. Mirrors the "Log a payment" button: insert a
+// debt_payments row and let the sync_debt_balance trigger drop balance_minor
+// (which is what fills the card's progress bar). Never touches principal or
+// deletes the debt, so history stays intact and the card reads correctly.
+async function handleLogDebtPayment(
+  ctx: ToolContext,
+  args: Record<string, unknown>,
+): Promise<{ summary: string; debtId?: string }> {
+  const id = typeof args.id === 'string' ? args.id : ''
+  if (!id) return { summary: 'I need the debt id, look it up first with query_records.' }
+
+  const { data: debt, error: loadError } = await ctx.supabase
+    .from('debts')
+    .select('id, name, balance_minor, wallet_id, archived_at')
+    .eq('id', id)
+    .maybeSingle()
+  if (loadError) return { summary: `Failed to load that debt: ${loadError.message}` }
+  if (!debt || debt.wallet_id !== ctx.walletId) {
+    return { summary: `I can't find that debt, look it up again with query_records.` }
+  }
+  if (debt.archived_at) {
+    return { summary: `The debt "${debt.name}" is archived, so there is nothing to pay.` }
+  }
+
+  const outstanding = Number(debt.balance_minor) || 0
+  if (outstanding <= 0) {
+    return { summary: `The debt "${debt.name}" is already fully settled.`, debtId: debt.id as string }
+  }
+
+  let amountMinor: number
+  if (args.amount === undefined || args.amount === null || args.amount === '') {
+    amountMinor = outstanding // no amount given → settle in full
+  } else {
+    const amount = Number(args.amount)
+    if (!isFinite(amount) || amount <= 0) {
+      return { summary: 'Amount must be a positive number.' }
+    }
+    // Never let the AI overpay past the balance (would push it negative).
+    amountMinor = Math.min(Math.round(amount * 100), outstanding)
+  }
+
+  const paidDate =
+    typeof args.paid_date === 'string' && args.paid_date ? args.paid_date : today()
+
+  const { error: insertError } = await ctx.supabase
+    .from('debt_payments')
+    .insert({ debt_id: debt.id, amount_minor: amountMinor, paid_date: paidDate })
+  if (insertError) return { summary: `Failed to log payment: ${insertError.message}` }
+
+  const remaining = outstanding - amountMinor
+  const summary =
+    remaining <= 0
+      ? `Paid ${fmt(amountMinor, ctx.symbol)} toward "${debt.name}", now fully settled.`
+      : `Paid ${fmt(amountMinor, ctx.symbol)} toward "${debt.name}", ${fmt(remaining, ctx.symbol)} left.`
+  return { summary, debtId: debt.id as string }
 }
 
 // Atomic multi-tool chain (roadmap bet #4): borrowing/lending needs a wallet

@@ -126,6 +126,18 @@ const GOLDENS: Golden[] = [
     },
   },
   {
+    id: 'debt-settle-full',
+    utterance: 'Settle the Jumo loan',
+    tool: 'log_debt_payment',
+    args: { id: 'debt-jumo' },
+  },
+  {
+    id: 'debt-partial-payment',
+    utterance: 'I paid K200 toward the loan from Amara',
+    tool: 'log_debt_payment',
+    args: { id: 'debt-amara', amount: 200 },
+  },
+  {
     id: 'budget-food',
     utterance: 'Set a monthly food budget of K800 with rollover',
     tool: 'create_budget',
@@ -297,6 +309,7 @@ describe('utterance → tool → args goldens', () => {
       'create_transaction',
       'create_debt',
       'log_borrowed_or_lent_money',
+      'log_debt_payment',
       'create_budget',
       'create_goal',
       'create_category',

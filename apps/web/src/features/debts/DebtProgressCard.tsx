@@ -1,4 +1,6 @@
+import { Plus } from 'lucide-react'
 import { ArrowDownLeft, ArrowUpRight } from '@/components/icons/product'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
@@ -21,9 +23,11 @@ function formatDate(dateStr: string) {
 }
 
 export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: DebtProgressCardProps) {
-  const paidOff = debt.principal_minor > 0 ? 1 - Math.max(debt.balance_minor, 0) / debt.principal_minor : 0
-  const paidPct = Math.round(Math.min(Math.max(paidOff, 0), 1) * 100)
   const isSettled = debt.balance_minor <= 0
+  const paidOff = debt.principal_minor > 0 ? 1 - Math.max(debt.balance_minor, 0) / debt.principal_minor : 0
+  // A settled debt reads as 100% paid even if its principal was never recorded
+  // (or got edited to 0), so the bar shows "cleared" instead of sitting empty.
+  const paidPct = isSettled ? 100 : Math.round(Math.min(Math.max(paidOff, 0), 1) * 100)
   const iOwe = debt.direction === 'i_owe'
   const DirectionIcon = iOwe ? ArrowUpRight : ArrowDownLeft
   const accent = isSettled ? 'mint' : iOwe ? 'rose' : 'mint'
@@ -85,13 +89,16 @@ export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: Deb
       </button>
 
       {!isSettled && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onLogPayment}
-          className="self-start rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/15"
+          className="w-full gap-1.5 font-semibold"
         >
+          <Plus className="size-4" />
           Log a payment
-        </button>
+        </Button>
       )}
     </div>
   )

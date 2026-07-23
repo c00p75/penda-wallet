@@ -6,7 +6,6 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
-import { AiMark } from '@/components/AiInsight'
 import { Microphone } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { cardAccentClass } from '@/components/ui/cardAccent'
@@ -29,7 +28,6 @@ import { buildExploreNudgeCard } from '@/features/coaching/exploreNudge'
 import { useFeatureVisits } from '@/features/coaching/featureVisits/hooks'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
-import { loadNeedsYou } from '@/features/chat/pendingNeedsYou'
 import {
   useConfirmReceiptItems,
   useCreateTransaction,
@@ -187,7 +185,6 @@ export function HomePage() {
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
-  const [needsYouTick, setNeedsYouTick] = useState(0)
   const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
   const [heroDetail, setHeroDetail] = useState<HeroDetail | null>(null)
   const [gettingStarted, setGettingStarted] = useState<GettingStartedState | null>(null)
@@ -197,12 +194,6 @@ export function HomePage() {
 
   useWalletRealtime(wallet?.id)
   const offlineQueue = useOfflinePending()
-
-  // Re-read pending confirms when chat closes so Home "needs you" stays fresh.
-  const chatOpen = useChatStore((s) => s.open)
-  useEffect(() => {
-    if (!chatOpen) setNeedsYouTick((n) => n + 1)
-  }, [chatOpen])
 
   useEffect(() => {
     if (!wallet?.id) {
@@ -575,10 +566,6 @@ export function HomePage() {
     openChat(followUp, { autoSend: true, mode: 'full' })
   }
 
-  const needsYou = loadNeedsYou(wallet.id)
-  // Touch needsYouTick so the list refreshes after chat closes.
-  void needsYouTick
-
   const auraLabel = dayZero
     ? 'Getting started'
     : balanceMinor > monthSpending
@@ -790,35 +777,6 @@ export function HomePage() {
             }
             onStep={handleGettingStartedStep}
           />
-        )}
-
-        {/* Pending confirms. ActionTrail continuity */}
-        {!dayZero && needsYou.length > 0 && (
-          <section>
-            <SectionHeader title="Penda needs you" />
-            <div className="flex flex-col gap-2">
-              {needsYou.map((item) => (
-                <button
-                  key={item.action.id}
-                  type="button"
-                  onClick={(e) => {
-                    captureOverlayOrigin(e.currentTarget)
-                    openChat('', { mode: 'full' })
-                  }}
-                  className={cn(
-                    'flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
-                    cardAccentClass('rose'),
-                  )}
-                >
-                  <AiMark className="size-7" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.preview}</p>
-                    <p className="text-xs text-muted-foreground">Tap to confirm or cancel</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
         )}
 
         {/* Primary number, demoted carousel. Day zero: balance only. */}

@@ -47,6 +47,12 @@ export const TOOL_UI: Record<string, ToolUiMeta> = {
     icon: Bank,
     progress: 'Recording the loan…',
   },
+  log_debt_payment: {
+    domain: 'debt',
+    label: 'Logged payment',
+    icon: Bank,
+    progress: 'Logging the payment…',
+  },
   create_budget: {
     domain: 'budget',
     label: 'Created budget',

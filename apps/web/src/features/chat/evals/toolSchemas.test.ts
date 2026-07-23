@@ -13,8 +13,8 @@ const CATS = ['Food', 'Transport', 'Income', 'Transfer']
 
 describe('tool catalog', () => {
   it('lists every chat-message tool once', () => {
-    expect(TOOL_NAMES).toHaveLength(13)
-    expect(new Set(TOOL_NAMES).size).toBe(13)
+    expect(TOOL_NAMES).toHaveLength(14)
+    expect(new Set(TOOL_NAMES).size).toBe(14)
   })
 
   it('only stages update/delete/set_balance', () => {
@@ -48,6 +48,8 @@ describe('validateToolArgs happy paths', () => {
       'log_borrowed_or_lent_money',
       { direction: 'owed_to_me', amount: 50, name: 'Lent to Tich', transaction_date: '2026-07-14' },
     ],
+    ['log_debt_payment', { id: 'debt-jumo' }],
+    ['log_debt_payment', { id: 'debt-amara', amount: 200, paid_date: '2026-07-23' }],
     ['create_budget', { amount: 300, period: 'monthly', category: 'Food', rollover: true }],
     ['create_goal', { name: 'Laptop', target_amount: 8000, current_amount: 500 }],
     ['create_category', { name: 'Side hustle', icon: '💼' }],
@@ -77,6 +79,8 @@ describe('validateToolArgs reject corpus', () => {
     ['set_balance', { amount: -5 }, 'amount'],
     ['create_debt', { name: '', direction: 'i_owe', amount: 10 }, 'name'],
     ['create_debt', { name: 'X', direction: 'they_owe', amount: 10 }, 'direction'],
+    ['log_debt_payment', { amount: 200 }, 'id'],
+    ['log_debt_payment', { id: 'd1', amount: 0 }, 'amount'],
     ['create_budget', { amount: 10, period: 'yearly' }, 'period'],
     ['create_goal', { name: 'X', target_amount: 0 }, 'target_amount'],
     ['query_records', { domain: 'wallet' }, 'domain'],
@@ -135,6 +139,9 @@ describe('inferPreferredTool utterance goldens', () => {
     ['Create an IOU for Tich K50', 'create_debt'],
     ['I borrowed K300 from Mum and got the cash', 'log_borrowed_or_lent_money'],
     ['I lent K80 to Chanda, sent via MoMo', 'log_borrowed_or_lent_money'],
+    ['Settle the Jumo loan', 'log_debt_payment'],
+    ['I paid K200 toward the loan from Amara', 'log_debt_payment'],
+    ['Mark the debt with Chanda as paid off', 'log_debt_payment'],
     ['Set a monthly food budget of K800', 'create_budget'],
     ['Cap my transport at K200 a week', 'create_budget'],
     ['Create a savings goal for a laptop', 'create_goal'],

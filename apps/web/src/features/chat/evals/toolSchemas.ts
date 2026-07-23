@@ -8,6 +8,7 @@ export const TOOL_NAMES = [
   'set_balance',
   'create_debt',
   'log_borrowed_or_lent_money',
+  'log_debt_payment',
   'create_budget',
   'create_goal',
   'create_category',
@@ -119,6 +120,18 @@ export function validateToolArgs(
           return fail('transaction_date', 'must be YYYY-MM-DD')
         }
       }
+      return { ok: true }
+    }
+    case 'log_debt_payment': {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (args.amount != null) {
+        if (typeof args.amount !== 'number' || !Number.isFinite(args.amount) || args.amount <= 0) {
+          return fail('amount', 'must be > 0 when provided')
+        }
+      }
+      const paid = optionalIsoDate(args, 'paid_date')
+      if (paid && !paid.ok) return paid
       return { ok: true }
     }
     case 'create_budget': {
@@ -286,6 +299,19 @@ export function inferPreferredTool(utterance: string): ToolName | null {
   }
   if (/\b(rename|change|update|edit|fix)\b/.test(u) && /\b(transaction|debt|budget|goal|categor|wallet)/.test(u)) {
     return 'update_record'
+  }
+
+  // Repaying / settling an existing debt → log a payment against it (NOT editing
+  // the principal or deleting the debt).
+  const repayVerb =
+    /\b(settle|settled|settling|repay|repaid|repaying)\b/.test(u) ||
+    /\b(pay|paid|paying)\s+\w*\s*off\b/.test(u) ||
+    /\bpaid\b[^.]*\b(toward|towards)\b/.test(u) ||
+    /\b(log|record|make|add)\b[^.]*\bpayment\b/.test(u) ||
+    /\bmark\b[^.]*\b(paid|settled|cleared)\b/.test(u)
+  const mentionsDebt = /\b(loan|debt|iou|owe|owed|owing)\b/.test(u)
+  if (repayVerb && mentionsDebt) {
+    return 'log_debt_payment'
   }
 
   // Cash actually moved for a loan → atomic borrow/lend tool.
