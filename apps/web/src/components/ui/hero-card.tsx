@@ -93,9 +93,9 @@ export function HeroCard({
           </div>
         )}
         {value != null && (
-          <p className="min-w-0 max-w-full break-words text-[clamp(1.05rem,4.6vw,1.875rem)] font-bold leading-[1.1] tracking-tight text-white tabular-nums [text-shadow:0_1px_3px_rgb(0_0_0_/_0.32)]">
+          <div className="min-w-0 max-w-full text-white tabular-nums [text-shadow:0_1px_3px_rgb(0_0_0_/_0.32)]">
             {value}
-          </p>
+          </div>
         )}
         {children}
       </div>

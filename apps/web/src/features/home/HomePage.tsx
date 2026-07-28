@@ -132,7 +132,7 @@ function splitBalance(amountMinor: number, currency: string): { whole: string; d
   return { symbol: leadingSymbol || symbol, whole: whole || '0', decimal }
 }
 
-/** Big whole-number amount with a smaller, muted decimal suffix, for hero card figures. */
+/** Big whole-number amount with a smaller currency code and decimal suffix. */
 function BigAmount({
   parts,
   negative,
@@ -140,15 +140,19 @@ function BigAmount({
   parts: { whole: string; decimal: string; symbol: string }
   negative?: boolean
 }) {
+  // Only the main digits scale down for very long figures; currency/decimals stay smaller.
+  const digitCount = parts.whole.replace(/\D/g, '').length
+  const wholeSize =
+    digitCount >= 8 ? 'text-2xl' : digitCount >= 7 ? 'text-[1.75rem]' : 'text-3xl'
+
   return (
-    <span className="inline-block min-w-0 max-w-full leading-none">
-      {negative ? '−' : ''}
-      <span className="text-[0.72em] font-semibold opacity-80">{parts.symbol}</span>
-      {parts.symbol.endsWith(' ') ? '' : '\u00A0'}
-      {parts.whole}
-      {parts.decimal && (
-        <span className="text-[0.72em] font-semibold opacity-80">{parts.decimal}</span>
-      )}
+    <span className="inline-flex max-w-full flex-wrap items-baseline leading-none">
+      {negative ? <span className={cn(wholeSize, 'font-bold')}>−</span> : null}
+      <span className="mr-1 text-base font-semibold opacity-80">{parts.symbol}</span>
+      <span className={cn(wholeSize, 'font-bold tracking-tight')}>{parts.whole}</span>
+      {parts.decimal ? (
+        <span className="text-base font-semibold opacity-80">{parts.decimal}</span>
+      ) : null}
     </span>
   )
 }
