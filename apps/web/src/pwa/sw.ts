@@ -45,6 +45,8 @@ interface PushPayload {
   title: string
   body: string
   url?: string
+  tag?: string
+  notificationId?: string
 }
 
 self.addEventListener('push', (event) => {
@@ -54,29 +56,61 @@ self.addEventListener('push', (event) => {
   } catch {
     // fall back to default payload above
   }
-  console.log('[sw] push received', payload)
 
+  const targetUrl = payload.url ?? '/notifications'
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: payload.url ?? '/notifications' },
+      tag: payload.tag || payload.notificationId || undefined,
+      renotify: !!payload.tag,
+      data: {
+        url: targetUrl,
+        notificationId: payload.notificationId ?? null,
+      },
     }),
+  )
+})
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of clientsList) {
+        client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' })
+      }
+    })(),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl =
-    (event.notification.data as { url?: string } | undefined)?.url ?? '/notifications'
+  const data = event.notification.data as { url?: string; notificationId?: string | null } | undefined
+  const targetUrl = data?.url ?? '/notifications'
+  const notificationId = data?.notificationId ?? null
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.includes(targetUrl) && 'focus' in client) return client.focus()
+    (async () => {
+      const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of clientsList) {
+        if (notificationId) {
+          client.postMessage({ type: 'NOTIFICATION_OPENED', notificationId, url: targetUrl })
+        }
+        if ('focus' in client) {
+          await client.focus()
+          if ('navigate' in client && typeof (client as WindowClient).navigate === 'function') {
+            try {
+              await (client as WindowClient).navigate(targetUrl)
+              return
+            } catch {
+              // fall through to openWindow
+            }
+          }
+          return
+        }
       }
-      return self.clients.openWindow(targetUrl)
-    }),
+      await self.clients.openWindow(targetUrl)
+    })(),
   )
 })

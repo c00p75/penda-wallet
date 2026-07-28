@@ -1,11 +1,15 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/store/authStore'
 import {
   archiveNotification,
   fetchNotifications,
   fetchUnreadNotificationCount,
   isPushSubscribed,
   markNotificationsRead,
+  recordNotificationOpen,
+  refreshPushSubscription,
   subscribeToPush,
   unsubscribeFromPush,
   upsertCoachingNotification,
@@ -21,6 +25,8 @@ function invalidateNotificationQueries(queryClient: ReturnType<typeof useQueryCl
 }
 
 export function useNotifications() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: listKey,
     queryFn: () => fetchNotifications(false),
@@ -34,15 +40,65 @@ export function useNotifications() {
     return () => window.removeEventListener('focus', onFocus)
   }, [query])
 
+  useEffect(() => {
+    if (!userId) return
+
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          invalidateNotificationQueries(queryClient)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [userId, queryClient])
+
   return query
 }
 
 export function useUnreadNotificationCount() {
-  return useQuery({
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
+  const query = useQuery({
     queryKey: unreadKey,
     queryFn: fetchUnreadNotificationCount,
     refetchInterval: 60_000,
   })
+
+  useEffect(() => {
+    if (!userId) return
+    const channel = supabase
+      .channel(`notifications-unread:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: unreadKey })
+        },
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [userId, queryClient])
+
+  return query
 }
 
 export function useMarkNotificationsRead() {
@@ -50,6 +106,14 @@ export function useMarkNotificationsRead() {
   // Pass specific ids, or [] to mark everything read.
   return useMutation<number, Error, string[]>({
     mutationFn: (ids) => markNotificationsRead(ids.length ? ids : undefined),
+    onSuccess: () => invalidateNotificationQueries(queryClient),
+  })
+}
+
+export function useRecordNotificationOpen() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => recordNotificationOpen(id),
     onSuccess: () => invalidateNotificationQueries(queryClient),
   })
 }
@@ -89,6 +153,17 @@ export function useUnsubscribeFromPush() {
       void queryClient.invalidateQueries({ queryKey: ['profile', userId] })
     },
   })
+}
+
+/** Keep the current device subscription registered after SW updates. */
+export function useRefreshPushSubscription() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+  useEffect(() => {
+    if (!userId) return
+    void refreshPushSubscription(userId).catch(() => {
+      // Best-effort; Settings toggle remains the explicit path.
+    })
+  }, [userId])
 }
 
 export function useUpsertCoachingNotification() {

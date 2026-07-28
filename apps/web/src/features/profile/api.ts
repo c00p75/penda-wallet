@@ -37,6 +37,7 @@ function normalizeProfile(row: Record<string, unknown>): Profile {
     pay_yourself_first_pct: Number(row.pay_yourself_first_pct ?? 0),
     habits_goal_id: (row.habits_goal_id as string | null) ?? null,
     life_event: normalizeLifeEvent(row.life_event),
+    timezone: (row.timezone as string | null) ?? null,
     onboarding_completed_at: (row.onboarding_completed_at as string | null) ?? null,
   }
 }

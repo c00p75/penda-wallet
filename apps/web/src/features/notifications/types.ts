@@ -15,6 +15,8 @@ export interface AppNotification {
   read_at: string | null
   archived_at: string | null
   created_at: string
+  push_sent_at?: string | null
+  opened_at?: string | null
 }
 
 export type NotificationFilter = 'all' | 'unread' | NotificationKind

@@ -104,6 +104,8 @@ export interface Profile {
   notification_opt_in: boolean
   notification_prefs: NotificationPrefs
   companion_prefs: CompanionPrefs
+  /** IANA timezone for quiet hours / local scheduling. */
+  timezone: string | null
   ai_consent: AiConsent
   ai_trust: AiTrust
   blind_budgeting: boolean
@@ -129,6 +131,7 @@ export interface ProfileInput {
   notification_opt_in?: boolean
   notification_prefs?: NotificationPrefs
   companion_prefs?: CompanionPrefs
+  timezone?: string | null
   ai_consent?: AiConsent
   ai_trust?: AiTrust
   blind_budgeting?: boolean

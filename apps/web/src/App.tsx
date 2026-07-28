@@ -5,6 +5,7 @@ import { AmbientChat } from '@/features/chat/AmbientChat'
 import { LockPrompt } from '@/features/lock/UnlockSheet'
 import { useOfflineQueueSync } from '@/pwa/useOfflineQueue'
 import { RouteVisitTracker } from '@/features/coaching/featureVisits/RouteVisitTracker'
+import { PushLifecycle } from '@/features/notifications/PushLifecycle'
 
 // Every other route is code-split, the home dashboard is the only page that
 // should be in the initial bundle, since it's what a fresh app-open needs.
@@ -99,6 +100,7 @@ function App() {
       </Suspense>
       <AmbientChat />
       <LockPrompt />
+      <PushLifecycle />
     </>
   )
 }

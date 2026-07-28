@@ -1,5 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { sendPush } from './push.ts'
+import { deliverPushToUser } from './pushDeliver.ts'
 import {
   isKindEnabled,
   normalizeNotificationPrefs,
@@ -11,6 +11,7 @@ import {
   recentMoodTone,
   shouldQuietNudge,
 } from './companionPrefs.ts'
+import { clockInTimezone } from './timezoneClock.ts'
 
 export type { NotificationKind }
 
@@ -31,8 +32,12 @@ export interface NotifyUserResult {
   inserted: boolean
   notificationId: string | null
   pushed: boolean
-  skippedReason?: 'prefs' | 'dedupe'
+  skippedReason?: 'prefs' | 'dedupe' | 'rate_limit'
 }
+
+/** Soft push cap per user per hour (inbox insert still happens). */
+const PUSH_RATE_MAX = 20
+const PUSH_RATE_WINDOW_MINUTES = 60
 
 /**
  * Insert an in-app notification (unless category pref is off / dedupe hits),
@@ -44,7 +49,7 @@ export async function notifyUser(
 ): Promise<NotifyUserResult> {
   const { data: profile } = await supabase
     .from('profiles')
-    .select('notification_opt_in, notification_prefs, companion_prefs')
+    .select('notification_opt_in, notification_prefs, companion_prefs, timezone')
     .eq('id', input.userId)
     .maybeSingle()
 
@@ -53,8 +58,8 @@ export async function notifyUser(
     return { inserted: false, notificationId: null, pushed: false, skippedReason: 'prefs' }
   }
 
-  // Soft kinds respect quiet mode; alerts always get through.
-  if (input.kind === 'tip' || input.kind === 'insight') {
+  // Soft kinds respect quiet mode; alerts/reminders always get through.
+  if (input.kind === 'tip' || input.kind === 'insight' || input.kind === 'update') {
     const companion = normalizeCompanionPrefs(profile?.companion_prefs)
     const { data: moods } = await supabase
       .from('ai_memories')
@@ -64,11 +69,12 @@ export async function notifyUser(
       .order('created_at', { ascending: false })
       .limit(5)
     const now = new Date()
+    const local = clockInTimezone(profile?.timezone, now)
     if (
       shouldQuietNudge({
         prefs: companion,
-        hour: now.getUTCHours(),
-        dayOfWeek: now.getUTCDay(),
+        hour: local.hour,
+        dayOfWeek: local.dayOfWeek,
         recentMood: recentMoodTone(moods ?? [], now),
       })
     ) {
@@ -127,23 +133,28 @@ export async function notifyUser(
     return { inserted, notificationId, pushed: false }
   }
 
-  const { data: subscriptions } = await supabase
-    .from('push_subscriptions')
-    .select('id, endpoint, keys')
-    .eq('user_id', input.userId)
+  const { data: underCap } = await supabase.rpc('check_rate_limit', {
+    p_user_id: input.userId,
+    p_endpoint: 'web-push',
+    p_max_requests: PUSH_RATE_MAX,
+    p_window_minutes: PUSH_RATE_WINDOW_MINUTES,
+  })
 
-  let pushed = false
-  for (const sub of subscriptions ?? []) {
-    const result = await sendPush(
-      { endpoint: sub.endpoint, keys: sub.keys },
-      { title: input.title, body: input.body, url: href },
-    )
-    if (result.ok) {
-      pushed = true
-    } else if (result.statusCode === 404 || result.statusCode === 410) {
-      await supabase.from('push_subscriptions').delete().eq('id', sub.id)
-    }
+  if (underCap === false) {
+    return { inserted, notificationId, pushed: false, skippedReason: 'rate_limit' }
   }
+
+  const pushed = await deliverPushToUser(supabase, {
+    userId: input.userId,
+    notificationId,
+    payload: {
+      title: input.title,
+      body: input.body,
+      url: href,
+      tag: input.dedupeKey ?? notificationId ?? undefined,
+      notificationId: notificationId ?? undefined,
+    },
+  })
 
   return { inserted, notificationId, pushed }
 }

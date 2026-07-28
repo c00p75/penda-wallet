@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { DEFAULT_NOTIFICATION_PREFS, normalizeNotificationPrefs } from './prefs'
+import { detectBrowserTimezone } from './timezoneClock'
 import type { AppNotification } from './types'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY
@@ -46,6 +47,11 @@ export async function markNotificationsRead(ids?: string[]): Promise<number> {
   return Number(data ?? 0)
 }
 
+export async function recordNotificationOpen(id: string): Promise<void> {
+  const { error } = await supabase.rpc('record_notification_open', { p_id: id })
+  if (error) throw error
+}
+
 export async function archiveNotification(id: string): Promise<void> {
   const { error } = await supabase
     .from('notifications')
@@ -73,10 +79,17 @@ export async function upsertCoachingNotification(input: {
 }
 
 export async function isPushSubscribed(): Promise<boolean> {
-  if (!('serviceWorker' in navigator)) return false
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return false
   const registration = await navigator.serviceWorker.ready
   const subscription = await registration.pushManager.getSubscription()
   return !!subscription
+}
+
+async function syncTimezone(userId: string) {
+  const timezone = detectBrowserTimezone()
+  if (!timezone) return
+  await supabase.from('profiles').update({ timezone }).eq('id', userId)
 }
 
 export async function subscribeToPush(userId: string): Promise<void> {
@@ -104,18 +117,32 @@ export async function subscribeToPush(userId: string): Promise<void> {
 
   const json = subscription.toJSON()
   const { error } = await supabase.from('push_subscriptions').upsert(
-    { user_id: userId, endpoint: json.endpoint!, keys: json.keys },
+    {
+      user_id: userId,
+      endpoint: json.endpoint!,
+      keys: json.keys,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 400) : null,
+      last_seen_at: new Date().toISOString(),
+      failure_count: 0,
+      disabled_at: null,
+    },
     { onConflict: 'endpoint' },
   )
   if (error) throw error
 
   const { error: profileError } = await supabase
     .from('profiles')
-    .update({ notification_opt_in: true })
+    .update({
+      notification_opt_in: true,
+      timezone: detectBrowserTimezone(),
+    })
     .eq('id', userId)
   if (profileError) throw profileError
 }
 
+/**
+ * Unsubscribe this browser only. Master opt-in stays on if other devices remain.
+ */
 export async function unsubscribeFromPush(userId: string): Promise<void> {
   if ('serviceWorker' in navigator) {
     const registration = await navigator.serviceWorker.ready
@@ -127,11 +154,53 @@ export async function unsubscribeFromPush(userId: string): Promise<void> {
     }
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ notification_opt_in: false })
-    .eq('id', userId)
-  if (error) throw error
+  const { count, error: countError } = await supabase
+    .from('push_subscriptions')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('disabled_at', null)
+  if (countError) throw countError
+
+  if ((count ?? 0) === 0) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ notification_opt_in: false })
+      .eq('id', userId)
+    if (error) throw error
+  } else {
+    await syncTimezone(userId)
+  }
+}
+
+/** Re-upsert the current browser subscription after SW rotation. */
+export async function refreshPushSubscription(userId: string): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  if (!VAPID_PUBLIC_KEY) return
+
+  const registration = await navigator.serviceWorker.ready
+  let subscription = await registration.pushManager.getSubscription()
+  if (!subscription) {
+    if (Notification.permission !== 'granted') return
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+    })
+  }
+
+  const json = subscription.toJSON()
+  if (!json.endpoint) return
+
+  await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: userId,
+      endpoint: json.endpoint,
+      keys: json.keys,
+      user_agent: navigator.userAgent.slice(0, 400),
+      last_seen_at: new Date().toISOString(),
+      disabled_at: null,
+    },
+    { onConflict: 'endpoint' },
+  )
 }
 
 export { DEFAULT_NOTIFICATION_PREFS, normalizeNotificationPrefs }

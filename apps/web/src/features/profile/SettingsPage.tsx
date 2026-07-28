@@ -43,9 +43,11 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { useExport } from '@/features/export/useExport'
 import {
+  usePushSubscriptionStatus,
   useSubscribeToPush,
   useUnsubscribeFromPush,
 } from '@/features/notifications/hooks'
+import { detectBrowserTimezone } from '@/features/notifications/timezoneClock'
 import type { NotificationPrefs } from '@/features/notifications/prefs'
 import { useSavingsGoals } from '@/features/goals/hooks'
 import { useProfile, useUpdateProfile } from './hooks'
@@ -119,7 +121,6 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [displayName, setDisplayName] = useState('')
   const [personality, setPersonality] = useState<AiPersonality>('balanced_coach')
   const [mode, setMode] = useState<ProfileMode>('individual')
-  const [notificationOptIn, setNotificationOptIn] = useState(true)
   const [notificationPrefs, setNotificationPrefs] =
     useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS)
   const [aiConsent, setAiConsent] = useState<AiConsent>(DEFAULT_AI_CONSENT)
@@ -134,6 +135,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
   const [lifeEventEnds, setLifeEventEnds] = useState('')
   const [setupLockOpen, setSetupLockOpen] = useState(false)
   const [disableLockOpen, setDisableLockOpen] = useState(false)
+  const { data: devicePushEnabled = false } = usePushSubscriptionStatus()
   const subscribeToPush = useSubscribeToPush()
   const unsubscribeFromPush = useUnsubscribeFromPush()
   const pushBusy = subscribeToPush.isPending || unsubscribeFromPush.isPending
@@ -143,7 +145,6 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     setDisplayName(profile.display_name ?? '')
     setPersonality(resolveAiPersonality(profile.ai_personality))
     setMode(profile.mode)
-    setNotificationOptIn(profile.notification_opt_in)
     setNotificationPrefs(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS)
     setAiConsent(profile.ai_consent ?? DEFAULT_AI_CONSENT)
     setCompanionPrefs(profile.companion_prefs ?? DEFAULT_COMPANION_PREFS)
@@ -190,9 +191,9 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
         display_name: displayName.trim() || null,
         ai_personality: personality,
         mode,
-        notification_opt_in: notificationOptIn,
         notification_prefs: notificationPrefs,
         companion_prefs: companionPrefs,
+        timezone: detectBrowserTimezone(),
         ai_consent: aiConsent,
         ...(trustPatch ? { ai_trust: trustPatch } : {}),
         blind_budgeting: blindBudgeting,
@@ -213,7 +214,6 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
     (displayName !== (profile.display_name ?? '') ||
       personality !== resolveAiPersonality(profile.ai_personality) ||
       mode !== profile.mode ||
-      notificationOptIn !== profile.notification_opt_in ||
       JSON.stringify(notificationPrefs) !==
         JSON.stringify(profile.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS) ||
       JSON.stringify(aiConsent) !== JSON.stringify(profile.ai_consent ?? DEFAULT_AI_CONSENT) ||
@@ -471,16 +471,15 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 <div>
                   <p className="text-sm font-medium">Push on this device</p>
                   <p className="text-xs text-muted-foreground">
-                    Budget alerts, bill and debt reminders, and weekly recaps.
+                    Budget alerts, bill and debt reminders, and weekly recaps. Other devices stay as
+                    they are.
                   </p>
                 </div>
                 <Switch
-                  checked={notificationOptIn}
+                  checked={devicePushEnabled}
                   disabled={pushBusy || !userId}
                   onCheckedChange={async (on) => {
                     if (!userId) return
-                    const previous = notificationOptIn
-                    setNotificationOptIn(on)
                     try {
                       if (on) {
                         await subscribeToPush.mutateAsync(userId)
@@ -490,13 +489,12 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                         toast('Push alerts turned off on this device.')
                       }
                     } catch (error) {
-                      setNotificationOptIn(previous)
                       toast.error(
                         error instanceof Error ? error.message : 'Could not update notifications.',
                       )
                     }
                   }}
-                  aria-label="Push notifications"
+                  aria-label="Push notifications on this device"
                 />
               </div>
               {(
@@ -507,6 +505,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   ['insights', 'Weekly insights'],
                   ['annual_recap', 'Annual year-in-review'],
                   ['alerts', 'Budget alerts'],
+                  ['updates', 'Product updates'],
                 ] as const
               ).map(([key, label]) => (
                 <div key={key} className="flex flex-col gap-1">
@@ -666,6 +665,55 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   />
                 </div>
               ))}
+              {companionPrefs.quiet_enabled && (
+                <div className="grid grid-cols-2 gap-3 rounded-2xl bg-secondary/40 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="quiet-after">Quiet after</Label>
+                    <select
+                      id="quiet-after"
+                      className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm"
+                      value={companionPrefs.quiet_after_hour}
+                      onChange={(e) =>
+                        setCompanionPrefs((p) => ({
+                          ...p,
+                          quiet_after_hour: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {String(h).padStart(2, '0')}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="quiet-before">Quiet until</Label>
+                    <select
+                      id="quiet-before"
+                      className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm"
+                      value={companionPrefs.quiet_before_hour}
+                      onChange={(e) =>
+                        setCompanionPrefs((p) => ({
+                          ...p,
+                          quiet_before_hour: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {String(h).padStart(2, '0')}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">
+                    Uses your local timezone
+                    {profile?.timezone ? ` (${profile.timezone})` : ''}. Soft tips and insights hush
+                    in this window; reminders and budget alerts still come through.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

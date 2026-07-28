@@ -11,6 +11,7 @@ import {
   useArchiveNotification,
   useMarkNotificationsRead,
   useNotifications,
+  useRecordNotificationOpen,
 } from './hooks'
 import { bumpEngagement } from './engagement'
 import { groupNotificationsByDay } from './prefs'
@@ -23,6 +24,7 @@ const FILTERS: { id: NotificationFilter; label: string }[] = [
   { id: 'tip', label: 'Tips' },
   { id: 'insight', label: 'Insights' },
   { id: 'alert', label: 'Alerts' },
+  { id: 'update', label: 'Updates' },
 ]
 
 function matchesFilter(n: AppNotification, filter: NotificationFilter): boolean {
@@ -36,6 +38,7 @@ export function NotificationsPage() {
   const navigate = useNavigate()
   const { data: notifications = [], isLoading } = useNotifications()
   const markRead = useMarkNotificationsRead()
+  const recordOpen = useRecordNotificationOpen()
   const archive = useArchiveNotification()
   const [filter, setFilter] = useState<NotificationFilter>('all')
 
@@ -49,11 +52,15 @@ export function NotificationsPage() {
   if (!session) return <Navigate to="/login" replace />
 
   async function handleOpen(n: AppNotification) {
-    if (!n.read_at) {
-      try {
-        await markRead.mutateAsync([n.id])
-      } catch {
-        // Navigation still proceeds, unread can be cleared later.
+    try {
+      await recordOpen.mutateAsync(n.id)
+    } catch {
+      if (!n.read_at) {
+        try {
+          await markRead.mutateAsync([n.id])
+        } catch {
+          // Navigation still proceeds.
+        }
       }
     }
     if (session?.user.id && (n.kind === 'tip' || n.kind === 'reminder')) {
