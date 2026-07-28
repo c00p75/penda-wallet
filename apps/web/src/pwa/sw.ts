@@ -58,19 +58,18 @@ self.addEventListener('push', (event) => {
   }
 
   const targetUrl = payload.url ?? '/notifications'
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag: payload.tag || payload.notificationId || undefined,
-      renotify: !!payload.tag,
-      data: {
-        url: targetUrl,
-        notificationId: payload.notificationId ?? null,
-      },
-    }),
-  )
+  const notificationOptions: NotificationOptions & { renotify?: boolean } = {
+    body: payload.body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: payload.tag || payload.notificationId || undefined,
+    renotify: !!payload.tag,
+    data: {
+      url: targetUrl,
+      notificationId: payload.notificationId ?? null,
+    },
+  }
+  event.waitUntil(self.registration.showNotification(payload.title, notificationOptions))
 })
 
 self.addEventListener('pushsubscriptionchange', (event) => {
