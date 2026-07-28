@@ -33,8 +33,9 @@ import {
   useUpdateAccount,
 } from '@/features/accounts/hooks'
 import { AccountForm } from '@/features/accounts/AccountForm'
-import { PocketCards } from '@/features/accounts/PocketCards'
 import { PocketDetailSheet } from '@/features/accounts/PocketDetailSheet'
+import { PocketStripActions } from '@/features/accounts/PocketStripActions'
+import { pocketBalanceLabel, pocketHeroTone } from '@/features/accounts/pocketHero'
 import { pocketLabel } from '@/features/accounts/pocketLabel'
 import { TransferForm } from '@/features/accounts/TransferForm'
 import type { Account, AccountInput } from '@/features/accounts/types'
@@ -140,12 +141,14 @@ function BigAmount({
   negative?: boolean
 }) {
   return (
-    <span>
+    <span className="inline-block min-w-0 max-w-full leading-none">
       {negative ? '−' : ''}
-      <span className="text-2xl font-semibold opacity-80">{parts.symbol}</span>
-      {parts.symbol.endsWith(' ') ? '' : ' '}
+      <span className="text-[0.72em] font-semibold opacity-80">{parts.symbol}</span>
+      {parts.symbol.endsWith(' ') ? '' : '\u00A0'}
       {parts.whole}
-      {parts.decimal && <span className="text-2xl font-semibold opacity-80">{parts.decimal}</span>}
+      {parts.decimal && (
+        <span className="text-[0.72em] font-semibold opacity-80">{parts.decimal}</span>
+      )}
     </span>
   )
 }
@@ -866,30 +869,76 @@ export function HomePage() {
           </section>
         )}
 
-        <PocketCards
-          accounts={accounts}
-          transactions={transactions}
-          currency={currency}
-          onAdd={() => {
-            setEditingAccount(null)
-            setAccountFormOpen(true)
-          }}
-          onSelect={(account) => setDetailAccount(account)}
-          onTransfer={() => {
-            setTransferFromId(defaultAccountId(accounts))
-            setTransferOpen(true)
-          }}
-        />
+        <div className="flex flex-col gap-2">
+          <PocketStripActions
+            canTransfer={accounts.length >= 2}
+            onAdd={() => {
+              setEditingAccount(null)
+              setAccountFormOpen(true)
+            }}
+            onTransfer={() => {
+              setTransferFromId(defaultAccountId(accounts))
+              setTransferOpen(true)
+            }}
+          />
 
-        {accounts.length === 1 && accounts[0]?.kind === 'cash' && (
-          <p className="rounded-2xl bg-secondary/50 px-3.5 py-3 text-sm text-muted-foreground">
-            Add Airtel Money, MTN, or a bank wallet so MoMo paste and logs land in the right place.
-          </p>
-        )}
+          {accounts.length === 1 && accounts[0]?.kind === 'cash' && (
+            <p className="text-sm text-muted-foreground">
+              Add Airtel Money, MTN, or a bank pocket so MoMo paste and logs land in the right place.
+            </p>
+          )}
+        </div>
 
-        {/* Primary number, demoted carousel. Day zero: balance only. */}
-        <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-8 -mt-4">
+        {/* Pockets first, then total / plan figures in one carousel. */}
+        <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-2">
           <div className="flex w-max gap-3 px-4 snap-x snap-mandatory pb-[3rem]">
+            {accounts.map((account) => {
+              const pocketMinor = accountBalanceMinor(transactions, account.id)
+              const pocketNegative = pocketMinor < 0
+              const pocketParts = splitBalance(pocketMinor, currency)
+              return (
+                <HeroCard
+                  key={account.id}
+                  tone={pocketHeroTone(account.kind)}
+                  className="snap-start"
+                  onClick={() => setDetailAccount(account)}
+                  label={
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span aria-hidden className="shrink-0">
+                        {account.icon ?? '💳'}
+                      </span>
+                      <span className="truncate">{pocketBalanceLabel(account)}</span>
+                    </span>
+                  }
+                  corner={
+                    <BalanceVisibilityToggle
+                      id={`pocket-${account.id}`}
+                      className="size-5 text-white/85 transition-colors hover:text-white"
+                    />
+                  }
+                  value={
+                    <HiddenAmount id={`pocket-${account.id}`}>
+                      <BigAmount parts={pocketParts} negative={pocketNegative} />
+                    </HiddenAmount>
+                  }
+                />
+              )
+            })}
+
+            {accounts.length === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingAccount(null)
+                  setAccountFormOpen(true)
+                }}
+                className="flex min-h-[9.5rem] w-[min(14.5rem,78vw)] shrink-0 flex-col items-start justify-between rounded-[1.75rem] border border-dashed border-border/70 bg-card p-5 text-left text-sm text-muted-foreground shadow-[var(--shadow-soft)] snap-start"
+              >
+                <span className="font-semibold text-foreground">Add a pocket</span>
+                <span>Cash, Airtel Money, MTN, or bank</span>
+              </button>
+            )}
+
             <HeroCard
               tone="iris"
               className="snap-start"
@@ -998,7 +1047,7 @@ export function HomePage() {
                   <HiddenAmount id={`goal-${topGoal.id}`}>
                     <span>
                       {topGoalPct ?? 0}
-                      <span className="text-lg font-semibold opacity-80">%</span>
+                      <span className="text-[0.72em] font-semibold opacity-80">%</span>
                     </span>
                   </HiddenAmount>
                 }
@@ -1193,10 +1242,10 @@ export function HomePage() {
           try {
             if (editingAccount) {
               await updateAccount.mutateAsync({ id: editingAccount.id, input })
-              toast('Wallet updated.')
+              toast('Pocket updated.')
             } else {
               await createAccount.mutateAsync(input)
-              toast('Wallet added.')
+              toast('Pocket added.')
             }
           } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1208,7 +1257,7 @@ export function HomePage() {
             ? async () => {
                 try {
                   await archiveAccount.mutateAsync(editingAccount.id)
-                  toast('Wallet archived.')
+                  toast('Pocket archived.')
                   setAccountFormOpen(false)
                   setEditingAccount(null)
                 } catch (error) {
@@ -1286,7 +1335,7 @@ export function HomePage() {
         title={balanceAccount ? `Set ${balanceAccount.name} balance` : 'Set balance'}
         hint={
           balanceAccount
-            ? `Balancing entry goes on ${balanceAccount.name} so this wallet stays accurate.`
+            ? `Balancing entry goes on ${balanceAccount.name} so this pocket stays accurate.`
             : "I'll add a balancing entry so future numbers stay accurate."
         }
         onSubmit={async (actualBalanceMinor) => {

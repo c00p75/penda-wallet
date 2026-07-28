@@ -134,12 +134,12 @@ export async function transferBetweenAccounts(input: {
   note?: string | null
 }): Promise<{ groupId: string }> {
   if (input.fromAccountId === input.toAccountId) {
-    throw new Error('Pick two different wallets.')
+    throw new Error('Pick two different pockets.')
   }
   if (input.amountMinor <= 0) throw new Error('Transfer amount must be positive.')
 
   const groupId = crypto.randomUUID()
-  const note = input.note?.trim() || 'Transfer between wallets'
+  const note = input.note?.trim() || 'Transfer between pockets'
   const rows = [
     {
       wallet_id: input.walletId,

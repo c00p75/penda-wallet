@@ -64,7 +64,7 @@ export function HeroCard({
           : undefined
       }
       className={cn(
-        'relative isolate min-h-[9.5rem] w-[13rem] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
+        'relative isolate min-h-[9.5rem] w-[min(14.5rem,78vw)] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
         onClick && 'cursor-pointer transition-transform active:scale-[0.98]',
         className,
       )}
@@ -80,8 +80,8 @@ export function HeroCard({
       />
       <div className="relative z-10 flex h-full min-w-0 flex-col justify-between gap-3">
         {label != null && (
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-white [text-shadow:0_1px_2px_rgb(0_0_0_/_0.28)]">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white [text-shadow:0_1px_2px_rgb(0_0_0_/_0.28)]">
               {label}
             </p>
             {(corner || onClick) && (
@@ -93,7 +93,7 @@ export function HeroCard({
           </div>
         )}
         {value != null && (
-          <p className="whitespace-nowrap text-3xl font-bold leading-none tracking-tight text-white tabular-nums [text-shadow:0_1px_3px_rgb(0_0_0_/_0.32)]">
+          <p className="min-w-0 max-w-full break-words text-[clamp(1.05rem,4.6vw,1.875rem)] font-bold leading-[1.1] tracking-tight text-white tabular-nums [text-shadow:0_1px_3px_rgb(0_0_0_/_0.32)]">
             {value}
           </p>
         )}

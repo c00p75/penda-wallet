@@ -117,7 +117,7 @@ export default function AddTransactionScreen() {
       {accounts.length > 0 ? (
         <View style={styles.field}>
           <Text variant="label" color={colors.textSecondary}>
-            Wallet
+            Pocket
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
             {accounts.map((a) => {

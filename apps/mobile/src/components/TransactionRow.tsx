@@ -13,7 +13,7 @@ interface TransactionRowProps {
   index?: number;
   onPress?: () => void;
   onLongPress?: () => void;
-  /** Optional pocket/wallet label shown in the subtitle. */
+  /** Optional pocket label shown in the subtitle. */
   accountLabel?: string | null;
 }
 

@@ -1414,7 +1414,7 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
     {
       name: 'create_transaction',
       description:
-        'Log a new expense or income in a pocket wallet (Cash, Airtel Money, MTN, etc.) under the ' +
+        'Log a new expense or income in a pocket (Cash, Airtel Money, MTN, etc.) under the ' +
         'current money account. Prefer the matching pocket when the user names one or pastes MoMo.',
       parametersJsonSchema: {
         type: 'object',
@@ -1426,7 +1426,7 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
             type: 'string',
             ...(accountNames.length > 0 ? { enum: accountNames } : {}),
             description:
-              'Pocket wallet name, e.g. "Cash", "Airtel Money", "MTN MoMo". Defaults to the default pocket.',
+              'Pocket name, e.g. "Cash", "Airtel Money", "MTN MoMo". Defaults to the default pocket.',
           },
           merchant: { type: 'string' },
           description: { type: 'string' },
@@ -1454,7 +1454,7 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
           account: {
             type: 'string',
             ...(accountNames.length > 0 ? { enum: accountNames } : {}),
-            description: 'Optional pocket name when reconciling one wallet, not the whole account.',
+            description: 'Optional pocket name when reconciling one pocket, not the whole account.',
           },
         },
         required: ['amount'],

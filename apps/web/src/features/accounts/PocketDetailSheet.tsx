@@ -68,7 +68,7 @@ export function PocketDetailSheet({
         <BottomSheetHandle {...drag.handleProps} />
 
         <SheetHeader className="px-5 pt-2 pb-0">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground">Wallet</p>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground">Pocket</p>
           <SheetTitle className="flex items-center gap-2 text-lg">
             <span aria-hidden>{account.icon ?? '💳'}</span>
             {account.name}
@@ -76,7 +76,7 @@ export function PocketDetailSheet({
           <SheetDescription className="text-[0.9rem] leading-snug">
             {account.is_default
               ? 'Default for new transactions in this money account.'
-              : 'Balance and recent activity for this wallet.'}
+              : 'Balance and recent activity for this pocket.'}
           </SheetDescription>
         </SheetHeader>
 
@@ -128,10 +128,10 @@ export function PocketDetailSheet({
           </div>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">Recent in this wallet</h3>
+            <h3 className="text-sm font-semibold">Recent in this pocket</h3>
             {recent.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Nothing logged here yet. New transactions can use this wallet from the form.
+                Nothing logged here yet. New transactions can use this pocket from the form.
               </p>
             ) : (
               <div className="flex flex-col gap-2">

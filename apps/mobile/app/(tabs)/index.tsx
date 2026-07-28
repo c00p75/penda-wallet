@@ -155,13 +155,13 @@ export default function HomeScreen() {
         subtitle={
           wallet?.name
             ? `${wallet.name} · total this month`
-            : 'Total across wallets this month'
+            : 'Total across pockets this month'
         }
         hideAmount
       />
 
       <View style={styles.sectionHeader}>
-        <Text variant="h3">Wallets</Text>
+        <Text variant="h3">Pockets</Text>
         {!accounts.some((a) => a.provider === 'airtel') ? (
           <AnimatedPressable onPress={() => addAirtel.mutate()} disabled={addAirtel.isPending}>
             <Text variant="label" color={colors.iris}>
@@ -172,7 +172,7 @@ export default function HomeScreen() {
       </View>
       {accounts.length === 1 && accounts[0]?.kind === 'cash' ? (
         <Text variant="caption" color={colors.textSecondary} style={styles.pocketNudge}>
-          Add Airtel Money, MTN, or a bank wallet so MoMo logs land in the right place.
+          Add Airtel Money, MTN, or a bank pocket so MoMo logs land in the right place.
         </Text>
       ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pocketRow}>

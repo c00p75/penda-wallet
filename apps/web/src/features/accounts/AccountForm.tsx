@@ -96,7 +96,7 @@ export function AccountForm({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>{account ? 'Edit wallet' : 'Add wallet'}</SheetTitle>
+          <SheetTitle>{account ? 'Edit pocket' : 'Add pocket'}</SheetTitle>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">
           {!account && unusedPresets.length > 0 && (
@@ -183,12 +183,12 @@ export function AccountForm({
               onChange={(e) => setIsDefault(e.target.checked)}
               className="size-4 rounded border-border"
             />
-            Default wallet for new transactions
+            Default pocket for new transactions
           </label>
 
           <SheetFooter className="flex-col gap-2 sm:flex-col">
             <Button type="submit" disabled={isSubmitting || !name.trim()}>
-              {account ? 'Save' : 'Add wallet'}
+              {account ? 'Save' : 'Add pocket'}
             </Button>
             {account && onArchive && !account.is_default && (
               <Button
@@ -197,7 +197,7 @@ export function AccountForm({
                 disabled={isSubmitting}
                 onClick={() => void onArchive()}
               >
-                Archive wallet
+                Archive pocket
               </Button>
             )}
           </SheetFooter>

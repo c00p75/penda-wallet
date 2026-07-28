@@ -472,7 +472,7 @@ export function LedgerPage() {
                 : 'border border-border/70 bg-card text-muted-foreground'
             }`}
           >
-            All wallets
+            All pockets
           </button>
           {accounts.map((a) => (
             <button

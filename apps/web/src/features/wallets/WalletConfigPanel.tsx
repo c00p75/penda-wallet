@@ -146,10 +146,10 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
     try {
       if (editingAccount) {
         await updateAccount.mutateAsync({ id: editingAccount.id, input })
-        toast('Wallet updated.')
+        toast('Pocket updated.')
       } else {
         await createAccount.mutateAsync(input)
-        toast('Wallet added.')
+        toast('Pocket added.')
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -206,7 +206,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <Label>Wallets in this account</Label>
+            <Label>Pockets in this account</Label>
             <Button
               type="button"
               size="sm"
@@ -243,7 +243,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             </button>
           ))}
           {accounts.length === 0 && (
-            <p className="text-sm text-muted-foreground">No wallets yet. Add Cash to get started.</p>
+            <p className="text-sm text-muted-foreground">No pockets yet. Add Cash to get started.</p>
           )}
         </div>
 
@@ -329,7 +329,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             Create
           </Button>
           <p className="text-xs text-muted-foreground">
-            Starts with a Cash wallet. Does not restart onboarding.
+            Starts with a Cash pocket. Does not restart onboarding.
           </p>
         </form>
       </section>
@@ -348,7 +348,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             ? async () => {
                 try {
                   await archiveAccount.mutateAsync(editingAccount.id)
-                  toast('Wallet archived.')
+                  toast('Pocket archived.')
                   setAccountFormOpen(false)
                   setEditingAccount(null)
                 } catch (error) {

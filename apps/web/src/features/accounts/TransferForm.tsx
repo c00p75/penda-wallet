@@ -81,14 +81,14 @@ export function TransferForm({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>Transfer between wallets</SheetTitle>
+          <SheetTitle>Transfer between pockets</SheetTitle>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">
           <div className="flex flex-col gap-1.5">
             <Label>From</Label>
             <Select value={fromId} onValueChange={setFromId}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose wallet" />
+                <SelectValue placeholder="Choose pocket" />
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((a) => (
@@ -104,7 +104,7 @@ export function TransferForm({
             <Label>To</Label>
             <Select value={toId} onValueChange={setToId}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose wallet" />
+                <SelectValue placeholder="Choose pocket" />
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((a) => (

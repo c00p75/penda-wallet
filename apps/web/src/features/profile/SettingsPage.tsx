@@ -246,11 +246,11 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
           </TabsTrigger>
           {walletPanel && (
             <TabsTrigger value="wallet" className="px-1 text-xs sm:text-sm">
-              Money
+              Accounts
             </TabsTrigger>
           )}
           <TabsTrigger value="money" className="px-1 text-xs sm:text-sm">
-            Money
+            Habits
           </TabsTrigger>
           <TabsTrigger value="ai" className="px-1 text-xs sm:text-sm">
             AI

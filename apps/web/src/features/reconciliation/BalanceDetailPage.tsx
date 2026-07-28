@@ -73,7 +73,7 @@ export function BalanceDetailPage() {
 
       <div className="relative flex flex-col items-center gap-1 rounded-[1.75rem] bg-card p-6 shadow-[var(--shadow-card)] ring-1 ring-border/50">
         <BalanceVisibilityToggle id="balance" className="absolute right-4 top-4 size-8 text-muted-foreground hover:bg-muted hover:text-foreground" />
-        <p className="text-xs font-medium tracking-wide text-muted-foreground">Total across wallets</p>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground">Total across pockets</p>
         <p className="text-4xl font-bold tabular-nums">
           <HiddenAmount id="balance">
             {isNegative ? '−' : ''}
@@ -81,13 +81,13 @@ export function BalanceDetailPage() {
           </HiddenAmount>
         </p>
         <p className="text-sm text-muted-foreground">
-          Sum of every wallet in this money account after income and spending so far.
+          Sum of every pocket in this money account after income and spending so far.
         </p>
       </div>
 
       {accounts.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">By wallet</h2>
+          <h2 className="text-lg font-semibold">By pocket</h2>
           <ul className="flex flex-col gap-2">
             {accounts.map((account) => {
               const pocket = accountBalanceMinor(transactions, account.id)
@@ -118,7 +118,7 @@ export function BalanceDetailPage() {
               )
             })}
           </ul>
-          <p className="text-xs text-muted-foreground">Tap a wallet to set its balance.</p>
+          <p className="text-xs text-muted-foreground">Tap a pocket to set its balance.</p>
         </section>
       )}
 
@@ -167,7 +167,7 @@ export function BalanceDetailPage() {
         hint={
           editAccount && editAccount !== 'total'
             ? `Balancing entry goes on ${editAccount.name}.`
-            : 'Adjustment lands on your default wallet so the total stays accurate.'
+            : 'Adjustment lands on your default pocket so the total stays accurate.'
         }
         onSubmit={handleEditBalance}
         isSubmitting={setBalance.isPending}

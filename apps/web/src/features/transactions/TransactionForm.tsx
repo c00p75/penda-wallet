@@ -50,7 +50,7 @@ interface TransactionFormProps {
   categories: Category[]
   currency: string
   walletId?: string
-  /** Pockets under the money account. When provided, show a wallet picker. */
+  /** Pockets under the money account. When provided, show a pocket picker. */
   accounts?: Account[]
   defaultAccountId?: string | null
   transaction?: Transaction | null
@@ -350,10 +350,10 @@ export function TransactionForm({
 
           {accounts.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <Label>Wallet</Label>
+              <Label>Pocket</Label>
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose wallet" />
+                  <SelectValue placeholder="Choose pocket" />
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
