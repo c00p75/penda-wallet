@@ -18,6 +18,7 @@ import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { defaultAccountId, useAccounts } from '@/features/accounts/hooks'
+import { pocketLabel } from '@/features/accounts/pocketLabel'
 import { useCategories } from '@/features/categories/hooks'
 import { useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
@@ -173,6 +174,7 @@ export function LedgerPage() {
   const [members, setMembers] = useState<{ user_id: string; label: string }[]>([])
   const [period, setPeriod] = useState<Period>('month')
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all')
+  const [accountFilter, setAccountFilter] = useState<string | 'all'>('all')
   const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -306,9 +308,10 @@ export function LedgerPage() {
     return transactions.filter((tx) => {
       if (cutoff && tx.transaction_date < cutoff) return false
       if (categoryFilter !== 'all' && (tx.category_id ?? 'uncategorized') !== categoryFilter) return false
+      if (accountFilter !== 'all' && (tx.account_id ?? '') !== accountFilter) return false
       return true
     })
-  }, [transactions, period, categoryFilter])
+  }, [transactions, period, categoryFilter, accountFilter])
 
   const groups = useMemo(() => groupByDate(filtered), [filtered])
 
@@ -458,6 +461,37 @@ export function LedgerPage() {
         </div>
       )}
 
+      {accounts.length > 1 && (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+          <button
+            type="button"
+            onClick={() => setAccountFilter('all')}
+            className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
+              accountFilter === 'all'
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border/70 bg-card text-muted-foreground'
+            }`}
+          >
+            All wallets
+          </button>
+          {accounts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setAccountFilter(a.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
+                accountFilter === a.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border/70 bg-card text-muted-foreground'
+              }`}
+            >
+              <span>{a.icon ?? '💳'}</span>
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {coachingInsights.length > 0 && (
         <div className="flex flex-col gap-3">
           {coachingInsights.map((insight, index) => (
@@ -508,13 +542,24 @@ export function LedgerPage() {
               <div className="flex flex-col gap-2.5">
                 {txs.map((tx) => {
                   const sign = tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''
+                  const pocket = pocketLabel(accounts, tx.account_id)
                   return (
                     <ActivityRow
                       key={tx.id}
                       onClick={() => openEditForm(tx)}
                       avatar={<span>{tx.category?.icon ?? (tx.type === 'income' ? '💰' : '💳')}</span>}
                       title={tx.merchant || tx.description || tx.category?.name || 'Transaction'}
-                      subtitle={tx.category?.name ?? 'Uncategorized'}
+                      subtitle={
+                        <>
+                          {tx.category?.name ?? (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
+                          {pocket ? (
+                            <>
+                              <span className="mx-1">·</span>
+                              {pocket}
+                            </>
+                          ) : null}
+                        </>
+                      }
                       trailing={
                         <span
                           style={{

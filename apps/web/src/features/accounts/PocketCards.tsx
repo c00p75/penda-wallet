@@ -41,7 +41,7 @@ export function PocketCards({
           onClick={onAdd}
           className="rounded-[1.35rem] border border-dashed border-border/70 bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-[var(--shadow-soft)]"
         >
-          Add Cash, Airtel Money, MTN, or a bank wallet
+          Add Cash, Airtel Money, MTN, or a bank wallet. MoMo paste will pick the matching one.
         </button>
       </section>
     )

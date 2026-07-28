@@ -152,7 +152,11 @@ export default function HomeScreen() {
       <HeroBalance
         balanceMinor={balance}
         currency={currency}
-        subtitle={wallet?.name ? `${wallet.name} · this month` : 'Income minus expenses this month'}
+        subtitle={
+          wallet?.name
+            ? `${wallet.name} · total this month`
+            : 'Total across wallets this month'
+        }
         hideAmount
       />
 
@@ -166,6 +170,11 @@ export default function HomeScreen() {
           </AnimatedPressable>
         ) : null}
       </View>
+      {accounts.length === 1 && accounts[0]?.kind === 'cash' ? (
+        <Text variant="caption" color={colors.textSecondary} style={styles.pocketNudge}>
+          Add Airtel Money, MTN, or a bank wallet so MoMo logs land in the right place.
+        </Text>
+      ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pocketRow}>
         {accounts.map((account) => {
           const pocketBalance = accountBalanceMinor(
@@ -219,15 +228,24 @@ export default function HomeScreen() {
             No transactions yet. Add one or ask Penda.
           </Text>
         ) : (
-          recent.map((tx, i) => (
-            <TransactionRow
-              key={tx.id}
-              transaction={tx}
-              currency={currency}
-              index={i}
-              onLongPress={() => confirmDelete(tx)}
-            />
-          ))
+          recent.map((tx, i) => {
+            const account = accounts.find((a) => a.id === tx.account_id);
+            const accountLabel = account
+              ? account.icon
+                ? `${account.icon} ${account.name}`
+                : account.name
+              : null;
+            return (
+              <TransactionRow
+                key={tx.id}
+                transaction={tx}
+                currency={currency}
+                index={i}
+                accountLabel={accountLabel}
+                onLongPress={() => confirmDelete(tx)}
+              />
+            );
+          })
         )}
       </Card>
 
@@ -349,6 +367,9 @@ const styles = StyleSheet.create({
   pocketRow: {
     gap: spacing.md,
     paddingRight: spacing.xl,
+  },
+  pocketNudge: {
+    marginTop: -spacing.sm,
   },
   pocketCard: {
     width: 150,

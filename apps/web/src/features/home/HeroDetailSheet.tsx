@@ -49,9 +49,9 @@ const COPY: Record<
     primary: 'Open budgets',
   },
   balance: {
-    title: 'Balance',
-    eyebrow: 'This wallet',
-    description: 'Cash in this wallet after income and spending so far.',
+    title: 'Total balance',
+    eyebrow: 'All wallets',
+    description: 'Cash across every wallet in this money account after income and spending so far.',
     primary: 'View activity',
   },
   status: {
@@ -149,7 +149,7 @@ export function HeroDetailSheet({
       : detail.kind === 'goal' && detail.progressLine
         ? detail.progressLine
         : detail.kind === 'balance'
-          ? 'Review recent income and spending that make up this number.'
+          ? 'This is the total across your wallets (Cash, MoMo, bank). Open a wallet card for a single balance.'
           : detail.kind === 'status'
             ? 'Blind budgeting hides exact figures. Open budgets if you want to adjust the plan.'
             : detail.kind === 'month'

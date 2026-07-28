@@ -34,8 +34,13 @@ import {
 } from '@/features/accounts/hooks'
 import { AccountForm } from '@/features/accounts/AccountForm'
 import { PocketCards } from '@/features/accounts/PocketCards'
+import { PocketDetailSheet } from '@/features/accounts/PocketDetailSheet'
+import { pocketLabel } from '@/features/accounts/pocketLabel'
 import { TransferForm } from '@/features/accounts/TransferForm'
 import type { Account, AccountInput } from '@/features/accounts/types'
+import { accountBalanceMinor } from '@penda/money-core'
+import { EditBalanceSheet } from '@/features/reconciliation/EditBalanceSheet'
+import { useSetBalance } from '@/features/reconciliation/useSetBalance'
 import { useBudgetProgress, useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
@@ -173,6 +178,7 @@ export function HomePage() {
   const updateAccount = useUpdateAccount(wallet?.id)
   const archiveAccount = useArchiveAccount(wallet?.id)
   const transferAccounts = useTransferBetweenAccounts(wallet?.id)
+  const setBalance = useSetBalance(wallet?.id, session?.user.id)
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: budgets = [] } = useBudgets(wallet?.id)
@@ -209,7 +215,10 @@ export function HomePage() {
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [accountFormOpen, setAccountFormOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [detailAccount, setDetailAccount] = useState<Account | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [transferFromId, setTransferFromId] = useState<string | null>(null)
+  const [balanceAccount, setBalanceAccount] = useState<Account | null>(null)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
   const [needsYouTick, setNeedsYouTick] = useState(0)
@@ -865,12 +874,18 @@ export function HomePage() {
             setEditingAccount(null)
             setAccountFormOpen(true)
           }}
-          onSelect={(account) => {
-            setEditingAccount(account)
-            setAccountFormOpen(true)
+          onSelect={(account) => setDetailAccount(account)}
+          onTransfer={() => {
+            setTransferFromId(defaultAccountId(accounts))
+            setTransferOpen(true)
           }}
-          onTransfer={() => setTransferOpen(true)}
         />
+
+        {accounts.length === 1 && accounts[0]?.kind === 'cash' && (
+          <p className="rounded-2xl bg-secondary/50 px-3.5 py-3 text-sm text-muted-foreground">
+            Add Airtel Money, MTN, or a bank wallet so MoMo paste and logs land in the right place.
+          </p>
+        )}
 
         {/* Primary number, demoted carousel. Day zero: balance only. */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-8 -mt-4">
@@ -913,12 +928,12 @@ export function HomePage() {
               }}
               label={
                 dayZero
-                  ? 'Balance'
+                  ? 'Total balance'
                   : blindBudgeting
                     ? 'Status'
                     : hasBudgets
                       ? 'Safe to spend'
-                      : 'Balance'
+                      : 'Total balance'
               }
               corner={
                 !blindBudgeting && (
@@ -955,7 +970,7 @@ export function HomePage() {
                     valueLabel: `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`,
                   })
                 }
-                label="Balance"
+                label="Total balance"
                 corner={<BalanceVisibilityToggle id="balance" className="size-5 text-white/85 transition-colors hover:text-white" />}
                 value={
                   <HiddenAmount id="balance">
@@ -1096,6 +1111,7 @@ export function HomePage() {
             <div className="flex flex-col gap-2.5">
               {recent.map((tx) => {
                 const sign = tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''
+                const pocket = pocketLabel(accounts, tx.account_id)
                 return (
                   <ActivityRow
                     key={tx.id}
@@ -1108,6 +1124,12 @@ export function HomePage() {
                     subtitle={
                       <>
                         {tx.category?.name ?? 'Uncategorized'}
+                        {pocket ? (
+                          <>
+                            <span className="mx-1">·</span>
+                            {pocket}
+                          </>
+                        ) : null}
                         <span className="mx-1">·</span>
                         {new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString(undefined, {
                           month: 'short',
@@ -1202,10 +1224,13 @@ export function HomePage() {
 
       <TransferForm
         open={transferOpen}
-        onOpenChange={setTransferOpen}
+        onOpenChange={(open) => {
+          setTransferOpen(open)
+          if (!open) setTransferFromId(null)
+        }}
         accounts={accounts}
         currency={currency}
-        defaultFromId={defaultAccountId(accounts)}
+        defaultFromId={transferFromId ?? defaultAccountId(accounts)}
         onSubmit={async (input) => {
           try {
             await transferAccounts.mutateAsync({
@@ -1220,6 +1245,67 @@ export function HomePage() {
           }
         }}
         isSubmitting={transferAccounts.isPending}
+      />
+
+      <PocketDetailSheet
+        account={detailAccount}
+        accounts={accounts}
+        transactions={transactions}
+        currency={currency}
+        onOpenChange={(open) => !open && setDetailAccount(null)}
+        onEdit={() => {
+          if (!detailAccount) return
+          setEditingAccount(detailAccount)
+          setDetailAccount(null)
+          setAccountFormOpen(true)
+        }}
+        onTransfer={() => {
+          if (!detailAccount) return
+          setTransferFromId(detailAccount.id)
+          setDetailAccount(null)
+          setTransferOpen(true)
+        }}
+        onSetBalance={() => {
+          if (!detailAccount) return
+          setBalanceAccount(detailAccount)
+          setDetailAccount(null)
+        }}
+        onOpenTransaction={(tx) => {
+          setDetailAccount(null)
+          setEditing(tx)
+          setFormOpen(true)
+        }}
+      />
+
+      <EditBalanceSheet
+        open={!!balanceAccount}
+        onOpenChange={(open) => !open && setBalanceAccount(null)}
+        computedBalanceMinor={
+          balanceAccount ? accountBalanceMinor(transactions, balanceAccount.id) : 0
+        }
+        title={balanceAccount ? `Set ${balanceAccount.name} balance` : 'Set balance'}
+        hint={
+          balanceAccount
+            ? `Balancing entry goes on ${balanceAccount.name} so this wallet stays accurate.`
+            : "I'll add a balancing entry so future numbers stay accurate."
+        }
+        onSubmit={async (actualBalanceMinor) => {
+          if (!balanceAccount) return
+          try {
+            await setBalance.mutateAsync({
+              computedBalanceMinor: accountBalanceMinor(transactions, balanceAccount.id),
+              actualBalanceMinor,
+              currency,
+              accountId: balanceAccount.id,
+            })
+            toast(`${balanceAccount.name} balance updated.`)
+            setBalanceAccount(null)
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+            throw error
+          }
+        }}
+        isSubmitting={setBalance.isPending}
       />
 
       <PaywallSheet

@@ -18,6 +18,9 @@ interface EditBalanceSheetProps {
   computedBalanceMinor: number
   onSubmit: (actualBalanceMinor: number) => Promise<void>
   isSubmitting?: boolean
+  /** When set, titles the sheet for a specific pocket. */
+  title?: string
+  hint?: string
 }
 
 export function EditBalanceSheet({
@@ -26,6 +29,8 @@ export function EditBalanceSheet({
   computedBalanceMinor,
   onSubmit,
   isSubmitting,
+  title = 'Edit balance',
+  hint = "I'll add a balancing entry so future numbers stay accurate.",
 }: EditBalanceSheetProps) {
   const [actual, setActual] = useState(() => fromMinorUnits(computedBalanceMinor).toString())
 
@@ -44,7 +49,7 @@ export function EditBalanceSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto border-0 ring-0">
         <SheetHeader>
-          <SheetTitle>Edit balance</SheetTitle>
+          <SheetTitle>{title}</SheetTitle>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 pb-4">
@@ -60,9 +65,7 @@ export function EditBalanceSheet({
               value={actual}
               onChange={(e) => setActual(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              I'll add a balancing entry so future numbers stay accurate.
-            </p>
+            <p className="text-xs text-muted-foreground">{hint}</p>
           </div>
 
           <SheetFooter className="flex-row gap-2 px-0">

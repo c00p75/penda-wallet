@@ -13,6 +13,8 @@ interface TransactionRowProps {
   index?: number;
   onPress?: () => void;
   onLongPress?: () => void;
+  /** Optional pocket/wallet label shown in the subtitle. */
+  accountLabel?: string | null;
 }
 
 export function TransactionRow({
@@ -21,12 +23,14 @@ export function TransactionRow({
   index = 0,
   onPress,
   onLongPress,
+  accountLabel,
 }: TransactionRowProps) {
   const isIncome = transaction.type === 'income';
   const amount = transaction.converted_amount_minor ?? transaction.amount_minor;
   const displayCurrency = transaction.currency || currency;
   const title = transaction.merchant || transaction.description || transaction.category?.name || 'Transaction';
-  const subtitle = transaction.category?.name ?? transaction.transaction_date;
+  const base = transaction.category?.name ?? transaction.transaction_date;
+  const subtitle = accountLabel ? `${base} · ${accountLabel}` : base;
 
   return (
     <AnimatedPressable

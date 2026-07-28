@@ -221,8 +221,8 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Cash, Airtel Money, MTN, Zanaco, and other pockets. Default for new logs:{' '}
-            {accounts.find((a) => a.id === defaultAccountId(accounts))?.name ?? 'Cash'}.
+            Pockets under this money account (Cash, Airtel Money, MTN, Zanaco…). Default for new
+            logs: {accounts.find((a) => a.id === defaultAccountId(accounts))?.name ?? 'Cash'}.
           </p>
           {accounts.map((account) => (
             <button

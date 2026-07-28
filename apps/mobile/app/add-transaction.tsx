@@ -10,6 +10,7 @@ import { toMinorUnits } from '@/src/lib/money';
 import { localDateStr } from '@/src/lib/dates';
 import { createTransaction } from '@/src/api/transactions';
 import { fetchCategories } from '@/src/api/categories';
+import { fetchAccounts } from '@/src/api/accounts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { useAuthStore } from '@/src/store/authStore';
 import type { TransactionSource, TransactionType } from '@/src/api/types';
@@ -35,6 +36,7 @@ export default function AddTransactionScreen() {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(params.date ?? localDateStr());
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const source = (params.source as TransactionSource | undefined) ?? 'manual';
 
   const { data: categories = [] } = useQuery({
@@ -42,6 +44,16 @@ export default function AddTransactionScreen() {
     queryFn: () => fetchCategories(wallet!.id),
     enabled: !!wallet?.id,
   });
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', wallet?.id],
+    queryFn: () => fetchAccounts(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const defaultPocketId =
+    accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? null;
+  const selectedAccountId = accountId ?? defaultPocketId;
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -57,6 +69,7 @@ export default function AddTransactionScreen() {
         description: description.trim() || null,
         transaction_date: date,
         source,
+        account_id: selectedAccountId,
       });
     },
     onSuccess: () => {
@@ -100,6 +113,31 @@ export default function AddTransactionScreen() {
         </Text>
         <Input value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
       </View>
+
+      {accounts.length > 0 ? (
+        <View style={styles.field}>
+          <Text variant="label" color={colors.textSecondary}>
+            Wallet
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+            {accounts.map((a) => {
+              const active = selectedAccountId === a.id;
+              return (
+                <Pressable
+                  key={a.id}
+                  onPress={() => setAccountId(a.id)}
+                  style={[styles.catChip, active && styles.catChipActive]}
+                >
+                  <Text variant="caption" color={active ? '#FFF' : colors.text}>
+                    {a.icon ? `${a.icon} ` : ''}
+                    {a.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <View style={styles.field}>
         <Text variant="label" color={colors.textSecondary}>

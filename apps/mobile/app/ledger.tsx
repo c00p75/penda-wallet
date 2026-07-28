@@ -10,6 +10,7 @@ import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { TransactionRow } from '@/src/components/TransactionRow';
 import { colors, spacing } from '@/src/lib/theme';
 import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
+import { fetchAccounts } from '@/src/api/accounts';
 import { uploadReceipt } from '@/src/api/receipts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { useAuthStore } from '@/src/store/authStore';
@@ -26,6 +27,12 @@ export default function LedgerScreen() {
   const { data: transactions = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['transactions', wallet?.id],
     queryFn: () => fetchTransactions(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', wallet?.id],
+    queryFn: () => fetchAccounts(wallet!.id),
     enabled: !!wallet?.id,
   });
 
@@ -133,14 +140,23 @@ export default function LedgerScreen() {
       <FlatList
         data={transactions}
         keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
-          <TransactionRow
-            transaction={item}
-            currency={currency}
-            index={index}
-            onLongPress={() => confirmDelete(item)}
-          />
-        )}
+        renderItem={({ item, index }) => {
+          const account = accounts.find((a) => a.id === item.account_id);
+          const accountLabel = account
+            ? account.icon
+              ? `${account.icon} ${account.name}`
+              : account.name
+            : null;
+          return (
+            <TransactionRow
+              transaction={item}
+              currency={currency}
+              index={index}
+              accountLabel={accountLabel}
+              onLongPress={() => confirmDelete(item)}
+            />
+          );
+        }}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={colors.iris} />
