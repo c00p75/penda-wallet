@@ -24,7 +24,7 @@ export const GRADUATE_THRESHOLD = 10
 /** Money-field delta that always requires a confirm card (aligned with impulse pause). */
 export const HIGH_IMPACT_AMOUNT_MINOR = 100_000
 
-export type MutationKind = 'update' | 'delete'
+export type MutationKind = 'create' | 'update' | 'delete'
 
 export const DEFAULT_AI_CONSENT: AiConsent = {
   auto_log_sms: true,
@@ -61,8 +61,8 @@ export function mayActWithoutConfirm(consent: AiConsent, trust: AiTrust): boolea
 /**
  * Whether a staged mutation may skip the Yes/No card.
  * - Deletes always require confirm.
- * - High-impact money edits always require confirm.
- * - Other updates may auto-apply when consent/trust allows.
+ * - High-impact money creates/edits always require confirm.
+ * - Other creates/updates may auto-apply when consent/trust allows.
  */
 export function mayAutoApplyMutation(
   kind: MutationKind,
@@ -73,6 +73,25 @@ export function mayAutoApplyMutation(
   if (kind === 'delete') return false
   if (opts?.highImpact) return false
   return mayActWithoutConfirm(consent, trust)
+}
+
+/** True when a staged create's money amount meets the high-impact threshold. */
+export function createPatchIsHighImpact(
+  patch: Record<string, unknown>,
+  thresholdMinor = HIGH_IMPACT_AMOUNT_MINOR,
+): boolean {
+  for (const [key, raw] of Object.entries(patch)) {
+    if (key === '__before' || key === 'template') continue
+    if (!key.endsWith('_minor')) continue
+    const n = Number(raw)
+    if (Number.isFinite(n) && Math.abs(n) >= thresholdMinor) return true
+  }
+  const template = patch.template
+  if (template && typeof template === 'object' && !Array.isArray(template)) {
+    const amount = Number((template as Record<string, unknown>).amount_minor)
+    if (Number.isFinite(amount) && Math.abs(amount) >= thresholdMinor) return true
+  }
+  return false
 }
 
 /** True when any money column in the patch moves by the high-impact threshold. */

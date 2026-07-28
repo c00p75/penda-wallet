@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-q
 import { confirmAiAction, sendChatMessage } from './api'
 import type { ChatResponse } from './types'
 import type { PageContext } from './pageContext'
+import type { UiEdit } from './uiEdits'
 
 /** Shared cache bust after a chat turn creates/updates records. */
 export function invalidateAfterChatResponse(
@@ -16,6 +17,28 @@ export function invalidateAfterChatResponse(
   for (const action of data.actions ?? []) {
     if (action.status === 'done') invalidateForDomain(queryClient, action.domain, walletId)
   }
+  // Borrow/lend writes a debt + a transaction; if the trail row is missing for any
+  // reason, the Debts tab must still refetch or it keeps showing the empty state.
+  if (data.transaction) {
+    queryClient.invalidateQueries({ queryKey: ['debts', walletId] })
+  }
+}
+
+/** Broad money-cache bust used after offline queue flush (no per-action payload). */
+export function invalidateMoneyCaches(queryClient: QueryClient) {
+  for (const key of [
+    'transactions',
+    'debts',
+    'budgets',
+    'budget-progress',
+    'savings-goals',
+    'categories',
+    'recurring-transactions',
+    'commitment-pacts',
+    'insights',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key] })
+  }
 }
 
 export function useSendChatMessage(walletId: string | undefined) {
@@ -26,11 +49,13 @@ export function useSendChatMessage(walletId: string | undefined) {
       message,
       conversationId,
       pageContext,
+      uiEdits,
     }: {
       message: string
       conversationId?: string
       pageContext?: PageContext
-    }) => sendChatMessage(walletId!, message, conversationId, pageContext),
+      uiEdits?: UiEdit[]
+    }) => sendChatMessage(walletId!, message, conversationId, pageContext, uiEdits),
     onSuccess: (data) => invalidateAfterChatResponse(queryClient, walletId, data),
   })
 }
@@ -48,6 +73,12 @@ function invalidateForDomain(queryClient: QueryClient, domain: string, walletId:
       break
     case 'budget':
       keys.push(['budgets', walletId], ['budget-progress', walletId])
+      break
+    case 'recurring':
+      keys.push(['recurring-transactions', walletId], ['transactions', walletId])
+      break
+    case 'pact':
+      keys.push(['commitment-pacts', walletId])
       break
     case 'goal':
       keys.push(['savings-goals', walletId])

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { suggestMilestones } from '@penda/money-core'
 import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
 import { fetchDebt } from '@/features/debts/api'
 import { Plus, Sparkles } from 'lucide-react'
@@ -21,6 +22,9 @@ import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
+import { useProfile } from '@/features/profile/hooks'
+import { useTransactions } from '@/features/transactions/hooks'
+import { lifeEventActive } from '@/features/lifeEvents/types'
 import {
   useAddContribution,
   useArchivedSavingsGoals,
@@ -29,7 +33,7 @@ import {
   useSavingsGoals,
   useUnarchiveSavingsGoal,
 } from './hooks'
-import { GoalForm } from './GoalForm'
+import { GoalForm, type GoalFormDefaults } from './GoalForm'
 import { ContributionForm } from './ContributionForm'
 import { GoalProgressCard } from './GoalProgressCard'
 import type { SavingsGoal, SavingsGoalInput } from './types'
@@ -45,6 +49,7 @@ import {
 import { DebtForm } from '@/features/debts/DebtForm'
 import { PaymentForm } from '@/features/debts/PaymentForm'
 import { DebtProgressCard } from '@/features/debts/DebtProgressCard'
+import { sortDebtsByDueDate } from '@/features/debts/dueDate'
 import type { Debt, DebtInput } from '@/features/debts/types'
 
 /** Brand-family hero variants from the #5448cc palette (iris / violet / indigo / deep). */
@@ -86,6 +91,8 @@ export function GoalsPage() {
   const navigate = useNavigate()
   const openChat = useChatStore((s) => s.openChat)
   const { data: wallet } = useCurrentWallet()
+  const { data: profile } = useProfile(session?.user.id)
+  const { data: transactions = [] } = useTransactions(wallet?.id)
   const [searchParams, setSearchParams] = useSearchParams()
   const deepLinkDebtId = searchParams.get('debt')
   const tabParam = searchParams.get('tab')
@@ -95,7 +102,7 @@ export function GoalsPage() {
   const createGoal = useCreateSavingsGoal(wallet?.id)
   const unarchiveGoal = useUnarchiveSavingsGoal(wallet?.id)
 
-  const { data: debts = [] } = useDebts(wallet?.id)
+  const { data: debts = [], isPending: debtsPending, refetch: refetchDebts } = useDebts(wallet?.id)
   const { data: archivedDebts = [] } = useArchivedDebts(wallet?.id)
   const createDebt = useCreateDebt(wallet?.id)
   const updateDebt = useUpdateDebt(wallet?.id)
@@ -106,10 +113,53 @@ export function GoalsPage() {
     tabParam === 'debts' || deepLinkDebtId ? 'debts' : 'goals',
   )
   const [goalFormOpen, setGoalFormOpen] = useState(false)
+  const [goalDefaults, setGoalDefaults] = useState<GoalFormDefaults | null>(null)
   const [contributingGoal, setContributingGoal] = useState<SavingsGoal | null>(null)
   const [debtFormOpen, setDebtFormOpen] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
+
+  const milestoneIdeas = useMemo(() => {
+    if (goals.length >= 3) return []
+    const today = new Date().toISOString().slice(0, 10)
+    const cutoff = new Date()
+    cutoff.setMonth(cutoff.getMonth() - 3)
+    const since = cutoff.toISOString().slice(0, 10)
+    const recent = transactions.filter(
+      (t) => t.type === 'expense' && t.transaction_date >= since && !t.deleted_at,
+    )
+    const categoryTotals = new Map<string, number>()
+    const textParts: string[] = []
+    for (const tx of recent) {
+      const name = tx.category?.name
+      if (name) {
+        categoryTotals.set(name, (categoryTotals.get(name) ?? 0) + Math.abs(tx.amount_minor))
+      }
+      if (tx.merchant) textParts.push(tx.merchant)
+      if (tx.description) textParts.push(tx.description)
+    }
+    const life = profile?.life_event
+    return suggestMilestones({
+      mode: profile?.mode ?? 'individual',
+      primaryGoals: profile?.primary_goals ?? undefined,
+      householdSize: profile?.household_size ?? null,
+      incomeRange: profile?.income_range ?? null,
+      lifeEventKind: life && lifeEventActive(life, today) ? life.kind : null,
+      existingGoalNames: goals.map((g) => g.name),
+      categorySpend: [...categoryTotals.entries()].map(([categoryName, totalMinor]) => ({
+        categoryName,
+        totalMinor,
+      })),
+      textBlob: textParts.join(' ').toLowerCase(),
+      hasOpenDebt: debts.some((d) => d.balance_minor > 0),
+      max: 3,
+    })
+  }, [goals, transactions, profile, debts])
+
+  function openNewGoal(defaults?: GoalFormDefaults | null) {
+    setGoalDefaults(defaults ?? null)
+    setGoalFormOpen(true)
+  }
 
   const addContribution = useAddContribution(wallet?.id, contributingGoal?.id)
   const addPayment = useAddPayment(wallet?.id, payingDebt?.id)
@@ -140,6 +190,15 @@ export function GoalsPage() {
       setDebtFormOpen(true)
     },
   })
+
+  // Always refetch when opening Debts so chat-created IOUs show up even if a
+  // prior visit cached an empty list before invalidate landed.
+  useEffect(() => {
+    if (tab !== 'debts' || !wallet?.id) return
+    void refetchDebts()
+  }, [tab, wallet?.id, refetchDebts])
+
+  const sortedDebts = useMemo(() => sortDebtsByDueDate(debts), [debts])
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
@@ -215,7 +274,8 @@ export function GoalsPage() {
   }
 
   const isGoalsSetup = goals.length === 0
-  const isDebtsSetup = debts.length === 0
+  // Don't flash the empty setup while the first debts fetch is in flight.
+  const isDebtsSetup = !debtsPending && debts.length === 0
 
   const totalSaved = goals.reduce((s, g) => s + g.current_amount_minor, 0)
   const totalTarget = goals.reduce((s, g) => s + g.target_amount_minor, 0)
@@ -322,7 +382,7 @@ export function GoalsPage() {
             type="button"
             onClick={(e) => {
               captureOverlayOrigin(e.currentTarget)
-              setGoalFormOpen(true)
+              openNewGoal(null)
             }}
             className={cn(
               'flex items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
@@ -357,6 +417,31 @@ export function GoalsPage() {
               <p className="text-sm text-muted-foreground">Chat through the amount and timeline</p>
             </div>
           </button>
+
+          {milestoneIdeas.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Ideas for you</p>
+              <div className="flex flex-wrap gap-2">
+                {milestoneIdeas.map((idea) => (
+                  <button
+                    key={idea.id}
+                    type="button"
+                    onClick={(e) => {
+                      captureOverlayOrigin(e.currentTarget)
+                      openNewGoal({
+                        name: idea.label,
+                        icon: idea.suggestedIcon,
+                        motivation: idea.reason,
+                      })
+                    }}
+                    className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
+                  >
+                    {idea.suggestedIcon} {idea.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             {SETUP_PROMPTS.slice(1).map((q) => (
@@ -426,11 +511,36 @@ export function GoalsPage() {
             Help me save more this month
           </button>
 
+          {milestoneIdeas.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Ideas for you</p>
+              <div className="flex flex-wrap gap-2">
+                {milestoneIdeas.map((idea) => (
+                  <button
+                    key={idea.id}
+                    type="button"
+                    onClick={(e) => {
+                      captureOverlayOrigin(e.currentTarget)
+                      openNewGoal({
+                        name: idea.label,
+                        icon: idea.suggestedIcon,
+                        motivation: idea.reason,
+                      })
+                    }}
+                    className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-soft)] hover:bg-accent/60 hover:text-foreground"
+                  >
+                    {idea.suggestedIcon} {idea.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <section className="flex flex-col gap-3">
             <SectionHeader
               title="Your goals"
               actionLabel="Add"
-              onAction={() => setGoalFormOpen(true)}
+              onAction={() => openNewGoal(null)}
             />
             {goals.map((goal, i) => (
               <GoalCardWithContributions
@@ -476,6 +586,10 @@ export function GoalsPage() {
             </section>
           )}
         </>
+      )}
+
+      {tab === 'debts' && debtsPending && (
+        <p className="text-sm text-muted-foreground">Loading your debts…</p>
       )}
 
       {tab === 'debts' && isDebtsSetup && (
@@ -573,7 +687,7 @@ export function GoalsPage() {
                 setDebtFormOpen(true)
               }}
             />
-            {debts.map((debt) => (
+            {sortedDebts.map((debt) => (
               <DebtProgressCard
                 key={debt.id}
                 debt={debt}
@@ -623,7 +737,7 @@ export function GoalsPage() {
           onClick={(e) => {
             captureOverlayOrigin(e.currentTarget)
             if (tab === 'goals') {
-              setGoalFormOpen(true)
+              openNewGoal(null)
             } else {
               setEditingDebt(null)
               setDebtFormOpen(true)
@@ -639,9 +753,13 @@ export function GoalsPage() {
 
       <GoalForm
         open={goalFormOpen}
-        onOpenChange={setGoalFormOpen}
+        onOpenChange={(open) => {
+          setGoalFormOpen(open)
+          if (!open) setGoalDefaults(null)
+        }}
         walletId={wallet.id}
         currency={wallet.base_currency}
+        defaults={goalDefaults}
         onSubmit={handleGoalSubmit}
         isSubmitting={createGoal.isPending}
       />

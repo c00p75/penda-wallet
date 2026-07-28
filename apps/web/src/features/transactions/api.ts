@@ -53,18 +53,30 @@ export async function fetchTransaction(id: string): Promise<Transaction | null> 
   return (data as unknown as Transaction | null) ?? null
 }
 
+async function resolveAccountId(
+  walletId: string,
+  accountId: string | null | undefined,
+): Promise<string | null> {
+  if (accountId) return accountId
+  const { data } = await supabase.rpc('default_account_id', { p_wallet_id: walletId })
+  return (data as string | null) ?? null
+}
+
 export async function createTransaction(
   walletId: string,
   userId: string,
   input: TransactionInput,
 ): Promise<Transaction> {
-  const row = await withFx(walletId, input)
+  const { account_id: _ignored, ...fxInput } = input
+  const row = await withFx(walletId, fxInput)
+  const accountId = await resolveAccountId(walletId, input.account_id)
   const { data, error } = await supabase
     .from('transactions')
     .insert({
       wallet_id: walletId,
       created_by: userId,
       ...row,
+      account_id: accountId,
       source: input.source ?? 'manual',
     })
     .select(SELECT_WITH_CATEGORY)
@@ -104,9 +116,18 @@ export async function updateTransaction(
   if (loadError) throw loadError
 
   const row = await withFx(existing.wallet_id, input)
+  const accountId =
+    input.account_id !== undefined
+      ? await resolveAccountId(existing.wallet_id, input.account_id)
+      : undefined
   const { data, error } = await supabase
     .from('transactions')
-    .update({ ...row, user_confirmed: true, version: expectedVersion + 1 })
+    .update({
+      ...row,
+      ...(accountId !== undefined ? { account_id: accountId } : {}),
+      user_confirmed: true,
+      version: expectedVersion + 1,
+    })
     .eq('id', id)
     .eq('version', expectedVersion)
     .select(SELECT_WITH_CATEGORY)

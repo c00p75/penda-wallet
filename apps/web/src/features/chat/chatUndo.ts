@@ -6,6 +6,8 @@ const CREATE_HARD_DELETE_TOOLS = new Set([
   'create_goal',
   'create_debt',
   'create_category',
+  'create_recurring_transaction',
+  'create_pact',
 ])
 
 /**
@@ -38,18 +40,33 @@ export function undoTargetsFromChatActions(actions: ChatAction[] | undefined): C
       continue
     }
 
-    if (a.status !== 'done' || !a.targetId) continue
+    if (a.status !== 'done') continue
 
     if (CREATE_SOFT_DELETE_TOOLS.has(a.tool)) {
-      const key = `tx:${a.targetId}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        out.push({ type: 'soft_delete_transaction', transactionId: a.targetId })
+      // create_transaction keeps its entry in targetId. Borrow/lend puts the debt
+      // there, since that is what the row's domain names, and the entry in
+      // transactionId; threads persisted before that split still use targetId.
+      const transactionId = a.transactionId ?? a.targetId
+      if (transactionId) {
+        const key = `tx:${transactionId}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          out.push({ type: 'soft_delete_transaction', transactionId })
+        }
+      }
+      // Borrow/lend saved a debt in the same breath, so undoing only the entry
+      // would leave the debt standing.
+      if (a.tool === 'log_borrowed_or_lent_money' && a.transactionId && a.targetId) {
+        const key = `created:${a.domain}:${a.targetId}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          out.push({ type: 'delete_created', domain: a.domain, targetId: a.targetId })
+        }
       }
       continue
     }
 
-    if (CREATE_HARD_DELETE_TOOLS.has(a.tool)) {
+    if (CREATE_HARD_DELETE_TOOLS.has(a.tool) && a.targetId) {
       const key = `created:${a.domain}:${a.targetId}`
       if (!seen.has(key)) {
         seen.add(key)

@@ -1,6 +1,8 @@
+import { isBalanceAdjustmentCategory } from '@penda/money-core';
 import type { Transaction } from '@/src/api/types';
 import type { SuggestedMission } from '@/src/api/missions';
 import { addLocalDays, localDateStr, localMonthPrefix } from '@/src/lib/dates';
+
 
 /**
  * Offline fallback for "Suggest a mission": deterministic client-side ideas
@@ -16,6 +18,7 @@ export function suggestMissions(transactions: Transaction[], now: Date = new Dat
 
   const byCategory = new Map<string, { name: string; amount: number }>();
   for (const tx of monthExpenses) {
+    if (isBalanceAdjustmentCategory(tx.category?.name)) continue;
     const name = tx.category?.name ?? 'uncategorized spending';
     const key = tx.category_id ?? name;
     const existing = byCategory.get(key);

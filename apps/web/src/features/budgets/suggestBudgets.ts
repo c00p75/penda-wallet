@@ -1,3 +1,4 @@
+import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Transaction } from '@/features/transactions/types'
 
 export interface BudgetSuggestion {
@@ -56,6 +57,7 @@ export function suggestBudgets(
   for (const tx of transactions) {
     if (tx.type !== 'expense') continue
     if (!tx.category_id || !tx.category) continue
+    if (isBalanceAdjustmentCategory(tx.category.name)) continue
     if (tx.transaction_date < cutoffStr) continue
     if (existing.has(tx.category_id)) continue
 

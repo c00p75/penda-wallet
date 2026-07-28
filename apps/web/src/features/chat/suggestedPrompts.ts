@@ -37,14 +37,14 @@ export function suggestedPromptsFor(
       return [
         { label: 'How are my budgets doing?', autoSend: true },
         { label: 'Help me rebalance this month', autoSend: true },
-        { label: 'What should I cut first?', autoSend: true },
+        { label: 'What big thing should I save for?', autoSend: true },
       ]
     case 'goals':
     case 'goal-detail':
       return [
         { label: 'Am I on track for my goals?', autoSend: true },
-        { label: 'What should I do next on this goal?', autoSend: true },
-        { label: 'Help me save more this month', autoSend: true },
+        { label: 'What big thing should I save for?', autoSend: true },
+        { label: 'Suggest a life milestone from my spending', autoSend: true },
       ]
     case 'cashflow':
       return [
@@ -89,8 +89,8 @@ export function suggestedPromptsFor(
       return [
         { label: `I spent ${sym}`, autoSend: false },
         { label: 'What did I spend this week?', autoSend: true },
+        { label: 'What big thing should I save for?', autoSend: true },
         { label: 'How are my budgets doing?', autoSend: true },
-        { label: 'Always categorize Uber as Transport', autoSend: true },
       ]
   }
 }

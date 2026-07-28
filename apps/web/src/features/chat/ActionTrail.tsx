@@ -128,14 +128,14 @@ function ActionStepRow({
             'relative z-[1] mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ring-1',
             action.pendingKind === 'delete'
               ? 'bg-destructive/10 text-destructive ring-destructive/20'
-              : action.pendingKind === 'update'
+              : action.pendingKind === 'update' || action.pendingKind === 'create'
                 ? 'bg-[var(--iris-soft)]/80 text-primary ring-primary/20'
                 : 'bg-secondary text-foreground/80 ring-border/50',
           )}
         >
           {action.pendingKind === 'delete' ? (
             <Trash2 className="size-3" />
-          ) : action.pendingKind === 'update' ? (
+          ) : action.pendingKind === 'update' || action.pendingKind === 'create' ? (
             <Pencil className="size-3" />
           ) : (
             <ProductIcon icon={meta.icon} weight="duotone" className="size-3.5" />

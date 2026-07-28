@@ -6,7 +6,29 @@ import { Textarea } from '@/components/ui/textarea'
 import { parseMoMoText, type ParsedMoMo } from './momoParser'
 import type { TransactionDraft } from './types'
 
-export function parsedToDraft(parsed: ParsedMoMo): TransactionDraft {
+/** Map a MoMo provider hint onto a pocket id when the user has one. */
+export function accountIdForMoMoProvider(
+  provider: ParsedMoMo['provider'],
+  accounts: Array<{ id: string; provider: string | null; name: string; kind: string }>,
+): string | null {
+  if (provider === 'unknown' || accounts.length === 0) return null
+  const providerKey = provider === 'bank' ? 'zanaco' : provider
+  const byProvider = accounts.find((a) => a.provider === providerKey)
+  if (byProvider) return byProvider.id
+  if (provider === 'bank') {
+    return accounts.find((a) => a.kind === 'bank')?.id ?? null
+  }
+  if (provider === 'airtel' || provider === 'mtn' || provider === 'zamtel') {
+    const nameHit = accounts.find((a) => a.name.toLowerCase().includes(provider))
+    return nameHit?.id ?? accounts.find((a) => a.kind === 'mobile_money')?.id ?? null
+  }
+  return null
+}
+
+export function parsedToDraft(
+  parsed: ParsedMoMo,
+  accounts: Array<{ id: string; provider: string | null; name: string; kind: string }> = [],
+): TransactionDraft {
   const label = parsed.type === 'income' ? 'Received' : 'Sent'
   return {
     type: parsed.type,
@@ -15,6 +37,7 @@ export function parsedToDraft(parsed: ParsedMoMo): TransactionDraft {
     description: parsed.reference ? `${label} · Ref ${parsed.reference}` : null,
     transaction_date: parsed.transactionDate,
     source: 'sms',
+    account_id: accountIdForMoMoProvider(parsed.provider, accounts),
     reported_balance_minor: parsed.balanceMinor,
   }
 }
@@ -24,6 +47,8 @@ interface MoMoPasteSheetProps {
   onOpenChange: (open: boolean) => void
   /** Clipboard text captured when the chip was tapped, if any. */
   initialText?: string
+  /** Pockets used to pre-select Airtel/MTN/bank when the SMS matches. */
+  accounts?: Array<{ id: string; provider: string | null; name: string; kind: string }>
   onParsed: (draft: TransactionDraft) => void
   onFallbackToAi: (text: string) => void
 }
@@ -37,6 +62,7 @@ export function MoMoPasteSheet({
   open,
   onOpenChange,
   initialText = '',
+  accounts = [],
   onParsed,
   onFallbackToAi,
 }: MoMoPasteSheetProps) {
@@ -55,7 +81,7 @@ export function MoMoPasteSheet({
     if (!trimmed) return
     const parsed = parseMoMoText(trimmed)
     if (parsed) {
-      onParsed(parsedToDraft(parsed))
+      onParsed(parsedToDraft(parsed, accounts))
     } else {
       setFailed(true)
     }

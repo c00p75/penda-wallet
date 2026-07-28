@@ -27,12 +27,21 @@ const ICON_CHOICES = [
   '💻', '📱', '🛡️', '💰', '🎁', '🏥', '🐾', '🚴',
 ]
 
+/** Prefill for create mode (e.g. milestone idea chips). Ignored when editing. */
+export type GoalFormDefaults = {
+  name?: string
+  icon?: string | null
+  motivation?: string | null
+}
+
 interface GoalFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   walletId: string
   currency: string
   goal?: SavingsGoal | null
+  /** Applied when opening create mode without an existing goal. */
+  defaults?: GoalFormDefaults | null
   onSubmit: (input: SavingsGoalInput, initialAmountMinor: number) => Promise<void>
   onArchive?: () => Promise<void>
   isSubmitting?: boolean
@@ -47,6 +56,7 @@ export function GoalForm({
   walletId,
   currency,
   goal,
+  defaults,
   onSubmit,
   onArchive,
   isSubmitting,
@@ -77,16 +87,16 @@ export function GoalForm({
       setImagePath(goal.image_path)
       setImagePreviewUrl(goal.image_path ? getGoalImageUrl(goal.image_path) : null)
     } else {
-      setName('')
-      setIcon(null)
+      setName(defaults?.name ?? '')
+      setIcon(defaults?.icon ?? null)
       setTargetAmount('')
       setTargetDate('')
       setAlreadySaved('')
-      setMotivation('')
+      setMotivation(defaults?.motivation ?? '')
       setImagePath(null)
       setImagePreviewUrl(null)
     }
-  }, [open, goal])
+  }, [open, goal, defaults])
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]

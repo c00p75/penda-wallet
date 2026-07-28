@@ -11,6 +11,8 @@ export type UndoDomain =
   | 'goal'
   | 'category'
   | 'wallet'
+  | 'recurring'
+  | 'pact'
 
 export type DomainTableCfg = {
   table: string
@@ -79,7 +81,14 @@ export const DOMAIN_TABLES: Record<UndoDomain, DomainTableCfg> = {
     table: 'savings_goals',
     softDelete: false,
     deletable: true,
-    updateColumns: ['name', 'target_amount_minor', 'current_amount_minor', 'target_date'],
+    updateColumns: [
+      'name',
+      'target_amount_minor',
+      'current_amount_minor',
+      'target_date',
+      'icon',
+      'motivation',
+    ],
     reinsertColumns: [
       'name',
       'target_amount_minor',
@@ -104,6 +113,47 @@ export const DOMAIN_TABLES: Record<UndoDomain, DomainTableCfg> = {
     deletable: false,
     updateColumns: ['name'],
     reinsertColumns: ['name'],
+  },
+  recurring: {
+    table: 'recurring_transactions',
+    softDelete: false,
+    deletable: true,
+    updateColumns: ['template', 'frequency', 'next_run_date', 'is_active'],
+    reinsertColumns: [
+      'template',
+      'frequency',
+      'next_run_date',
+      'is_active',
+      'wallet_id',
+      'created_by',
+    ],
+  },
+  pact: {
+    table: 'commitment_pacts',
+    softDelete: false,
+    deletable: true,
+    updateColumns: [
+      'description',
+      'category_id',
+      'goal_id',
+      'start_date',
+      'end_date',
+      'stake_kind',
+      'stake_amount_minor',
+      'stake_note',
+    ],
+    reinsertColumns: [
+      'description',
+      'category_id',
+      'goal_id',
+      'start_date',
+      'end_date',
+      'stake_kind',
+      'stake_amount_minor',
+      'stake_note',
+      'wallet_id',
+      'created_by',
+    ],
   },
 }
 
@@ -159,7 +209,7 @@ export function buildReinsertRow(
 
 export type UndoActionLike = {
   status: string
-  kind: 'update' | 'delete' | 'reconcile'
+  kind: 'create' | 'update' | 'delete' | 'reconcile'
   domain: string
   patch: Record<string, unknown> | null
 }
@@ -179,6 +229,11 @@ export function canUndoAiAction(action: UndoActionLike): boolean {
   const cfg = DOMAIN_TABLES[action.domain]
   const before = action.patch?.__before
   const hasBefore = !!before && typeof before === 'object' && !Array.isArray(before)
+
+  // Confirmed creates undo by deleting the inserted row.
+  if (action.kind === 'create') {
+    return cfg.deletable || action.domain === 'transaction'
+  }
 
   if (action.kind === 'delete') {
     if (!cfg.deletable) return false

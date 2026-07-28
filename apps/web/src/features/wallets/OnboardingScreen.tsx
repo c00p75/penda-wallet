@@ -272,6 +272,10 @@ export function OnboardingScreen() {
     setWalkthrough({ ...state, phase: 'done' })
     setWalkthroughActive(false)
     setChatOpen(false)
+    // Money-account-anchored completion: never re-run first-run for new pockets.
+    void updateProfile.mutateAsync({
+      onboarding_completed_at: new Date().toISOString(),
+    })
   }
 
   // Auto-advance when chat outcomes land.

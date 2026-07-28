@@ -111,4 +111,17 @@ describe('suggestBudgets', () => {
       }),
     ).toEqual([])
   })
+
+  it('ignores Balance adjustment corrections when proposing budgets', () => {
+    const ADJUST = cat('adj', 'Balance adjustment', 'scale')
+    const txns = [
+      tx({ category: ADJUST, amount_minor: 50000, transaction_date: '2026-05-01' }),
+      tx({ category: ADJUST, amount_minor: 50000, transaction_date: '2026-06-01' }),
+      tx({ category: ADJUST, amount_minor: 50000, transaction_date: '2026-07-01' }),
+      tx({ category: FOOD, amount_minor: 20000, transaction_date: '2026-05-01' }),
+      tx({ category: FOOD, amount_minor: 20000, transaction_date: '2026-06-01' }),
+      tx({ category: FOOD, amount_minor: 20000, transaction_date: '2026-07-01' }),
+    ]
+    expect(suggestBudgets(txns, { now: NOW, months: 3 }).map((s) => s.categoryId)).toEqual(['food'])
+  })
 })

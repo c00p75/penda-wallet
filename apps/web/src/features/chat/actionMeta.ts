@@ -71,6 +71,24 @@ export const TOOL_UI: Record<string, ToolUiMeta> = {
     icon: SquaresFour,
     progress: 'Adding a category…',
   },
+  create_recurring_transaction: {
+    domain: 'recurring',
+    label: 'Created recurring',
+    icon: Receipt,
+    progress: 'Setting up recurring…',
+  },
+  create_pact: {
+    domain: 'pact',
+    label: 'Created pact',
+    icon: ClipboardText,
+    progress: 'Creating a pact…',
+  },
+  set_balance: {
+    domain: 'reconciliation',
+    label: 'Confirm balance',
+    icon: Wallet,
+    progress: 'Preparing balance…',
+  },
   query_records: {
     domain: 'query',
     label: 'Looked that up',
@@ -82,6 +100,12 @@ export const TOOL_UI: Record<string, ToolUiMeta> = {
     label: 'Tallied spend',
     icon: ChartBar,
     progress: 'Tallying your spend…',
+  },
+  convert_currency: {
+    domain: 'fx',
+    label: 'Converted currency',
+    icon: ChartBar,
+    progress: 'Checking the exchange rate…',
   },
   update_record: {
     domain: 'record',
@@ -128,6 +152,12 @@ export function viewHrefFor(domain: string, targetId?: string): string | undefin
         : '/transactions'
     case 'budget':
       return targetId ? `/budgets?budget=${encodeURIComponent(targetId)}` : '/budgets'
+    case 'recurring':
+      return targetId
+        ? `/budgets?tab=recurring&recurring=${encodeURIComponent(targetId)}`
+        : '/budgets?tab=recurring'
+    case 'pact':
+      return '/budgets'
     case 'goal':
       return targetId ? `/goals/${targetId}` : '/goals'
     case 'debt':
@@ -152,7 +182,10 @@ export function listHrefFor(domain: string): string | undefined {
     case 'reconciliation':
       return '/transactions'
     case 'budget':
+    case 'pact':
       return '/budgets'
+    case 'recurring':
+      return '/budgets?tab=recurring'
     case 'goal':
       return '/goals'
     case 'debt':
@@ -174,7 +207,10 @@ export function listLabelFor(domain: string): string | undefined {
     case 'reconciliation':
       return 'View transactions'
     case 'budget':
+    case 'pact':
       return 'View budgets'
+    case 'recurring':
+      return 'View recurring'
     case 'goal':
       return 'View goals'
     case 'debt':
@@ -204,23 +240,43 @@ export function withViewHrefs(actions: ChatAction[]): ChatAction[] {
 }
 
 /** Turn a live/running step into a completed one when the turn finishes. */
+const STAGING_TRAIL_TOOLS = new Set([
+  'update_record',
+  'delete_record',
+  'set_balance',
+  'create_budget',
+  'create_goal',
+  'create_debt',
+  'create_recurring_transaction',
+  'create_pact',
+])
+
 export function finalizeLiveActions(steps: ChatAction[]): ChatAction[] {
   return withViewHrefs(
     steps
-      .filter((s) => s.tool !== 'update_record' && s.tool !== 'delete_record' && s.tool !== 'set_balance')
+      .filter((s) => !STAGING_TRAIL_TOOLS.has(s.tool))
       .map((s) => (s.status === 'running' ? { ...s, status: 'done' as const } : s)),
   )
 }
 
-export function pendingTool(kind: PendingAction['kind']): string {
+export function pendingTool(kind: PendingAction['kind'], domain?: string): string {
   if (kind === 'delete') return 'delete_record'
   if (kind === 'reconcile') return 'set_balance'
+  if (kind === 'create') {
+    if (domain === 'recurring') return 'create_recurring_transaction'
+    if (domain === 'budget') return 'create_budget'
+    if (domain === 'goal') return 'create_goal'
+    if (domain === 'debt') return 'create_debt'
+    if (domain === 'pact') return 'create_pact'
+    return 'create_budget'
+  }
   return 'update_record'
 }
 
 function pendingLabel(kind: PendingAction['kind']): string {
   if (kind === 'delete') return 'Proposed deletion'
   if (kind === 'reconcile') return 'Confirm balance'
+  if (kind === 'create') return 'Proposed create'
   return 'Proposed update'
 }
 
@@ -233,7 +289,7 @@ export function pendingToTrailActions(
     const resolved = statusMap[p.id]
     return {
       id: p.id,
-      tool: pendingTool(p.kind),
+      tool: pendingTool(p.kind, p.domain),
       domain: p.domain,
       label: pendingLabel(p.kind),
       summary: p.summary,

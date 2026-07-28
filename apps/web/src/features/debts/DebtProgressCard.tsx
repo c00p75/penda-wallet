@@ -6,6 +6,7 @@ import { cardAccentClass } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
+import { debtDueUrgency } from './dueDate'
 import type { Debt } from './types'
 
 interface DebtProgressCardProps {
@@ -22,6 +23,22 @@ function formatDate(dateStr: string) {
   })
 }
 
+function dueLabel(debt: Debt): { text: string; className: string } | null {
+  if (debt.balance_minor <= 0 || !debt.due_date) return null
+  const urgency = debtDueUrgency(debt)
+  const when = formatDate(debt.due_date)
+  if (urgency === 'overdue') {
+    return { text: `Overdue · was due ${when}`, className: 'text-[var(--rose)]' }
+  }
+  if (urgency === 'due_today') {
+    return { text: 'Due today', className: 'text-[var(--rose)]' }
+  }
+  if (urgency === 'due_soon') {
+    return { text: `Due ${when}`, className: 'text-amber-700 dark:text-amber-400' }
+  }
+  return { text: `Due ${when}`, className: 'text-muted-foreground' }
+}
+
 export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: DebtProgressCardProps) {
   const isSettled = debt.balance_minor <= 0
   const paidOff = debt.principal_minor > 0 ? 1 - Math.max(debt.balance_minor, 0) / debt.principal_minor : 0
@@ -30,7 +47,10 @@ export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: Deb
   const paidPct = isSettled ? 100 : Math.round(Math.min(Math.max(paidOff, 0), 1) * 100)
   const iOwe = debt.direction === 'i_owe'
   const DirectionIcon = iOwe ? ArrowUpRight : ArrowDownLeft
-  const accent = isSettled ? 'mint' : iOwe ? 'rose' : 'mint'
+  const urgency = debtDueUrgency(debt)
+  const accent =
+    isSettled ? 'mint' : urgency === 'overdue' || urgency === 'due_today' ? 'rose' : iOwe ? 'rose' : 'mint'
+  const due = dueLabel(debt)
 
   return (
     <div
@@ -48,9 +68,11 @@ export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: Deb
                 'grid size-10 shrink-0 place-items-center rounded-2xl',
                 isSettled
                   ? 'bg-[var(--mint-soft)] text-[var(--mint)]'
-                  : iOwe
+                  : urgency === 'overdue' || urgency === 'due_today'
                     ? 'bg-[var(--rose-soft)] text-[var(--rose)]'
-                    : 'bg-[var(--mint-soft)] text-[var(--mint)]',
+                    : iOwe
+                      ? 'bg-[var(--rose-soft)] text-[var(--rose)]'
+                      : 'bg-[var(--mint-soft)] text-[var(--mint)]',
               )}
             >
               <DirectionIcon className="size-5" weight="bold" />
@@ -60,8 +82,8 @@ export function DebtProgressCard({ debt, currency, onSelect, onLogPayment }: Deb
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {isSettled ? 'Settled' : iOwe ? 'You owe' : 'Owed to you'}
                 {debt.counterparty ? ` · ${debt.counterparty}` : ''}
-                {!isSettled && debt.due_date ? ` · due ${formatDate(debt.due_date)}` : ''}
               </p>
+              {due && <p className={cn('mt-0.5 text-xs font-medium', due.className)}>{due.text}</p>}
             </div>
           </div>
           <div className="shrink-0 text-right">

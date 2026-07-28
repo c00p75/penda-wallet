@@ -13,11 +13,13 @@ import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
 import { fetchBudgetProgress } from '@/src/api/budgets';
 import { fetchSavingsGoals } from '@/src/api/goals';
 import { fetchCategories } from '@/src/api/categories';
+import { createAccount, fetchAccounts } from '@/src/api/accounts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { computeMonthlyBalance } from '@/src/lib/transactions';
 import { useAuthStore } from '@/src/store/authStore';
 import { useChatStore } from '@/src/store/chatStore';
 import type { Transaction } from '@/src/api/types';
+import { accountBalanceMinor } from '@penda/money-core';
 
 function greetingLabel(now = new Date()): string {
   const h = now.getHours();
@@ -87,12 +89,32 @@ export default function HomeScreen() {
     enabled: !!wallet?.id,
   });
 
+  const { data: accounts = [], refetch: refetchAccounts } = useQuery({
+    queryKey: ['accounts', wallet?.id],
+    queryFn: () => fetchAccounts(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const addAirtel = useMutation({
+    mutationFn: () =>
+      createAccount(wallet!.id, {
+        name: 'Airtel Money',
+        kind: 'mobile_money',
+        provider: 'airtel',
+        icon: '📱',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['accounts', wallet?.id] });
+    },
+  });
+
   const refreshing = walletLoading || txLoading;
   const onRefresh = () => {
     void refetchWallets();
     void refetchTx();
     void refetchBudgets();
     void refetchGoals();
+    void refetchAccounts();
   };
 
   if (walletLoading && !wallet) return <LoadingView />;
@@ -130,9 +152,42 @@ export default function HomeScreen() {
       <HeroBalance
         balanceMinor={balance}
         currency={currency}
-        subtitle="Income minus expenses this month"
+        subtitle={wallet?.name ? `${wallet.name} · this month` : 'Income minus expenses this month'}
         hideAmount
       />
+
+      <View style={styles.sectionHeader}>
+        <Text variant="h3">Wallets</Text>
+        {!accounts.some((a) => a.provider === 'airtel') ? (
+          <AnimatedPressable onPress={() => addAirtel.mutate()} disabled={addAirtel.isPending}>
+            <Text variant="label" color={colors.iris}>
+              Add Airtel
+            </Text>
+          </AnimatedPressable>
+        ) : null}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pocketRow}>
+        {accounts.map((account) => {
+          const pocketBalance = accountBalanceMinor(
+            transactions.map((t) => ({
+              type: t.type,
+              amount_minor: t.amount_minor,
+              converted_amount_minor: t.converted_amount_minor,
+              account_id: t.account_id,
+            })),
+            account.id,
+          );
+          return (
+            <Card key={account.id} style={styles.pocketCard}>
+              <Text variant="bodyMedium">
+                {account.icon ? `${account.icon} ` : ''}
+                {account.name}
+              </Text>
+              <Text variant="h3">{formatMoney(pocketBalance, currency)}</Text>
+            </Card>
+          );
+        })}
+      </ScrollView>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickLinks}>
         {[
@@ -290,6 +345,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginTop: spacing.sm,
+  },
+  pocketRow: {
+    gap: spacing.md,
+    paddingRight: spacing.xl,
+  },
+  pocketCard: {
+    width: 150,
+    gap: spacing.xs,
   },
   card: {
     gap: spacing.xs,

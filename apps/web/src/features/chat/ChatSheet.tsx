@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { currencySymbol } from '@/lib/currencies'
+import { formatMoney } from '@/lib/money'
 import { useKeyboardInset } from '@/lib/useKeyboardInset'
 import { useCloseOnBack } from '@/lib/useCloseOnBack'
 import { supabase } from '@/lib/supabase/client'
@@ -27,6 +28,7 @@ import { PersonaAvatar } from '@/features/profile/PersonaAvatar'
 import { personaPortraitSrc } from '@/features/profile/personaPortraits'
 import { personalityMeta, type ActiveAiPersonality } from '@/features/profile/types'
 import { useCategories } from '@/features/categories/hooks'
+import { defaultAccountId, useAccounts } from '@/features/accounts/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
 import type { PremiumFeature } from '@/features/entitlements/types'
@@ -66,6 +68,7 @@ import { useVoiceRecorder } from './useVoiceRecorder'
 import type { PageContext } from './pageContext'
 import { resolveUndoTargets } from './chatUndo'
 import type { ChatAction, ChatMessage, ChatUndoTarget, PendingAction } from './types'
+import type { UiEdit } from './uiEdits'
 import {
   isInChatViewKind,
   parseViewHref,
@@ -118,6 +121,12 @@ interface ChatSheetProps {
 const HOLD_THRESHOLD_MS = 250
 /** Slide the pointer up this far while holding to cancel (no STT). */
 const CANCEL_SLIDE_PX = 56
+
+/** Soft keyboards / phones: Enter should insert a newline, not send. */
+function enterSubmitsMessage(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  return !window.matchMedia('(pointer: coarse)').matches
+}
 /** RMS-ish level below this counts as silence once speech was heard. */
 const SILENCE_LEVEL = 0.04
 const SILENCE_STOP_MS = 1400
@@ -246,8 +255,11 @@ export function ChatSheet({
   const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
   const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
   const { data: categories = [] } = useCategories(walletId)
+  const { data: accounts = [] } = useAccounts(walletId)
   const voiceTurnRef = useRef(false)
   const continuityInjectedRef = useRef(false)
+  /** View-sheet edits since the last chat turn; flushed into the next send. */
+  const pendingUiEditsRef = useRef<UiEdit[]>([])
   const openRef = useRef(open)
   openRef.current = open
   const relistenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -545,6 +557,18 @@ export function ChatSheet({
   const emptyPrompts = suggestedPromptsFor(pageContext, currency, { isFirstRun })
 
   // Appends a message, keeping the list capped to what we're willing to persist.
+  function takeUiEdits(): UiEdit[] {
+    const edits = pendingUiEditsRef.current
+    pendingUiEditsRef.current = []
+    return edits
+  }
+
+  /** Remember a View-sheet change for the next model turn, and acknowledge it in-thread. */
+  function recordUiEdit(edit: UiEdit, note: string) {
+    pendingUiEditsRef.current = [...pendingUiEditsRef.current, edit]
+    pushMessage({ id: nextId(), role: 'assistant', text: note })
+  }
+
   function pushMessage(message: ChatMessage) {
     setMessages((prev) => [...prev, message].slice(-MAX_STORED_MESSAGES))
   }
@@ -703,6 +727,7 @@ export function ChatSheet({
     if (!walletId) return
     sentConversationIdRef.current = conversationId
     const bubbleId = replaceId ?? nextId()
+    const uiEdits = takeUiEdits()
     if (replaceId) {
       replaceMessage(replaceId, { id: bubbleId, role: 'assistant', text: '' })
     } else {
@@ -724,6 +749,10 @@ export function ChatSheet({
         (error instanceof Error && /fetch|network/i.test(error.message))
       if (networkFail && !replaceId) {
         try {
+          // Offline queue has no uiEdits slot; put them back for the next online send.
+          if (uiEdits.length) {
+            pendingUiEditsRef.current = [...uiEdits, ...pendingUiEditsRef.current]
+          }
           await enqueueChatMessage(walletId, text)
           replaceMessage(bubbleId, {
             id: bubbleId,
@@ -738,9 +767,17 @@ export function ChatSheet({
       }
       // Stream failed, try classic JSON once.
       try {
-        const result = await sendMessage.mutateAsync({ message: text, conversationId, pageContext })
+        const result = await sendMessage.mutateAsync({
+          message: text,
+          conversationId,
+          pageContext,
+          uiEdits,
+        })
         applyChatResult(result, bubbleId)
       } catch (fallbackError) {
+        if (uiEdits.length) {
+          pendingUiEditsRef.current = [...uiEdits, ...pendingUiEditsRef.current]
+        }
         replaceMessage(bubbleId, {
           id: bubbleId,
           role: 'assistant',
@@ -774,6 +811,7 @@ export function ChatSheet({
         },
       },
       abort.signal,
+      uiEdits,
     )
       .catch((error) => {
         if (abort.signal.aborted) return
@@ -870,14 +908,16 @@ export function ChatSheet({
               {
                 // Keep the pending-action id so Undo can call undoAiAction.
                 id: action.id,
-                tool: pendingTool(action.kind),
+                tool: pendingTool(action.kind, res.domain),
                 domain: res.domain,
                 label:
                   action.kind === 'delete'
                     ? 'Deleted'
                     : action.kind === 'reconcile'
                       ? 'Set balance'
-                      : 'Updated',
+                      : action.kind === 'create'
+                        ? 'Created'
+                        : 'Updated',
                 summary: res.summary,
                 status: 'done' as const,
                 targetId,
@@ -885,7 +925,11 @@ export function ChatSheet({
             ])
           : undefined
       const undoTargets =
-        decision === 'confirm' ? resolveUndoTargets({ actions: confirmedActions }) : []
+        decision === 'confirm'
+          ? action.kind === 'create' && targetId
+            ? [{ type: 'delete_created' as const, domain: res.domain, targetId }]
+            : resolveUndoTargets({ actions: confirmedActions })
+          : []
       pushMessage({
         id: nextId(),
         role: 'assistant',
@@ -1103,6 +1147,16 @@ export function ChatSheet({
         version: overlayTx.version,
       })
       toast(isReceiptOverlay ? 'Receipt confirmed.' : 'Transaction updated.')
+      if (!isReceiptOverlay) {
+        const label = input.merchant?.trim() || input.description?.trim() || 'Transaction'
+        recordUiEdit(
+          {
+            domain: 'transaction',
+            summary: `${label} set to ${formatMoney(input.amount_minor, input.currency || currency)}`,
+          },
+          `Saved that transaction update to ${formatMoney(input.amount_minor, input.currency || currency)}. I'll use it when you ask again.`,
+        )
+      }
       setOverlayTx(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1141,6 +1195,16 @@ export function ChatSheet({
     try {
       await updateBudget.mutateAsync({ id: overlayBudget.id, input })
       toast('Budget updated.')
+      const catName =
+        categories.find((c) => c.id === (input.category_id ?? overlayBudget.category_id))?.name ??
+        'Budget'
+      recordUiEdit(
+        {
+          domain: 'budget',
+          summary: `${catName} budget set to ${formatMoney(input.amount_minor, currency)} (${input.period})`,
+        },
+        `Saved your ${catName} budget as ${formatMoney(input.amount_minor, currency)}. I'll use the new amount when you ask again.`,
+      )
       setOverlayBudget(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1150,8 +1214,14 @@ export function ChatSheet({
   async function deleteOverlayBudget() {
     if (!overlayBudget) return
     try {
+      const catName =
+        categories.find((c) => c.id === overlayBudget.category_id)?.name ?? 'Budget'
       await deleteBudget.mutateAsync(overlayBudget.id)
       toast('Budget deleted.')
+      recordUiEdit(
+        { domain: 'budget', summary: `Deleted ${catName} budget` },
+        `Removed the ${catName} budget. I'll leave it out of the next total.`,
+      )
       setOverlayBudget(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1163,6 +1233,13 @@ export function ChatSheet({
     try {
       await updateDebt.mutateAsync({ id: overlayDebt.id, input })
       toast('Debt updated.')
+      recordUiEdit(
+        {
+          domain: 'debt',
+          summary: `${input.name} debt updated (principal ${formatMoney(input.principal_minor, currency)})`,
+        },
+        `Saved your update to ${input.name}. I'll use the new figures when you ask again.`,
+      )
       setOverlayDebt(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1172,8 +1249,13 @@ export function ChatSheet({
   async function archiveOverlayDebt() {
     if (!overlayDebt) return
     try {
+      const name = overlayDebt.name
       await archiveDebt.mutateAsync(overlayDebt.id)
       toast('Debt archived.')
+      recordUiEdit(
+        { domain: 'debt', summary: `Archived debt ${name}` },
+        `Archived ${name}. I'll treat it as settled going forward.`,
+      )
       setOverlayDebt(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1185,6 +1267,13 @@ export function ChatSheet({
     try {
       await updateGoal.mutateAsync({ id: overlayGoal.id, input })
       toast('Goal updated.')
+      recordUiEdit(
+        {
+          domain: 'goal',
+          summary: `${input.name} goal target ${formatMoney(input.target_amount_minor, currency)}`,
+        },
+        `Saved your update to ${input.name}. I'll use the new figures when you ask again.`,
+      )
       setOverlayGoal(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1194,8 +1283,13 @@ export function ChatSheet({
   async function archiveOverlayGoal() {
     if (!overlayGoal) return
     try {
+      const name = overlayGoal.name
       await archiveGoal.mutateAsync(overlayGoal.id)
       toast('Goal archived.')
+      recordUiEdit(
+        { domain: 'goal', summary: `Archived goal ${name}` },
+        `Archived ${name}. I won't count it in active goals.`,
+      )
       setOverlayGoal(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1499,8 +1593,8 @@ export function ChatSheet({
                     <div
                       className={
                         m.role === 'user'
-                          ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-xl bg-primary px-3.5 py-2.5 text-sm text-primary-foreground shadow-[var(--shadow-soft)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
-                          : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-sm shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
+                          ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-xl bg-primary px-3.5 py-2.5 text-base text-primary-foreground shadow-[var(--shadow-soft)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
+                          : 'mr-auto max-w-[80%] rounded-2xl rounded-bl-xl bg-secondary px-3.5 py-2.5 text-base shadow-[var(--shadow-soft)] ring-1 ring-border/40 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200'
                       }
                     >
                       <MessageBody text={m.text} />
@@ -1622,7 +1716,7 @@ export function ChatSheet({
                 )}
               </div>
             )}
-            <div className="flex w-full items-end gap-1 rounded-2xl border border-border/60 bg-secondary/40 p-1.5 shadow-[var(--shadow-soft)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+            <div className="flex w-full flex-col gap-1 rounded-2xl border border-border/60 bg-secondary/40 p-1.5 shadow-[var(--shadow-soft)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
               <Textarea
                 ref={inputRef}
                 value={input}
@@ -1643,6 +1737,8 @@ export function ChatSheet({
                 }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' || e.shiftKey) return
+                  // Mobile soft keyboards: Enter inserts a newline. Desktop: send.
+                  if (!enterSubmitsMessage()) return
                   e.preventDefault()
                   if (busy || !input.trim()) return
                   submitText(input)
@@ -1650,49 +1746,52 @@ export function ChatSheet({
                 placeholder={isRecording ? 'Listening…' : `I spent ${sym}12 on coffee...`}
                 autoComplete="off"
                 rows={1}
-                className="max-h-36 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-2.5 shadow-none [field-sizing:fixed] focus-visible:border-transparent focus-visible:ring-0"
+                enterKeyHint="enter"
+                className="max-h-36 min-h-10 w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-2.5 shadow-none [field-sizing:fixed] focus-visible:border-transparent focus-visible:ring-0"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={uploadReceipt.isPending || voice.state === 'transcribing' || isRecording}
-                onClick={openScanReceipt}
-                className="size-10 shrink-0 self-end rounded-xl"
-                aria-label="Scan receipt"
-              >
-                <Camera className="size-4" weight="fill" />
-              </Button>
-              <Button
-                type="button"
-                variant={isRecording ? 'destructive' : 'ghost'}
-                size="icon"
-                disabled={voice.state === 'transcribing' || uploadReceipt.isPending}
-                onPointerDown={onMicPointerDown}
-                onPointerMove={onMicPointerMove}
-                onPointerUp={onMicPointerUp}
-                onPointerCancel={onMicPointerCancel}
-                onContextMenu={(e) => e.preventDefault()}
-                onClick={onMicClick}
-                className="size-10 shrink-0 touch-none self-end rounded-xl"
-                aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
-                aria-pressed={isRecording}
-              >
-                {recordMode === 'locked' ? (
-                  <Stop className="size-4" weight="fill" />
-                ) : (
-                  <Microphone className="size-4" weight="fill" />
-                )}
-              </Button>
-              <Button
-                type="submit"
-                size="icon"
-                disabled={busy || !input.trim() || uploadReceipt.isPending}
-                className="size-10 shrink-0 self-end rounded-xl"
-                aria-label="Send"
-              >
-                <Send className="size-4" />
-              </Button>
+              <div className="flex items-center justify-end gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={uploadReceipt.isPending || voice.state === 'transcribing' || isRecording}
+                  onClick={openScanReceipt}
+                  className="size-10 shrink-0 rounded-xl"
+                  aria-label="Scan receipt"
+                >
+                  <Camera className="size-4" weight="fill" />
+                </Button>
+                <Button
+                  type="button"
+                  variant={isRecording ? 'destructive' : 'ghost'}
+                  size="icon"
+                  disabled={voice.state === 'transcribing' || uploadReceipt.isPending}
+                  onPointerDown={onMicPointerDown}
+                  onPointerMove={onMicPointerMove}
+                  onPointerUp={onMicPointerUp}
+                  onPointerCancel={onMicPointerCancel}
+                  onContextMenu={(e) => e.preventDefault()}
+                  onClick={onMicClick}
+                  className="size-10 shrink-0 touch-none rounded-xl"
+                  aria-label={isRecording ? 'Stop recording' : 'Hold to talk, or tap to record'}
+                  aria-pressed={isRecording}
+                >
+                  {recordMode === 'locked' ? (
+                    <Stop className="size-4" weight="fill" />
+                  ) : (
+                    <Microphone className="size-4" weight="fill" />
+                  )}
+                </Button>
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={busy || !input.trim() || uploadReceipt.isPending}
+                  className="size-10 shrink-0 rounded-xl"
+                  aria-label="Send"
+                >
+                  <Send className="size-4" />
+                </Button>
+              </div>
             </div>
             <input
               ref={receiptInputRef}
@@ -1718,6 +1817,8 @@ export function ChatSheet({
             categories={categories}
             currency={currency}
             walletId={walletId}
+            accounts={accounts}
+            defaultAccountId={defaultAccountId(accounts)}
             transaction={overlayTx}
             onSubmit={saveOverlayTransaction}
             onConfirmItems={isReceiptOverlay ? confirmReceiptAsItems : undefined}

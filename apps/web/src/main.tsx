@@ -30,11 +30,14 @@ darkMedia.addEventListener('change', applyTheme)
 useThemeStore.subscribe(applyTheme)
 
 // Fade out the inlined boot splash (see index.html) once auth boot resolves.
+// Shown once per browser session (sessionStorage); return loads skip it via
+// the html.bs-skip class set in index.html before first paint.
 // A short floor keeps it from flickering on a warm/instant load; a hard cap
 // guarantees it never gets stuck if the session never resolves (e.g. offline).
 const SPLASH_MIN_MS = 1400
 const SPLASH_MAX_MS = 4000
 const splashStart = performance.now()
+const skipBootSplash = document.documentElement.classList.contains('bs-skip')
 let splashHidden = false
 
 function hideBootSplash() {
@@ -42,6 +45,10 @@ function hideBootSplash() {
   splashHidden = true
   const el = document.getElementById('boot-splash')
   if (!el) return
+  if (skipBootSplash) {
+    el.remove()
+    return
+  }
   el.classList.add('bs-hidden')
   const remove = () => el.remove()
   el.addEventListener('transitionend', remove, { once: true })
@@ -54,13 +61,22 @@ function maybeHideSplash() {
   window.setTimeout(hideBootSplash, wait)
 }
 
-const stopSplashWatch = useAuthStore.subscribe(() => {
-  if (!useAuthStore.getState().isLoading) {
-    stopSplashWatch()
-    maybeHideSplash()
+if (skipBootSplash) {
+  hideBootSplash()
+} else {
+  try {
+    sessionStorage.setItem('penda-boot-splash', '1')
+  } catch {
+    // Private mode / blocked storage: still show splash this load.
   }
-})
-window.setTimeout(hideBootSplash, SPLASH_MAX_MS)
+  const stopSplashWatch = useAuthStore.subscribe(() => {
+    if (!useAuthStore.getState().isLoading) {
+      stopSplashWatch()
+      maybeHideSplash()
+    }
+  })
+  window.setTimeout(hideBootSplash, SPLASH_MAX_MS)
+}
 
 const updateSW = registerSW({
   onNeedRefresh() {

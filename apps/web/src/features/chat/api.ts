@@ -2,6 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { PageContext } from './pageContext'
 import type { ChatResponse, ConfirmActionResponse } from './types'
+import type { UiEdit } from './uiEdits'
 
 // supabase.functions.invoke surfaces every non-2xx as a FunctionsHttpError
 // whose .message is just "Edge Function returned a non-2xx status code", the
@@ -54,9 +55,10 @@ export async function sendChatMessage(
   message: string,
   conversationId?: string,
   pageContext?: PageContext,
+  uiEdits?: UiEdit[],
 ): Promise<ChatResponse> {
   const { data, error } = await supabase.functions.invoke<ChatResponse>('chat-message', {
-    body: { walletId, message, conversationId, pageContext },
+    body: { walletId, message, conversationId, pageContext, uiEdits },
   })
 
   if (error) throw await unwrapFunctionError(error)
@@ -83,6 +85,7 @@ export async function sendChatMessageStream(
   pageContext: PageContext | undefined,
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
+  uiEdits?: UiEdit[],
 ): Promise<void> {
   const url = import.meta.env.VITE_SUPABASE_URL
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -105,6 +108,7 @@ export async function sendChatMessageStream(
       message,
       conversationId,
       pageContext,
+      uiEdits,
       stream: true,
     }),
     signal,

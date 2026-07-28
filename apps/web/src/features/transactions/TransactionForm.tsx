@@ -21,7 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Category } from '@/features/categories/types'
+import type { Account } from '@/features/accounts/types'
 import { upsertCategorizationRule } from '@/features/categories/rulesApi'
 import type {
   ReceiptItemsConfirmInput,
@@ -48,6 +50,9 @@ interface TransactionFormProps {
   categories: Category[]
   currency: string
   walletId?: string
+  /** Pockets under the money account. When provided, show a wallet picker. */
+  accounts?: Account[]
+  defaultAccountId?: string | null
   transaction?: Transaction | null
   /** Pre-fill for a new transaction (parsed MoMo/SMS). Ignored when editing. */
   draft?: TransactionDraft | null
@@ -101,6 +106,8 @@ export function TransactionForm({
   categories,
   currency,
   walletId,
+  accounts = [],
+  defaultAccountId = null,
   transaction,
   draft,
   onSubmit,
@@ -114,6 +121,7 @@ export function TransactionForm({
   const [amount, setAmount] = useState('')
   const [txCurrency, setTxCurrency] = useState(currency)
   const [categoryId, setCategoryId] = useState<string>('')
+  const [accountId, setAccountId] = useState<string>('')
   const [merchant, setMerchant] = useState('')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState(today())
@@ -158,11 +166,14 @@ export function TransactionForm({
   useEffect(() => {
     if (!open) return
     setTeachPenda(false)
+    const fallbackAccount =
+      defaultAccountId ?? accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? ''
     if (transaction) {
-      setType(transaction.type)
+      setType(transaction.type === 'transfer' ? 'expense' : transaction.type)
       setAmount(fromMinorUnits(transaction.amount_minor).toString())
       setTxCurrency(transaction.currency || currency)
       setCategoryId(transaction.category_id ?? '')
+      setAccountId(transaction.account_id ?? fallbackAccount)
       setMerchant(transaction.merchant ?? '')
       setDescription(transaction.description ?? '')
       setDate(transaction.transaction_date)
@@ -174,10 +185,11 @@ export function TransactionForm({
           : 'combined',
       )
     } else if (draft) {
-      setType(draft.type)
+      setType(draft.type === 'transfer' ? 'expense' : draft.type)
       setAmount(fromMinorUnits(draft.amount_minor).toString())
       setTxCurrency(currency)
       setCategoryId('')
+      setAccountId(draft.account_id ?? fallbackAccount)
       setMerchant(draft.merchant ?? '')
       setDescription(draft.description ?? '')
       setDate(draft.transaction_date)
@@ -188,13 +200,14 @@ export function TransactionForm({
       setAmount('')
       setTxCurrency(currency)
       setCategoryId('')
+      setAccountId(fallbackAccount)
       setMerchant('')
       setDescription('')
       setDate(today())
       setLines([])
       setReceiptMode('combined')
     }
-  }, [open, transaction, draft, categories, currency])
+  }, [open, transaction, draft, categories, currency, accounts, defaultAccountId])
 
   const canTeach =
     !itemsMode &&
@@ -250,6 +263,7 @@ export function TransactionForm({
         amount_minor: toMinorUnits(amountNumber),
         currency: txCurrency,
         category_id: categoryId || null,
+        account_id: accountId || null,
         merchant: merchant || null,
         description: description || null,
         transaction_date: date,
@@ -334,6 +348,25 @@ export function TransactionForm({
             </ToggleGroupItem>
           </ToggleGroup>
 
+          {accounts.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Wallet</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose wallet" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.icon ? `${a.icon} ` : ''}
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {itemsMode ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-2">
@@ -411,12 +444,18 @@ export function TransactionForm({
                         <SelectValue placeholder="Uncategorized" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            {category.icon ? `${category.icon} ` : ''}
-                            {category.name}
-                          </SelectItem>
-                        ))}
+                        {categories
+                          .filter(
+                            (category) =>
+                              !isBalanceAdjustmentCategory(category.name) ||
+                              category.id === line.categoryId,
+                          )
+                          .map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.icon ? `${category.icon} ` : ''}
+                              {category.name}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -489,12 +528,17 @@ export function TransactionForm({
                     <SelectValue placeholder="Uncategorized" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.icon ? `${category.icon} ` : ''}
-                        {category.name}
-                      </SelectItem>
-                    ))}
+                    {categories
+                      .filter(
+                        (category) =>
+                          !isBalanceAdjustmentCategory(category.name) || category.id === categoryId,
+                      )
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.icon ? `${category.icon} ` : ''}
+                          {category.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

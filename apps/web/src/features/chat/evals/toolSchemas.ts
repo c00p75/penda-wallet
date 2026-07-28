@@ -12,8 +12,11 @@ export const TOOL_NAMES = [
   'create_budget',
   'create_goal',
   'create_category',
+  'create_recurring_transaction',
+  'create_pact',
   'query_records',
   'get_spending_summary',
+  'convert_currency',
   'update_record',
   'delete_record',
   'save_memory',
@@ -23,10 +26,23 @@ export const TOOL_NAMES = [
 export type ToolName = (typeof TOOL_NAMES)[number]
 
 /** Tools that stage a confirm card instead of applying immediately. */
-export const STAGING_TOOLS = new Set<ToolName>(['update_record', 'delete_record', 'set_balance'])
+export const STAGING_TOOLS = new Set<ToolName>([
+  'update_record',
+  'delete_record',
+  'set_balance',
+  'create_budget',
+  'create_goal',
+  'create_debt',
+  'create_recurring_transaction',
+  'create_pact',
+])
 
 /** Tools that run immediately (lookups / memory / creates that may still confirm). */
-export const IMMEDIATE_LOOKUP_TOOLS = new Set<ToolName>(['query_records', 'get_spending_summary'])
+export const IMMEDIATE_LOOKUP_TOOLS = new Set<ToolName>([
+  'query_records',
+  'get_spending_summary',
+  'convert_currency',
+])
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -85,6 +101,9 @@ export function validateToolArgs(
       const date = requireString(args, 'transaction_date')
       if (typeof date !== 'string') return date
       if (!ISO_DATE.test(date)) return fail('transaction_date', 'must be YYYY-MM-DD')
+      if (args.account != null && typeof args.account !== 'string') {
+        return fail('account', 'must be string')
+      }
       return { ok: true }
     }
     case 'create_debt': {
@@ -156,6 +175,12 @@ export function validateToolArgs(
       }
       const due = optionalIsoDate(args, 'target_date')
       if (due && !due.ok) return due
+      if (args.icon != null && typeof args.icon !== 'string') {
+        return fail('icon', 'must be string')
+      }
+      if (args.motivation != null && typeof args.motivation !== 'string') {
+        return fail('motivation', 'must be string')
+      }
       return { ok: true }
     }
     case 'create_category': {
@@ -163,8 +188,52 @@ export function validateToolArgs(
       if (typeof n !== 'string') return n
       return { ok: true }
     }
+    case 'create_recurring_transaction': {
+      const amount = requireNumber(args, 'amount')
+      if (typeof amount !== 'number') return amount
+      if (amount <= 0) return fail('amount', 'must be > 0')
+      if (args.type !== 'expense' && args.type !== 'income') return fail('type', 'expense|income')
+      if (
+        args.frequency !== 'daily' &&
+        args.frequency !== 'weekly' &&
+        args.frequency !== 'monthly' &&
+        args.frequency !== 'yearly'
+      ) {
+        return fail('frequency', 'daily|weekly|monthly|yearly')
+      }
+      const next = requireString(args, 'next_run_date')
+      if (typeof next !== 'string') return next
+      if (!ISO_DATE.test(next)) return fail('next_run_date', 'must be YYYY-MM-DD')
+      if (args.category != null) {
+        if (typeof args.category !== 'string') return fail('category', 'must be string')
+        if (categories && !categories.includes(args.category)) return fail('category', 'unknown category')
+      }
+      return { ok: true }
+    }
+    case 'create_pact': {
+      const d = requireString(args, 'description')
+      if (typeof d !== 'string') return d
+      const end = requireString(args, 'end_date')
+      if (typeof end !== 'string') return end
+      if (!ISO_DATE.test(end)) return fail('end_date', 'must be YYYY-MM-DD')
+      const start = optionalIsoDate(args, 'start_date')
+      if (start && !start.ok) return start
+      if (args.category != null) {
+        if (typeof args.category !== 'string') return fail('category', 'must be string')
+        if (categories && !categories.includes(args.category)) return fail('category', 'unknown category')
+      }
+      return { ok: true }
+    }
     case 'query_records': {
-      const domains = ['transaction', 'debt', 'budget', 'goal', 'category'] as const
+      const domains = [
+        'transaction',
+        'debt',
+        'budget',
+        'goal',
+        'category',
+        'recurring',
+        'pact',
+      ] as const
       if (!domains.includes(args.domain as (typeof domains)[number])) {
         return fail('domain', domains.join('|'))
       }
@@ -187,14 +256,36 @@ export function validateToolArgs(
       }
       return { ok: true }
     }
+    case 'convert_currency': {
+      const amount = requireNumber(args, 'amount')
+      if (typeof amount !== 'number') return amount
+      if (amount <= 0) return fail('amount', 'must be > 0')
+      const from = requireString(args, 'from_currency')
+      if (typeof from !== 'string') return from
+      const to = requireString(args, 'to_currency')
+      if (typeof to !== 'string') return to
+      return { ok: true }
+    }
     case 'set_balance': {
       const amount = requireNumber(args, 'amount')
       if (typeof amount !== 'number') return amount
       if (amount < 0) return fail('amount', 'must be >= 0')
+      if (args.account != null && typeof args.account !== 'string') {
+        return fail('account', 'must be string')
+      }
       return { ok: true }
     }
     case 'update_record': {
-      const domains = ['transaction', 'debt', 'budget', 'goal', 'category', 'wallet'] as const
+      const domains = [
+        'transaction',
+        'debt',
+        'budget',
+        'goal',
+        'category',
+        'wallet',
+        'recurring',
+        'pact',
+      ] as const
       if (!domains.includes(args.domain as (typeof domains)[number])) {
         return fail('domain', domains.join('|'))
       }
@@ -206,7 +297,15 @@ export function validateToolArgs(
       return { ok: true }
     }
     case 'delete_record': {
-      const domains = ['transaction', 'debt', 'budget', 'goal', 'category'] as const
+      const domains = [
+        'transaction',
+        'debt',
+        'budget',
+        'goal',
+        'category',
+        'recurring',
+        'pact',
+      ] as const
       if (!domains.includes(args.domain as (typeof domains)[number])) {
         return fail('domain', domains.join('|'))
       }
@@ -282,7 +381,24 @@ export function inferPreferredTool(utterance: string): ToolName | null {
   ) {
     return 'get_spending_summary'
   }
-  if (/\b(find|show|list|look\s+up)\b.*\b(transaction|debt|budget|goal|categor)/.test(u)) {
+  if (
+    /\b(convert|exchange\s+rate|fx)\b/.test(u) ||
+    (/\b(what('?s|\s+is)|how\s+much\s+is)\b/.test(u) &&
+      /\b(dollar|kwacha|euro|pound|usd|zmw|eur|gbp|\$|€|£)\b/.test(u)) ||
+    /\b\d+(\.\d+)?\s*(dollars?|usd|euros?|eur|pounds?|gbp|kwacha|zmw)\s+in\b/.test(u)
+  ) {
+    return 'convert_currency'
+  }
+  if (
+    /\b(find|show|list|look\s+up)\b.*\b(transaction|debt|budget|goal|categor|recurring|pact)/.test(u)
+  ) {
+    return 'query_records'
+  }
+  if (
+    /\bhow\s+much\b.*\b(recurring\s+budget|budget)/.test(u) ||
+    /\btotal\b.*\bbudget/.test(u) ||
+    /\bmy\s+budgets?\b/.test(u)
+  ) {
     return 'query_records'
   }
   if (
@@ -294,10 +410,22 @@ export function inferPreferredTool(utterance: string): ToolName | null {
   ) {
     return 'set_balance'
   }
-  if (/\bdelete\b|\bremove\b/.test(u) && /\b(transaction|debt|budget|goal|categor)/.test(u)) {
+  if (
+    /\bdelete\b|\bremove\b/.test(u) &&
+    /\b(transaction|debt|budget|goal|categor|recurring|pact|subscription|bill)\b/.test(u)
+  ) {
     return 'delete_record'
   }
-  if (/\b(rename|change|update|edit|fix)\b/.test(u) && /\b(transaction|debt|budget|goal|categor|wallet)/.test(u)) {
+  if (
+    /\b(rename|change|update|edit|fix|pause)\b/.test(u) &&
+    /\b(transaction|debt|budget|goal|categor|wallet|recurring|pact|subscription)\b/.test(u)
+  ) {
+    return 'update_record'
+  }
+  // Recategorizing an existing entry ends in an edit even when a new category has
+  // to be created along the way, so the terminal tool is update_record. Creating
+  // the category alone leaves the entry where it was.
+  if (/\b(put|move|file|recategori[sz]e)\b/.test(u) && /\b(categor|under)\b/.test(u)) {
     return 'update_record'
   }
 
@@ -333,10 +461,30 @@ export function inferPreferredTool(utterance: string): ToolName | null {
     return 'create_debt'
   }
 
+  if (
+    /\b(every\s+(day|week|month|year)|monthly|weekly|daily|yearly)\b/.test(u) &&
+    /\b(rent|netflix|salary|paycheck|subscription|bill|recurring)\b/.test(u)
+  ) {
+    return 'create_recurring_transaction'
+  }
+  if (
+    /\b(add|create|set\s+up)\b/.test(u) &&
+    /\brecurring\b/.test(u) &&
+    !/\bbudget\b/.test(u)
+  ) {
+    return 'create_recurring_transaction'
+  }
+  if (/\b(pact|commitment|no\s+takeout|hold\s+me\s+to)\b/.test(u)) {
+    return 'create_pact'
+  }
   if (/\b(budget|cap\s+my|limit\s+my)\b/.test(u) && !/\bhow\s+are\s+my\s+budgets\b/.test(u)) {
     return 'create_budget'
   }
-  if (/\b(savings?\s+goal|save\s+for|goal\s+for)\b/.test(u)) {
+  if (
+    /\b(savings?\s+goal|save\s+for|goal\s+for)\b/.test(u) ||
+    /\b(move\s+out|buy\s+a\s+car|life\s+milestone|should\s+i\s+be\s+saving\s+for)\b/.test(u) ||
+    /\bplan\s+for\s+(a\s+)?(car|house|wedding|trip|business)\b/.test(u)
+  ) {
     return 'create_goal'
   }
   if (/\b(new|create|add)\s+(a\s+)?categor/.test(u)) {

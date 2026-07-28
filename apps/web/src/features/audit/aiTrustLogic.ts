@@ -27,7 +27,7 @@ export const GRADUATE_THRESHOLD = 10
 /** Money-field delta that always requires a confirm card (aligned with impulse pause). */
 export const HIGH_IMPACT_AMOUNT_MINOR = 100_000
 
-export type MutationKind = 'update' | 'delete'
+export type MutationKind = 'create' | 'update' | 'delete'
 
 export const DEFAULT_AI_CONSENT: AiConsent = {
   auto_log_sms: true,

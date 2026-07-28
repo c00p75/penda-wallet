@@ -24,6 +24,10 @@ export interface ReceiptExtraction {
 export interface Transaction {
   id: string
   wallet_id: string
+  /** Pocket under the money account. Null only for legacy rows mid-migration. */
+  account_id: string | null
+  /** Links the two legs of a pocket-to-pocket transfer. */
+  transfer_group_id: string | null
   created_by: string
   category_id: string | null
   amount_minor: number
@@ -53,6 +57,8 @@ export interface TransactionInput {
   merchant: string | null
   description: string | null
   transaction_date: string
+  /** Pocket this entry belongs to. Defaults to the money account's default Cash. */
+  account_id?: string | null
   /** Defaults to 'manual' server-side when omitted. */
   source?: TransactionSource
 }
@@ -74,6 +80,7 @@ export interface TransactionDraft {
   description: string | null
   transaction_date: string
   source?: TransactionSource
+  account_id?: string | null
   /** MoMo SMS reported balance, used to seed a reconcile prompt after save. */
   reported_balance_minor?: number | null
 }

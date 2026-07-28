@@ -6,6 +6,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { ActivityRow } from '@/components/ui/activity-row'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
+import { AiMark } from '@/components/AiInsight'
 import { Microphone } from '@/components/icons/product'
 import { Button } from '@/components/ui/button'
 import { cardAccentClass } from '@/components/ui/cardAccent'
@@ -18,6 +19,23 @@ import { InstallBanner } from '@/pwa/InstallBanner'
 import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
+import { CreateMoneyAccountScreen } from '@/features/wallets/CreateMoneyAccountScreen'
+import {
+  shouldShowCreateMoneyAccountLite,
+  shouldShowFirstRunOnboarding,
+} from '@/features/onboarding/onboardingGate'
+import {
+  defaultAccountId,
+  useAccounts,
+  useArchiveAccount,
+  useCreateAccount,
+  useTransferBetweenAccounts,
+  useUpdateAccount,
+} from '@/features/accounts/hooks'
+import { AccountForm } from '@/features/accounts/AccountForm'
+import { PocketCards } from '@/features/accounts/PocketCards'
+import { TransferForm } from '@/features/accounts/TransferForm'
+import type { Account, AccountInput } from '@/features/accounts/types'
 import { useBudgetProgress, useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
 import { useEntitlement } from '@/features/entitlements/hooks'
@@ -38,6 +56,7 @@ import {
 import { TransactionForm } from '@/features/transactions/TransactionForm'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
+import { loadNeedsYou } from '@/features/chat/pendingNeedsYou'
 import { useQuickActionStore } from '@/features/home/quickActionStore'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { formatMoney, fromMinorUnits } from '@/lib/money'
@@ -149,6 +168,11 @@ export function HomePage() {
   const quickActionIntent = useQuickActionStore((s) => s.intent)
   const consumeQuickAction = useQuickActionStore((s) => s.consume)
   const { data: wallet, isLoading: isWalletLoading, wallets } = useCurrentWallet()
+  const { data: accounts = [] } = useAccounts(wallet?.id)
+  const createAccount = useCreateAccount(wallet?.id)
+  const updateAccount = useUpdateAccount(wallet?.id)
+  const archiveAccount = useArchiveAccount(wallet?.id)
+  const transferAccounts = useTransferBetweenAccounts(wallet?.id)
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: budgets = [] } = useBudgets(wallet?.id)
@@ -183,8 +207,12 @@ export function HomePage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [accountFormOpen, setAccountFormOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [transferOpen, setTransferOpen] = useState(false)
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [pendingImpulse, setPendingImpulse] = useState<TransactionInput | null>(null)
+  const [needsYouTick, setNeedsYouTick] = useState(0)
   const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
   const [heroDetail, setHeroDetail] = useState<HeroDetail | null>(null)
   const [gettingStarted, setGettingStarted] = useState<GettingStartedState | null>(null)
@@ -194,6 +222,12 @@ export function HomePage() {
 
   useWalletRealtime(wallet?.id)
   const offlineQueue = useOfflinePending()
+
+  // Re-read pending confirms when chat closes so Home "needs you" stays fresh.
+  const chatOpen = useChatStore((s) => s.open)
+  useEffect(() => {
+    if (!chatOpen) setNeedsYouTick((n) => n + 1)
+  }, [chatOpen])
 
   useEffect(() => {
     if (!wallet?.id) {
@@ -437,12 +471,24 @@ export function HomePage() {
   if (isAuthLoading) return null
   if (!session) return <Navigate to="/login" replace />
   if (isWalletLoading) return null
+
   if (
-    wallets.length === 0 ||
-    walkthroughActive ||
-    (!!wallet && isWalkthroughActive(wallet.id))
+    shouldShowFirstRunOnboarding({
+      onboardingCompletedAt: profile?.onboarding_completed_at,
+      moneyAccountCount: wallets.length,
+      walkthroughActive,
+      walkthroughActiveForCurrentAccount: !!wallet && isWalkthroughActive(wallet.id),
+    })
   ) {
     return <OnboardingScreen />
+  }
+  if (
+    shouldShowCreateMoneyAccountLite({
+      onboardingCompletedAt: profile?.onboarding_completed_at,
+      moneyAccountCount: wallets.length,
+    })
+  ) {
+    return <CreateMoneyAccountScreen />
   }
   if (!wallet) return null
 
@@ -516,6 +562,9 @@ export function HomePage() {
   })
   const dayZero = isDayZero(transactions.length)
   const sym = currencySymbol(currency)
+  const needsYou = loadNeedsYou(wallet.id)
+  // Touch needsYouTick so the list refreshes after chat closes.
+  void needsYouTick
 
   const weekInsight =
     buffer != null
@@ -778,6 +827,50 @@ export function HomePage() {
             onStep={handleGettingStartedStep}
           />
         )}
+
+        {/* Pending confirms. ActionTrail continuity */}
+        {!dayZero && needsYou.length > 0 && (
+          <section>
+            <SectionHeader title="Penda needs you" />
+            <div className="flex flex-col gap-2">
+              {needsYou.map((item) => (
+                <button
+                  key={item.action.id}
+                  type="button"
+                  onClick={(e) => {
+                    captureOverlayOrigin(e.currentTarget)
+                    openChat('', { mode: 'full' })
+                  }}
+                  className={cn(
+                    'flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+                    cardAccentClass('rose'),
+                  )}
+                >
+                  <AiMark className="size-7" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{item.preview}</p>
+                    <p className="text-xs text-muted-foreground">Tap to confirm or cancel</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <PocketCards
+          accounts={accounts}
+          transactions={transactions}
+          currency={currency}
+          onAdd={() => {
+            setEditingAccount(null)
+            setAccountFormOpen(true)
+          }}
+          onSelect={(account) => {
+            setEditingAccount(account)
+            setAccountFormOpen(true)
+          }}
+          onTransfer={() => setTransferOpen(true)}
+        />
 
         {/* Primary number, demoted carousel. Day zero: balance only. */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-8 -mt-4">
@@ -1049,6 +1142,8 @@ export function HomePage() {
         categories={categories}
         currency={currency}
         walletId={wallet.id}
+        accounts={accounts}
+        defaultAccountId={defaultAccountId(accounts)}
         transaction={editing}
         onSubmit={handleSubmit}
         onConfirmItems={
@@ -1062,6 +1157,69 @@ export function HomePage() {
           updateTransaction.isPending ||
           confirmReceiptItems.isPending
         }
+      />
+
+      <AccountForm
+        open={accountFormOpen}
+        onOpenChange={(open) => {
+          setAccountFormOpen(open)
+          if (!open) setEditingAccount(null)
+        }}
+        account={editingAccount}
+        existingNames={accounts.map((a) => a.name)}
+        onSubmit={async (input: AccountInput) => {
+          try {
+            if (editingAccount) {
+              await updateAccount.mutateAsync({ id: editingAccount.id, input })
+              toast('Wallet updated.')
+            } else {
+              await createAccount.mutateAsync(input)
+              toast('Wallet added.')
+            }
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+            throw error
+          }
+        }}
+        onArchive={
+          editingAccount
+            ? async () => {
+                try {
+                  await archiveAccount.mutateAsync(editingAccount.id)
+                  toast('Wallet archived.')
+                  setAccountFormOpen(false)
+                  setEditingAccount(null)
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Something went wrong.')
+                }
+              }
+            : undefined
+        }
+        isSubmitting={
+          createAccount.isPending || updateAccount.isPending || archiveAccount.isPending
+        }
+      />
+
+      <TransferForm
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        accounts={accounts}
+        currency={currency}
+        defaultFromId={defaultAccountId(accounts)}
+        onSubmit={async (input) => {
+          try {
+            await transferAccounts.mutateAsync({
+              ...input,
+              userId: session.user.id,
+              currency,
+            })
+            toast('Transfer logged.')
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Could not transfer.')
+            throw error
+          }
+        }}
+        isSubmitting={transferAccounts.isPending}
       />
 
       <PaywallSheet

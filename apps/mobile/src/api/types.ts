@@ -23,6 +23,8 @@ export interface Category {
 export interface Transaction {
   id: string;
   wallet_id: string;
+  account_id: string | null;
+  transfer_group_id: string | null;
   created_by: string;
   category_id: string | null;
   amount_minor: number;
@@ -52,6 +54,7 @@ export interface TransactionInput {
   merchant: string | null;
   description: string | null;
   transaction_date: string;
+  account_id?: string | null;
   source?: TransactionSource;
 }
 

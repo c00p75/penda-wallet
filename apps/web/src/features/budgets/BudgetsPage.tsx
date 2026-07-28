@@ -66,6 +66,8 @@ export function BudgetsPage() {
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const [searchParams] = useSearchParams()
   const deepLinkBudgetId = searchParams.get('budget')
+  const deepLinkRecurringId = searchParams.get('recurring')
+  const deepLinkTab = searchParams.get('tab')
   const { data: progress = [] } = useBudgetProgress(wallet?.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
@@ -109,6 +111,10 @@ export function BudgetsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (deepLinkTab === 'recurring') setTab('recurring')
+  }, [deepLinkTab])
+
   // Chat "View" deep link: open the budget form as soon as the id is known.
   useDeepLinkEntityOpen({
     kind: 'budget',
@@ -121,6 +127,15 @@ export function BudgetsPage() {
       setBudgetFormOpen(true)
     },
   })
+
+  useEffect(() => {
+    if (!deepLinkRecurringId || recurring.length === 0) return
+    const rule = recurring.find((r) => r.id === deepLinkRecurringId)
+    if (!rule) return
+    setTab('recurring')
+    setEditingRecurring(rule)
+    setRecurringFormOpen(true)
+  }, [deepLinkRecurringId, recurring])
 
   const existingBudgetCategoryIds = useMemo(
     () => budgets.map((b) => b.category_id).filter((id): id is string => !!id),

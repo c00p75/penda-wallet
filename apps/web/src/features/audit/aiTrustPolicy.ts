@@ -6,7 +6,7 @@
 export const GRADUATE_THRESHOLD = 10
 export const HIGH_IMPACT_AMOUNT_MINOR = 100_000
 
-export type MutationKind = 'update' | 'delete'
+export type MutationKind = 'create' | 'update' | 'delete'
 
 export type AiTrust = {
   confirmed_ok: number

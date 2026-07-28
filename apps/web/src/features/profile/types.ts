@@ -112,6 +112,8 @@ export interface Profile {
   pay_yourself_first_pct: number
   habits_goal_id: string | null
   life_event: LifeEvent | null
+  /** Set when first-run (money-account) onboarding finishes. Not pocket-scoped. */
+  onboarding_completed_at: string | null
   created_at: string
 }
 
@@ -135,6 +137,7 @@ export interface ProfileInput {
   pay_yourself_first_pct?: number
   habits_goal_id?: string | null
   life_event?: LifeEvent | null
+  onboarding_completed_at?: string | null
 }
 
 export interface PersonalityMeta {

@@ -60,6 +60,10 @@
         transform: scale(1.05);
         pointer-events: none;
       }
+      /* Skip branded splash on return loads in the same browser session. */
+      html.bs-skip #boot-splash {
+        display: none !important;
+      }
       .bs-stage {
         position: relative;
         display: flex;
@@ -198,6 +202,7 @@
     <script>
       // Apply the persisted theme (see themeStore.ts) before first paint so the
       // boot splash above never flashes the wrong colors while main.tsx boots.
+      // Also skip the branded splash after the first show in this browser session.
       (function () {
         var mode = 'system';
         try {
@@ -208,6 +213,11 @@
           mode === 'dark' ||
           (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.classList.toggle('dark', isDark);
+        try {
+          if (sessionStorage.getItem('penda-boot-splash')) {
+            document.documentElement.classList.add('bs-skip');
+          }
+        } catch (e) {}
       })();
     </script>
   </head>

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { captureOverlayOrigin } from '@/lib/overlayOrigin'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
+import { defaultAccountId, useAccounts } from '@/features/accounts/hooks'
 import { useCategories } from '@/features/categories/hooks'
 import { useBudgets } from '@/features/budgets/hooks'
 import { useSavingsGoals } from '@/features/goals/hooks'
@@ -144,6 +145,7 @@ export function LedgerPage() {
   const session = useAuthStore((s) => s.session)
   const navigate = useNavigate()
   const { data: wallet } = useCurrentWallet()
+  const { data: accounts = [] } = useAccounts(wallet?.id)
   const { data: categories = [] } = useCategories(wallet?.id)
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
   const [searchParams] = useSearchParams()
@@ -557,6 +559,8 @@ export function LedgerPage() {
         categories={categories}
         currency={currency}
         walletId={wallet.id}
+        accounts={accounts}
+        defaultAccountId={defaultAccountId(accounts)}
         transaction={editing}
         draft={null}
         onSubmit={handleSubmit}

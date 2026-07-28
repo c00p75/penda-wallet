@@ -113,29 +113,26 @@ export function pendaOpenIdFromLocation(
   return open.id
 }
 
-/** Resolve an entity from React Query cache, then a single-row fetch. */
+/**
+ * Resolve an entity for the in-chat View sheet.
+ * Always fetches a fresh row so edits made moments earlier aren't masked by a
+ * still-stale React Query list (invalidateQueries leaves old getQueryData until
+ * the refetch finishes).
+ */
 export async function resolveViewEntity(
-  queryClient: QueryClient,
-  walletId: string,
+  _queryClient: QueryClient,
+  _walletId: string,
   kind: InChatViewKind,
   id: string,
 ): Promise<ViewEntity | null> {
   switch (kind) {
-    case 'transaction': {
-      const cached = queryClient.getQueryData<Transaction[]>(['transactions', walletId])
-      return cached?.find((t) => t.id === id) ?? fetchTransaction(id)
-    }
-    case 'budget': {
-      const cached = queryClient.getQueryData<Budget[]>(['budgets', walletId])
-      return cached?.find((b) => b.id === id) ?? fetchBudget(id)
-    }
-    case 'debt': {
-      const cached = queryClient.getQueryData<Debt[]>(['debts', walletId])
-      return cached?.find((d) => d.id === id) ?? fetchDebt(id)
-    }
-    case 'goal': {
-      const cached = queryClient.getQueryData<SavingsGoal[]>(['savings-goals', walletId])
-      return cached?.find((g) => g.id === id) ?? fetchSavingsGoal(id)
-    }
+    case 'transaction':
+      return fetchTransaction(id)
+    case 'budget':
+      return fetchBudget(id)
+    case 'debt':
+      return fetchDebt(id)
+    case 'goal':
+      return fetchSavingsGoal(id)
   }
 }

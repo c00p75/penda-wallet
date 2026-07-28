@@ -167,6 +167,37 @@ const GOLDENS: Golden[] = [
     args: { name: 'School fees', target_amount: 3000 },
   },
   {
+    id: 'goal-move-out',
+    utterance: 'I want to move out of my parents house',
+    tool: 'create_goal',
+    args: {
+      name: 'Move out / first place',
+      target_amount: 5000,
+      icon: '🏠',
+      motivation: 'Deposit and setup for my own place',
+    },
+  },
+  {
+    id: 'goal-plan-car',
+    utterance: 'Help me plan for a car',
+    tool: 'create_goal',
+    args: {
+      name: 'Buy a car',
+      target_amount: 15000,
+      icon: '🚗',
+    },
+  },
+  {
+    id: 'goal-what-to-save',
+    utterance: 'What should I be saving for?',
+    tool: 'create_goal',
+    args: {
+      name: 'Emergency buffer',
+      target_amount: 2000,
+      icon: '🛡️',
+    },
+  },
+  {
     id: 'category-side',
     utterance: 'Add a category called Side hustle',
     tool: 'create_category',
@@ -207,6 +238,12 @@ const GOLDENS: Golden[] = [
     utterance: 'Change that lunch transaction category to Food',
     tool: 'update_record',
     args: { domain: 'transaction', id: 'tx-lunch', changes: { category: 'Food' } },
+  },
+  {
+    id: 'recategorize-into-new-category',
+    utterance: 'Put the dog food entry under a category called Pets',
+    tool: 'update_record',
+    args: { domain: 'transaction', id: 'tx-dog-food', changes: { category: 'Pets' } },
   },
   {
     id: 'delete-tx',
@@ -252,6 +289,48 @@ const GOLDENS: Golden[] = [
       match_type: 'merchant_contains',
     },
   },
+  {
+    id: 'recurring-netflix',
+    utterance: 'Add my monthly Netflix bill of K150',
+    tool: 'create_recurring_transaction',
+    args: {
+      type: 'expense',
+      amount: 150,
+      frequency: 'monthly',
+      next_run_date: '2026-08-01',
+      category: 'Entertainment',
+      merchant: 'Netflix',
+    },
+  },
+  {
+    id: 'recurring-rent',
+    utterance: 'Set up recurring rent of K2500 every month',
+    tool: 'create_recurring_transaction',
+    args: {
+      type: 'expense',
+      amount: 2500,
+      frequency: 'monthly',
+      next_run_date: '2026-08-01',
+      category: 'Bills',
+      merchant: 'Rent',
+    },
+  },
+  {
+    id: 'query-budget-total',
+    utterance: 'How much in total is in my recurring budget?',
+    tool: 'query_records',
+    args: { domain: 'budget', limit: 50 },
+  },
+  {
+    id: 'pact-takeout',
+    utterance: 'Hold me to no takeout this week',
+    tool: 'create_pact',
+    args: {
+      description: 'No takeout this week',
+      category: 'Food',
+      end_date: '2026-07-21',
+    },
+  },
   // Adversarial / easy-to-get-wrong cases
   {
     id: 'loan-not-plain-tx',
@@ -295,6 +374,12 @@ const GOLDENS: Golden[] = [
     tool: 'get_spending_summary',
     args: { since: '2026-06-01', until: '2026-06-30' },
   },
+  {
+    id: 'fx-usd-zmw',
+    utterance: "What's 12 dollars in kwacha?",
+    tool: 'convert_currency',
+    args: { amount: 12, from_currency: 'USD', to_currency: 'ZMW' },
+  },
 ]
 
 describe('utterance → tool → args goldens', () => {
@@ -313,8 +398,11 @@ describe('utterance → tool → args goldens', () => {
       'create_budget',
       'create_goal',
       'create_category',
+      'create_recurring_transaction',
+      'create_pact',
       'query_records',
       'get_spending_summary',
+      'convert_currency',
       'update_record',
       'delete_record',
       'save_memory',

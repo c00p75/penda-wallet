@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Category } from '@/features/categories/types'
 import type { Budget, BudgetInput, BudgetPeriod } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
@@ -99,12 +100,14 @@ export function BudgetForm({
                 <SelectValue placeholder="Overall (all categories)" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.icon ? `${category.icon} ` : ''}
-                    {category.name}
-                  </SelectItem>
-                ))}
+                {categories
+                  .filter((category) => !isBalanceAdjustmentCategory(category.name))
+                  .map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.icon ? `${category.icon} ` : ''}
+                      {category.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

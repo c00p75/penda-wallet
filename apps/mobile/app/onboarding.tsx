@@ -13,7 +13,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const setActiveWalletId = useWalletStore((s) => s.setActiveWalletId);
-  const [name, setName] = useState('My Wallet');
+  const [name, setName] = useState('Personal');
   const [currency, setCurrency] = useState<(typeof CURRENCIES)[number]>('ZMW');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +25,16 @@ export default function OnboardingScreen() {
     try {
       const wallet = await createWallet(name.trim(), currency);
       setActiveWalletId(wallet.id);
+      // Money-account first-run complete: creating more pockets later must not re-open this.
+      try {
+        const { supabase } = await import('@/src/lib/supabase');
+        await supabase
+          .from('profiles')
+          .update({ onboarding_completed_at: new Date().toISOString() })
+          .eq('id', session.user.id);
+      } catch {
+        // Best-effort; web gate still works once the column is set elsewhere.
+      }
       router.replace('/(tabs)');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create wallet');
@@ -39,14 +49,15 @@ export default function OnboardingScreen() {
         Welcome to Penda
       </Text>
       <Text variant="body" color={colors.textSecondary} style={styles.subtitle}>
-        Create your first wallet to start tracking money with your AI companion.
+        Create your first money account. You can add wallets like Cash or Airtel Money inside it
+        next.
       </Text>
 
       <View style={styles.field}>
         <Text variant="label" color={colors.textSecondary}>
-          Wallet name
+          Money account name
         </Text>
-        <Input value={name} onChangeText={setName} placeholder="My Wallet" />
+        <Input value={name} onChangeText={setName} placeholder="Personal" />
       </View>
 
       <View style={styles.field}>
@@ -74,7 +85,12 @@ export default function OnboardingScreen() {
         </Text>
       ) : null}
 
-      <Button title="Create wallet" onPress={() => void handleCreate()} loading={loading} style={styles.submit} />
+      <Button
+        title="Create money account"
+        onPress={() => void handleCreate()}
+        loading={loading}
+        style={styles.submit}
+      />
     </Screen>
   );
 }

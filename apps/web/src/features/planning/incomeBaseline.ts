@@ -1,3 +1,4 @@
+import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Transaction } from '@/features/transactions/types'
 
 export interface IncomeBaseline {
@@ -41,6 +42,7 @@ export function computeIncomeBaseline(
 
   for (const tx of transactions) {
     if (tx.type !== 'income') continue
+    if (isBalanceAdjustmentCategory(tx.category?.name)) continue
     const key = monthKey(tx.transaction_date)
     if (key >= currentMonth) continue // exclude the current, still-incomplete month
     byMonth.set(key, (byMonth.get(key) ?? 0) + tx.amount_minor)

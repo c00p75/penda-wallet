@@ -118,7 +118,7 @@ export function NotificationsPage() {
         <p className="rounded-[1.5rem] border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           {filter === 'unread'
             ? 'You’re all caught up, no unread alerts.'
-            : 'No notifications yet. Budget alerts, bill reminders, and tips will show up here.'}
+            : 'No notifications yet. Budget alerts, bill and debt reminders, and tips will show up here.'}
         </p>
       ) : (
         groups.map((group) => (

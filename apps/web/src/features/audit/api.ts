@@ -15,7 +15,7 @@ import {
 } from './undoLogic'
 
 export type AiPendingActionStatus = 'pending' | 'confirmed' | 'cancelled' | 'auto_applied'
-export type AiPendingActionKind = 'update' | 'delete' | 'reconcile'
+export type AiPendingActionKind = 'create' | 'update' | 'delete' | 'reconcile'
 
 export interface AiPendingAction {
   id: string
@@ -135,6 +135,12 @@ export async function undoAiAction(action: AiPendingAction, userId: string): Pro
   }
 
   const cfg = DOMAIN_TABLES[action.domain]
+
+  // Confirmed creates undo by removing the inserted row.
+  if (action.kind === 'create') {
+    await undoCreatedEntity(action.domain, action.target_id, userId)
+    return
+  }
 
   if (action.kind === 'delete' && cfg.softDelete) {
     await undoSoftDeletedTransaction(action.target_id, userId)

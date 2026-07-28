@@ -13,12 +13,21 @@ const CATS = ['Food', 'Transport', 'Income', 'Transfer']
 
 describe('tool catalog', () => {
   it('lists every chat-message tool once', () => {
-    expect(TOOL_NAMES).toHaveLength(14)
-    expect(new Set(TOOL_NAMES).size).toBe(14)
+    expect(TOOL_NAMES).toHaveLength(17)
+    expect(new Set(TOOL_NAMES).size).toBe(17)
   })
 
   it('only stages update/delete/set_balance', () => {
-    expect([...STAGING_TOOLS].sort()).toEqual(['delete_record', 'set_balance', 'update_record'])
+    expect([...STAGING_TOOLS].sort()).toEqual([
+      'create_budget',
+      'create_debt',
+      'create_goal',
+      'create_pact',
+      'create_recurring_transaction',
+      'delete_record',
+      'set_balance',
+      'update_record',
+    ])
     for (const name of TOOL_NAMES) {
       if (STAGING_TOOLS.has(name)) continue
       expect(STAGING_TOOLS.has(name)).toBe(false)
@@ -28,6 +37,7 @@ describe('tool catalog', () => {
   it('marks lookup tools as immediate', () => {
     expect(IMMEDIATE_LOOKUP_TOOLS.has('query_records')).toBe(true)
     expect(IMMEDIATE_LOOKUP_TOOLS.has('get_spending_summary')).toBe(true)
+    expect(IMMEDIATE_LOOKUP_TOOLS.has('convert_currency')).toBe(true)
     expect(IMMEDIATE_LOOKUP_TOOLS.has('create_transaction')).toBe(false)
   })
 })
@@ -52,9 +62,20 @@ describe('validateToolArgs happy paths', () => {
     ['log_debt_payment', { id: 'debt-amara', amount: 200, paid_date: '2026-07-23' }],
     ['create_budget', { amount: 300, period: 'monthly', category: 'Food', rollover: true }],
     ['create_goal', { name: 'Laptop', target_amount: 8000, current_amount: 500 }],
+    [
+      'create_goal',
+      {
+        name: 'Move out / first place',
+        target_amount: 5000,
+        icon: '🏠',
+        motivation: 'Deposit for my own place',
+      },
+    ],
     ['create_category', { name: 'Side hustle', icon: '💼' }],
     ['query_records', { domain: 'transaction', search: 'Shoprite', since: '2026-07-01', limit: 5 }],
     ['get_spending_summary', { since: '2026-07-01', until: '2026-07-14' }],
+    ['convert_currency', { amount: 12, from_currency: 'USD', to_currency: 'ZMW' }],
+    ['convert_currency', { amount: 500, from_currency: 'kwacha', to_currency: 'dollars' }],
     ['update_record', { domain: 'goal', id: 'g1', changes: { name: 'New laptop' } }],
     ['delete_record', { domain: 'transaction', id: 't1' }],
     ['save_memory', { kind: 'preference', content: 'Hates takeout on weekdays' }],
@@ -85,6 +106,8 @@ describe('validateToolArgs reject corpus', () => {
     ['create_goal', { name: 'X', target_amount: 0 }, 'target_amount'],
     ['query_records', { domain: 'wallet' }, 'domain'],
     ['get_spending_summary', { since: 'yesterday' }, 'since'],
+    ['convert_currency', { amount: 0, from_currency: 'USD', to_currency: 'ZMW' }, 'amount'],
+    ['convert_currency', { amount: 12, from_currency: '', to_currency: 'ZMW' }, 'from_currency'],
     ['update_record', { domain: 'transaction', id: 't1', changes: {} }, 'changes'],
     ['delete_record', { domain: 'wallet', id: 'w1' }, 'domain'],
     ['save_memory', { kind: 'secret', content: 'x' }, 'kind'],
@@ -146,8 +169,13 @@ describe('inferPreferredTool utterance goldens', () => {
     ['Cap my transport at K200 a week', 'create_budget'],
     ['Create a savings goal for a laptop', 'create_goal'],
     ['I want to save for school fees', 'create_goal'],
+    ['I want to move out of my parents house', 'create_goal'],
+    ['Help me plan for a car', 'create_goal'],
+    ['What should I be saving for?', 'create_goal'],
     ['Add a category called Side hustle', 'create_category'],
     ['How much did I spend this week?', 'get_spending_summary'],
+    ["What's 12 dollars in kwacha?", 'convert_currency'],
+    ['Convert 500 ZMW to USD', 'convert_currency'],
     ['Show my transactions at Shoprite', 'query_records'],
     ['Find the debt with Amara', 'query_records'],
     ['My balance is K1200', 'set_balance'],

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createTransaction } from '@/features/transactions/api'
 import { confirmAiAction, sendChatMessage } from '@/features/chat/api'
+import { invalidateMoneyCaches } from '@/features/chat/hooks'
 import {
   flushPendingAiConfirms,
   flushPendingChatMessages,
@@ -42,15 +43,16 @@ export function useOfflineQueueSync() {
     )
     if (chatSynced > 0) {
       toast(`Sent ${chatSynced} queued chat message${chatSynced === 1 ? '' : 's'}.`)
+      // Queued chat can create debts/budgets/goals; bust every money list so the
+      // Debts tab cannot stay stuck on a stale empty state.
+      invalidateMoneyCaches(queryClient)
     }
     const confirmSynced = await flushPendingAiConfirms((actionId, decision) =>
       confirmAiAction(actionId, decision),
     )
     if (confirmSynced > 0) {
       toast(`Applied ${confirmSynced} queued AI confirm${confirmSynced === 1 ? '' : 's'}.`)
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['budgets'] })
-      queryClient.invalidateQueries({ queryKey: ['goals'] })
+      invalidateMoneyCaches(queryClient)
     }
     await refreshCount()
   }, [queryClient, refreshCount])

@@ -29,12 +29,20 @@ export async function createTransaction(
   userId: string,
   input: TransactionInput,
 ): Promise<Transaction> {
+  let accountId = input.account_id ?? null;
+  if (!accountId) {
+    const { data: defaultId } = await supabase.rpc('default_account_id', {
+      p_wallet_id: walletId,
+    });
+    accountId = (defaultId as string | null) ?? null;
+  }
   const { data, error } = await supabase
     .from('transactions')
     .insert({
       wallet_id: walletId,
       created_by: userId,
       ...input,
+      account_id: accountId,
       converted_amount_minor: input.amount_minor,
       fx_rate_to_wallet_base: 1,
       source: input.source ?? 'manual',

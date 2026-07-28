@@ -162,6 +162,9 @@ export function DebtForm({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="debt-due-date">Due date (optional)</Label>
             <Input id="debt-due-date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <p className="text-xs text-muted-foreground">
+              We’ll remind you the day before and the day it’s due.
+            </p>
           </div>
 
           <p className="text-xs text-muted-foreground">Amounts are in {currency}.</p>

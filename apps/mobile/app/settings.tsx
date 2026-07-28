@@ -69,7 +69,7 @@ export default function SettingsScreen() {
       </View>
 
       <Text variant="label" color={colors.textMuted} style={styles.sectionLabel}>
-        Active wallet
+        Active money account
       </Text>
       {wallets.map((w) => (
         <Pressable

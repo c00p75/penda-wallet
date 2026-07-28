@@ -1,42 +1,143 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { computeWalletBalanceMinor } from './walletBalance.ts'
+import { fetchBalanceAdjustmentCategoryId } from './balanceAdjustment.ts'
+import { computeAccountBalanceMinor, computeWalletBalanceMinor } from './walletBalance.ts'
 
 /** Allowlists kept in sync with chat-message CRUD_DOMAINS / confirm-ai-action. */
 export const DOMAIN_TABLES: Record<
   string,
-  { table: string; softDelete: boolean; deletable: boolean; columns: string[] }
+  {
+    table: string
+    softDelete: boolean
+    deletable: boolean
+    /** Columns executePendingAction may write on update. */
+    columns: string[]
+    /** Columns allowed when inserting a staged create (plus ownership keys in patch). */
+    createColumns: string[]
+  }
 > = {
   transaction: {
     table: 'transactions',
     softDelete: true,
     deletable: true,
     columns: ['amount_minor', 'type', 'category_id', 'merchant', 'description', 'transaction_date'],
+    createColumns: [
+      'wallet_id',
+      'created_by',
+      'category_id',
+      'amount_minor',
+      'currency',
+      'type',
+      'merchant',
+      'description',
+      'transaction_date',
+      'source',
+    ],
   },
   debt: {
     table: 'debts',
     softDelete: false,
     deletable: true,
     columns: ['name', 'direction', 'counterparty', 'principal_minor', 'due_date'],
+    createColumns: [
+      'wallet_id',
+      'name',
+      'direction',
+      'counterparty',
+      'principal_minor',
+      'balance_minor',
+      'interest_rate',
+      'due_date',
+    ],
   },
   budget: {
     table: 'budgets',
     softDelete: false,
     deletable: true,
     columns: ['amount_minor', 'period', 'category_id', 'rollover'],
+    createColumns: ['wallet_id', 'category_id', 'amount_minor', 'period', 'rollover'],
   },
   goal: {
     table: 'savings_goals',
     softDelete: false,
     deletable: true,
-    columns: ['name', 'target_amount_minor', 'current_amount_minor', 'target_date'],
+    columns: [
+      'name',
+      'target_amount_minor',
+      'current_amount_minor',
+      'target_date',
+      'icon',
+      'motivation',
+    ],
+    createColumns: [
+      'wallet_id',
+      'name',
+      'target_amount_minor',
+      'current_amount_minor',
+      'target_date',
+      'icon',
+      'motivation',
+    ],
   },
-  category: { table: 'categories', softDelete: false, deletable: true, columns: ['name', 'icon'] },
-  wallet: { table: 'wallets', softDelete: false, deletable: false, columns: ['name'] },
+  category: {
+    table: 'categories',
+    softDelete: false,
+    deletable: true,
+    columns: ['name', 'icon'],
+    createColumns: ['wallet_id', 'name', 'icon'],
+  },
+  wallet: {
+    table: 'wallets',
+    softDelete: false,
+    deletable: false,
+    columns: ['name'],
+    createColumns: [],
+  },
+  recurring: {
+    table: 'recurring_transactions',
+    softDelete: false,
+    deletable: true,
+    columns: ['template', 'frequency', 'next_run_date', 'is_active'],
+    createColumns: [
+      'wallet_id',
+      'created_by',
+      'template',
+      'frequency',
+      'next_run_date',
+      'is_active',
+    ],
+  },
+  pact: {
+    table: 'commitment_pacts',
+    softDelete: false,
+    deletable: true,
+    columns: [
+      'description',
+      'category_id',
+      'goal_id',
+      'start_date',
+      'end_date',
+      'stake_kind',
+      'stake_amount_minor',
+      'stake_note',
+    ],
+    createColumns: [
+      'wallet_id',
+      'created_by',
+      'description',
+      'category_id',
+      'goal_id',
+      'start_date',
+      'end_date',
+      'stake_kind',
+      'stake_amount_minor',
+      'stake_note',
+    ],
+  },
 }
 
 export interface PendingActionRow {
   id: string
-  kind: 'update' | 'delete' | 'reconcile'
+  kind: 'create' | 'update' | 'delete' | 'reconcile'
   domain: string
   target_id: string
   wallet_id: string
@@ -56,6 +157,10 @@ export async function executePendingAction(
 
   const target = DOMAIN_TABLES[action.domain]
   if (!target) throw new Error(`Unknown domain "${action.domain}".`)
+
+  if (action.kind === 'create') {
+    return await executeCreate(supabase, action, target)
+  }
 
   if (action.kind === 'update') {
     const patch = action.patch ?? {}
@@ -81,11 +186,41 @@ export async function executePendingAction(
   }
 }
 
+async function executeCreate(
+  supabase: SupabaseClient,
+  action: PendingActionRow,
+  target: (typeof DOMAIN_TABLES)[string],
+): Promise<{ targetId: string }> {
+  if (target.createColumns.length === 0) {
+    throw new Error(`Creating a ${action.domain} isn't allowed.`)
+  }
+  const patch = action.patch ?? {}
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(
+      ([column]) => target.createColumns.includes(column) && column !== '__before',
+    ),
+  )
+  if (Object.keys(safePatch).length === 0) throw new Error('Nothing to create.')
+
+  const { data, error } = await supabase.from(target.table).insert(safePatch).select('id').single()
+  if (error) throw error
+
+  const { error: updateError } = await supabase
+    .from('ai_pending_actions')
+    .update({ target_id: data.id })
+    .eq('id', action.id)
+  if (updateError) throw updateError
+
+  return { targetId: data.id }
+}
+
 /**
  * Reconcile the wallet's computed total to the staged actual balance: post one
  * adjustment transaction for the gap (if any), and record the reconciliation.
  * Recomputes the balance live rather than trusting the stage-time snapshot,
  * since more transactions may have landed between staging and confirming.
+ *
+ * `patch.amount` is already in minor units (staged by set_balance).
  */
 async function executeReconcile(
   supabase: SupabaseClient,
@@ -95,28 +230,36 @@ async function executeReconcile(
   if (!Number.isFinite(amount) || amount < 0) {
     throw new Error('A balance must be a number that is zero or more.')
   }
-  const actualMinor = Math.round(amount * 100)
+  // Staged as minor units already. Do not multiply by 100 again.
+  const actualMinor = Math.round(amount)
 
   const { data: wallet, error: walletError } = await supabase
     .from('wallets')
-    .select('currency')
+    .select('base_currency')
     .eq('id', action.wallet_id)
     .single()
   if (walletError) throw walletError
 
-  const computedMinor = await computeWalletBalanceMinor(supabase, action.wallet_id)
+  const accountId =
+    typeof action.patch?.account_id === 'string' ? (action.patch.account_id as string) : null
+  const scopeWallet = action.patch?.scope_wallet === true || !accountId
+  const computedMinor = scopeWallet
+    ? await computeWalletBalanceMinor(supabase, action.wallet_id)
+    : await computeAccountBalanceMinor(supabase, accountId!)
   const deltaMinor = actualMinor - computedMinor
 
   let targetId = action.target_id
   if (deltaMinor !== 0) {
+    const categoryId = await fetchBalanceAdjustmentCategoryId(supabase)
     const { data: adjustment, error: adjError } = await supabase
       .from('transactions')
       .insert({
         wallet_id: action.wallet_id,
         created_by: action.user_id,
-        category_id: null,
+        account_id: accountId,
+        category_id: categoryId,
         amount_minor: Math.abs(deltaMinor),
-        currency: wallet.currency,
+        currency: wallet.base_currency,
         type: deltaMinor > 0 ? 'income' : 'expense',
         merchant: null,
         description: 'Balance reconciliation adjustment',

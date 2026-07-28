@@ -12,7 +12,7 @@ import {
 describe('DOMAIN_TABLES sync with executePendingAction', () => {
   it('covers every AI-editable domain including wallet', () => {
     expect(Object.keys(DOMAIN_TABLES).sort()).toEqual(
-      ['budget', 'category', 'debt', 'goal', 'transaction', 'wallet'].sort(),
+      ['budget', 'category', 'debt', 'goal', 'pact', 'recurring', 'transaction', 'wallet'].sort(),
     )
   })
 

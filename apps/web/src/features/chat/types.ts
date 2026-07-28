@@ -40,7 +40,7 @@ export interface ChatMessage {
 /** An edit or deletion the agent proposed; it is applied only if the user confirms. */
 export interface PendingAction {
   id: string
-  kind: 'update' | 'delete' | 'reconcile'
+  kind: 'create' | 'update' | 'delete' | 'reconcile'
   domain: string
   summary: string
   targetId?: string
@@ -54,10 +54,16 @@ export interface ChatAction {
   label: string
   summary: string
   status: 'running' | 'done' | 'error' | 'pending' | 'confirmed' | 'cancelled'
+  /** The row this step's `domain` names, which is what View opens. */
   targetId?: string
+  /**
+   * The wallet entry, when a step saved one alongside its main record (borrowing
+   * and lending write a transaction plus a debt). Undo needs both.
+   */
+  transactionId?: string
   viewHref?: string
-  /** For pending update/delete/reconcile rows. */
-  pendingKind?: 'update' | 'delete' | 'reconcile'
+  /** For pending create/update/delete/reconcile rows. */
+  pendingKind?: 'create' | 'update' | 'delete' | 'reconcile'
   /** Optional key/value rows shown when the step is expanded. */
   details?: Record<string, string>
 }
@@ -79,5 +85,5 @@ export interface ConfirmActionResponse {
   domain: string
   summary: string
   targetId?: string
-  kind?: 'update' | 'delete' | 'reconcile'
+  kind?: 'create' | 'update' | 'delete' | 'reconcile'
 }

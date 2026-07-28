@@ -133,6 +133,15 @@ describe('finalizeLiveActions', () => {
     const out = finalizeLiveActions([
       {
         id: '1',
+        tool: 'create_transaction',
+        domain: 'transaction',
+        label: 'Logged',
+        summary: 'Lunch',
+        status: 'running',
+        targetId: 'tx1',
+      },
+      {
+        id: '2',
         tool: 'create_goal',
         domain: 'goal',
         label: 'Goal',
@@ -141,7 +150,7 @@ describe('finalizeLiveActions', () => {
         targetId: 'g1',
       },
       {
-        id: '2',
+        id: '3',
         tool: 'update_record',
         domain: 'goal',
         label: 'Update',
@@ -149,7 +158,7 @@ describe('finalizeLiveActions', () => {
         status: 'running',
       },
       {
-        id: '3',
+        id: '4',
         tool: 'set_balance',
         domain: 'reconciliation',
         label: 'Set balance',
@@ -158,7 +167,7 @@ describe('finalizeLiveActions', () => {
       },
     ])
     expect(out).toHaveLength(1)
-    expect(out[0]).toMatchObject({ status: 'done', viewHref: '/goals/g1' })
+    expect(out[0]).toMatchObject({ status: 'done', viewHref: '/transactions?tx=tx1' })
   })
 })
 
@@ -186,6 +195,22 @@ describe('withViewHrefs', () => {
     const out = withViewHrefs(actions)
     expect(out[0]?.viewHref).toBeUndefined()
     expect(out[1]?.viewHref).toBe('/transactions?tx=tx9')
+  })
+
+  it('deep-links a borrow/lend row to its debt, not the entry it also saved', () => {
+    const out = withViewHrefs([
+      {
+        id: 'b1',
+        tool: 'log_borrowed_or_lent_money',
+        domain: 'debt',
+        label: 'Recorded borrowing',
+        summary: 'Borrowed · Konza · K580.00',
+        status: 'done',
+        targetId: 'debt-konza',
+        transactionId: 'tx-konza',
+      },
+    ])
+    expect(out[0]?.viewHref).toBe('/goals?debt=debt-konza')
   })
 
   it('uses list href for completed deletes', () => {

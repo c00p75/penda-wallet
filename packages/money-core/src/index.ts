@@ -1,4 +1,8 @@
 export { toMinorUnits, fromMinorUnits } from './money'
+export {
+  BALANCE_ADJUSTMENT_CATEGORY_NAME,
+  isBalanceAdjustmentCategory,
+} from './balanceAdjustment'
 export { parseMoMoText, type MoMoProvider, type ParsedMoMo } from './momoParser'
 export {
   projectCashflow,
@@ -30,3 +34,20 @@ export {
   type UndoActionLike,
   type UndoDomain,
 } from './undoLogic'
+export {
+  MILESTONE_CATALOG,
+  suggestMilestones,
+  formatMilestoneSuggestionsForPrompt,
+  type MilestoneId,
+  type MilestoneCatalogEntry,
+  type CategorySpendSignal,
+  type SuggestMilestonesInput,
+  type MilestoneSuggestion,
+} from './suggestMilestones'
+export {
+  moneyAccountBalanceMinor,
+  accountBalanceMinor,
+  balancesByAccount,
+  type BalanceTxLike,
+  type AccountBalanceRow,
+} from './accountBalance'

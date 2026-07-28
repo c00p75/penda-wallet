@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Category } from '@/features/categories/types'
 import { toMinorUnits } from '@/lib/money'
 import type { CommitmentPactInput, PactStakeKind } from './types'
@@ -107,12 +108,14 @@ export function PactForm({ open, onOpenChange, categories, goalId, goalName, onS
                 <SelectValue placeholder="Choose a category" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.icon ? `${category.icon} ` : ''}
-                    {category.name}
-                  </SelectItem>
-                ))}
+                {categories
+                  .filter((category) => !isBalanceAdjustmentCategory(category.name))
+                  .map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.icon ? `${category.icon} ` : ''}
+                      {category.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">

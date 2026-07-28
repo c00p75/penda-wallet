@@ -9,5 +9,6 @@ insert into categories (name, icon, color, is_system) values
   ('Health', 'heart-pulse', '#ef4444', true),
   ('Income', 'banknote', '#22c55e', true),
   ('Transfer', 'arrow-left-right', '#64748b', true),
+  ('Balance adjustment', 'scale', '#78716c', true),
   ('Other', 'ellipsis', '#94a3b8', true)
 on conflict do nothing;

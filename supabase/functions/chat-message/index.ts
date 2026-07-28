@@ -15,14 +15,26 @@ import {
   loadConsentAndTrust,
   mayAutoApplyMutation,
   patchIsHighImpact,
+  createPatchIsHighImpact,
   normalizeAiConsent,
   normalizeAiTrust,
   persistTrustAfterConfirm,
   type AiConsent,
   type AiTrust,
 } from '../_shared/aiTrust.ts'
+import { findCategory } from '../_shared/categories.ts'
 import { executePendingAction } from '../_shared/executePendingAction.ts'
-import { computeWalletBalanceMinor } from '../_shared/walletBalance.ts'
+import {
+  computeAccountBalanceMinor,
+  computeWalletBalanceMinor,
+  defaultAccountId,
+} from '../_shared/walletBalance.ts'
+import {
+  formatMilestoneSuggestionsForPrompt,
+  suggestMilestones,
+  type MilestoneSuggestion,
+} from '../_shared/suggestMilestones.ts'
+import { convertCurrency } from '../_shared/currencyConvert.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -62,6 +74,21 @@ interface PageContext {
   entityId?: string
 }
 
+interface UiEdit {
+  domain: string
+  summary: string
+}
+
+const UI_EDIT_DOMAINS = new Set([
+  'transaction',
+  'budget',
+  'debt',
+  'goal',
+  'recurring',
+  'pact',
+  'category',
+])
+
 const ALLOWED_CHAT_PAGES = new Set([
   'home',
   'ledger',
@@ -96,11 +123,31 @@ function sanitizePageContext(raw: unknown): PageContext | undefined {
   return typeof entityId === 'string' ? { page, entityId } : { page }
 }
 
+/** Edits the user made in the app UI (View sheet) since the last model turn. */
+function sanitizeUiEdits(raw: unknown): UiEdit[] {
+  if (!Array.isArray(raw)) return []
+  const out: UiEdit[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const domain = (item as { domain?: unknown }).domain
+    const summary = (item as { summary?: unknown }).summary
+    if (typeof domain !== 'string' || !UI_EDIT_DOMAINS.has(domain)) continue
+    if (typeof summary !== 'string') continue
+    const cleaned = summary.trim().slice(0, 200)
+    if (!cleaned) continue
+    out.push({ domain, summary: cleaned })
+    if (out.length >= 20) break
+  }
+  return out
+}
+
 interface ChatRequestBody {
   walletId: string
   conversationId?: string
   message: string
   pageContext?: PageContext
+  /** Records the user changed in the View editor during this chat. */
+  uiEdits?: UiEdit[]
   /** When true (or Accept: text/event-stream), reply as SSE token stream. */
   stream?: boolean
 }
@@ -155,12 +202,12 @@ interface ModelTurn {
   toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }>
 }
 
-// A staged update/delete/reconcile surfaced to the client as a Yes/Cancel card.
-// The tool layer NEVER executes these, confirm-ai-action does, on an explicit
-// user tap.
+// A staged create/update/delete/reconcile surfaced to the client as a Yes/Cancel
+// card. The tool layer NEVER executes these; confirm-ai-action does, on an
+// explicit user tap.
 interface PendingAction {
   id: string
-  kind: 'update' | 'delete' | 'reconcile'
+  kind: 'create' | 'update' | 'delete' | 'reconcile'
   domain: string
   summary: string
   targetId: string
@@ -175,12 +222,26 @@ interface CompletedAction {
   label: string
   summary: string
   status: 'done' | 'error'
+  /** The row this step's `domain` names, which is what View opens. */
   targetId?: string
+  /**
+   * The wallet entry, when a step saved one alongside its main record (borrowing
+   * and lending write a transaction plus a debt). Undo needs both.
+   */
+  transactionId?: string
   details?: Record<string, string>
 }
 
 // Everything a tool handler needs, so handlers take one ctx instead of a long
 // argument list. pendingActions is mutated in place by the staging handlers.
+interface PocketAccount {
+  id: string
+  name: string
+  kind: string
+  provider: string | null
+  is_default: boolean
+}
+
 interface ToolContext {
   supabase: SupabaseClient
   walletId: string
@@ -189,6 +250,7 @@ interface ToolContext {
   currency: string
   symbol: string
   categories: Category[]
+  accounts: PocketAccount[]
   rules: CategorizationRule[]
   createdTransaction: Record<string, unknown> | null
   pendingActions: PendingAction[]
@@ -252,20 +314,30 @@ Deno.serve(async (req) => {
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
     // History needs the conversation id; the rest are independent reads, fan out.
-    const [history, categories, rules, profile, memories, currency] = await Promise.all([
+    const [history, categories, accounts, rules, profile, memories, currency] = await Promise.all([
       fetchHistory(supabase, conversationId),
       fetchCategories(supabase, body.walletId),
+      fetchAccounts(supabase, body.walletId),
       fetchCategorizationRules(supabase, body.walletId),
       fetchProfile(supabase, user.id),
       fetchMemories(supabase, user.id),
       fetchWalletCurrency(supabase, body.walletId),
     ])
+    const milestoneSuggestions = await fetchMilestoneSuggestions(supabase, body.walletId, profile)
 
-    const tools = buildTools(categories)
     const pageContext = sanitizePageContext(body.pageContext)
-    const systemInstruction = buildSystemInstruction(profile, currency, memories, pageContext, {
-      continuityEnabled: true,
-    })
+    const uiEdits = sanitizeUiEdits(body.uiEdits)
+    const systemInstruction = buildSystemInstruction(
+      profile,
+      currency,
+      memories,
+      pageContext,
+      {
+        continuityEnabled: true,
+        uiEdits,
+      },
+      milestoneSuggestions,
+    )
 
     const userMessage: NeutralMessage = { role: 'user', parts: [{ type: 'text', text: body.message }] }
     await insertMessage(supabase, conversationId, userMessage)
@@ -279,6 +351,7 @@ Deno.serve(async (req) => {
       currency,
       symbol: CURRENCY_SYMBOLS[currency] ?? currency,
       categories,
+      accounts,
       rules,
       createdTransaction: null,
       pendingActions: [],
@@ -317,6 +390,10 @@ Deno.serve(async (req) => {
           // timeout with nothing persisted for the client to show.
           if (iteration > 0 && Date.now() - turnStart > TURN_BUDGET_MS) break
 
+          // Rebuilt per iteration because the category enum is baked into the
+          // schema: create_category mid-turn has to widen it, or the model can't
+          // name the category it just made on the follow-up call.
+          const tools = buildTools(ctx.categories, ctx.accounts)
           const turn = await callModel(neutralHistory, systemInstruction, tools, hooks?.onToken)
 
           const assistantParts: NeutralPart[] = []
@@ -854,6 +931,34 @@ async function fetchCategories(supabase: SupabaseClient, walletId: string): Prom
   return data ?? []
 }
 
+async function fetchAccounts(supabase: SupabaseClient, walletId: string): Promise<PocketAccount[]> {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, name, kind, provider, is_default')
+    .eq('wallet_id', walletId)
+    .is('archived_at', null)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as PocketAccount[]
+}
+
+function resolveAccountId(
+  accounts: PocketAccount[],
+  raw: unknown,
+  fallbackId: string | null,
+): string | null {
+  if (typeof raw === 'string' && raw.trim()) {
+    const wanted = raw.trim().toLowerCase()
+    const hit =
+      accounts.find((a) => a.id === raw) ??
+      accounts.find((a) => a.name.toLowerCase() === wanted) ??
+      accounts.find((a) => (a.provider ?? '').toLowerCase() === wanted) ??
+      accounts.find((a) => a.name.toLowerCase().includes(wanted))
+    if (hit) return hit.id
+  }
+  return fallbackId ?? accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? null
+}
+
 async function fetchCategorizationRules(supabase: SupabaseClient, walletId: string): Promise<CategorizationRule[]> {
   const { data, error } = await supabase
     .from('categorization_rules')
@@ -863,6 +968,13 @@ async function fetchCategorizationRules(supabase: SupabaseClient, walletId: stri
   return data ?? []
 }
 
+interface ChatLifeEvent {
+  kind: string
+  label: string
+  starts_on: string
+  ends_on: string | null
+}
+
 interface ChatProfile {
   personality: string
   mode: string
@@ -870,12 +982,55 @@ interface ChatProfile {
   householdSize: number | null
   incomeRange: string | null
   gender: string
+  /** Active life-event season when present; null otherwise. */
+  lifeEvent: ChatLifeEvent | null
+}
+
+function normalizeLifeEvent(raw: unknown, today: string): ChatLifeEvent | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const kind = o.kind
+  if (
+    kind !== 'travel' &&
+    kind !== 'job_change' &&
+    kind !== 'newborn' &&
+    kind !== 'wedding' &&
+    kind !== 'other'
+  ) {
+    return null
+  }
+  if (typeof o.label !== 'string' || typeof o.starts_on !== 'string') return null
+  if (o.starts_on > today) return null
+  if (typeof o.ends_on === 'string' && o.ends_on < today) return null
+  return {
+    kind,
+    label: o.label,
+    starts_on: o.starts_on,
+    ends_on: typeof o.ends_on === 'string' ? o.ends_on : null,
+  }
+}
+
+function lifeEventPromptLine(event: ChatLifeEvent): string {
+  switch (event.kind) {
+    case 'travel':
+      return `They are in a travel season (${event.label}). Frame coaching around keeping home bills covered while fun lives in a trip envelope.`
+    case 'job_change':
+      return `They are in a job-change season (${event.label}). Prefer buffer-first guidance before new lifestyle spend.`
+    case 'newborn':
+      return `They are in a newborn season (${event.label}). Protect essentials; soft-pedal lifestyle spend.`
+    case 'wedding':
+      return `They are in a wedding window (${event.label}). Prefer one clear celebration goal over scattered little expenses.`
+    default:
+      return `They marked a life moment (${event.label}). Coach a bit softer on lifestyle spend until it clears.`
+  }
 }
 
 async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<ChatProfile> {
   const { data } = await supabase
     .from('profiles')
-    .select('ai_personality, mode, primary_goal, primary_goals, household_size, income_range, gender')
+    .select(
+      'ai_personality, mode, primary_goal, primary_goals, household_size, income_range, gender, life_event',
+    )
     .eq('id', userId)
     .maybeSingle()
   return {
@@ -885,7 +1040,70 @@ async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<C
     householdSize: data?.household_size ?? null,
     incomeRange: data?.income_range ?? null,
     gender: data?.gender ?? 'prefer_not_to_say',
+    lifeEvent: normalizeLifeEvent(data?.life_event, today()),
   }
+}
+
+/** Load spend / goals / debts signals and rank life-milestone suggestions for the prompt. */
+async function fetchMilestoneSuggestions(
+  supabase: SupabaseClient,
+  walletId: string,
+  profile: ChatProfile,
+): Promise<MilestoneSuggestion[]> {
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - 3)
+  const since = cutoff.toISOString().slice(0, 10)
+
+  const [goalsRes, debtsRes, txRes] = await Promise.all([
+    supabase
+      .from('savings_goals')
+      .select('name')
+      .eq('wallet_id', walletId)
+      .is('archived_at', null),
+    supabase
+      .from('debts')
+      .select('id, balance_minor')
+      .eq('wallet_id', walletId)
+      .is('archived_at', null)
+      .gt('balance_minor', 0)
+      .limit(5),
+    supabase
+      .from('transactions')
+      .select('amount_minor, type, merchant, description, category:categories(name)')
+      .eq('wallet_id', walletId)
+      .eq('type', 'expense')
+      .gte('transaction_date', since)
+      .is('deleted_at', null)
+      .limit(200),
+  ])
+
+  const categoryTotals = new Map<string, number>()
+  const textParts: string[] = []
+  for (const row of txRes.data ?? []) {
+    const cat = row.category as { name?: string } | null
+    const name = cat?.name
+    if (name) {
+      categoryTotals.set(name, (categoryTotals.get(name) ?? 0) + Math.abs(Number(row.amount_minor) || 0))
+    }
+    if (typeof row.merchant === 'string' && row.merchant) textParts.push(row.merchant)
+    if (typeof row.description === 'string' && row.description) textParts.push(row.description)
+  }
+
+  return suggestMilestones({
+    mode: profile.mode,
+    primaryGoals: profile.primaryGoals,
+    householdSize: profile.householdSize,
+    incomeRange: profile.incomeRange,
+    lifeEventKind: profile.lifeEvent?.kind ?? null,
+    existingGoalNames: (goalsRes.data ?? []).map((g) => g.name).filter(Boolean),
+    categorySpend: [...categoryTotals.entries()].map(([categoryName, totalMinor]) => ({
+      categoryName,
+      totalMinor,
+    })),
+    textBlob: textParts.join(' ').toLowerCase(),
+    hasOpenDebt: (debtsRes.data ?? []).length > 0,
+    max: 4,
+  })
 }
 
 /** Prefer the multi-goal array; fall back to the legacy single goal column. */
@@ -930,6 +1148,10 @@ function buildUserContextSection(profile: ChatProfile): string {
       `They describe their financial situation as "${INCOME_RANGE_LABELS[profile.incomeRange]}", a qualitative ` +
         'band, not an exact figure. Never ask for or assume a specific income number from this alone.',
     )
+  }
+
+  if (profile.lifeEvent) {
+    lines.push(lifeEventPromptLine(profile.lifeEvent))
   }
 
   if (profile.gender !== 'prefer_not_to_say' && GENDER_LABELS[profile.gender]) {
@@ -1016,7 +1238,8 @@ function buildSystemInstruction(
   currency: string,
   memories: Memory[],
   pageContext?: PageContext,
-  _opts?: { continuityEnabled?: boolean },
+  opts?: { continuityEnabled?: boolean; uiEdits?: UiEdit[] },
+  milestoneSuggestions: MilestoneSuggestion[] = [],
 ): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency
   const personality = resolvePersonality(profile.personality)
@@ -1027,6 +1250,15 @@ function buildSystemInstruction(
       ? `The user is currently on the ${pageContext.page} page viewing record ${pageContext.entityId}; "this"/"it" likely refers to that record.\n\n`
       : `The user is currently on the ${pageContext.page} page.\n\n`
     : ''
+  const uiEdits = opts?.uiEdits ?? []
+  const uiEditsLine =
+    uiEdits.length > 0
+      ? `Since your last reply, the user edited these records in the app UI (View editor), not via your tools:\n` +
+        uiEdits.map((e) => `- (${e.domain}) ${e.summary}`).join('\n') +
+        `\nAny earlier query_records or totals for those domains in this chat are STALE. You MUST call ` +
+        `query_records again before answering about them. Acknowledge the update briefly if relevant.\n\n`
+      : ''
+  const milestoneBlock = formatMilestoneSuggestionsForPrompt(milestoneSuggestions)
   const houseRules = `You are ${personaName}, an AI assistant persona embedded in Penda, a personal finance
 app. Penda is the app you live in, not your name. Always introduce and refer to yourself as
 ${personaName}, never as "Penda". Your job in this conversation is to help the user log
@@ -1039,11 +1271,24 @@ Before suggesting parking, saving, buffering, or splitting a cash-in, confirm re
 tools (balance / recent income vs later spend). If the wallet is negative or that cash is already
 spent, say so and offer a catch-up plan instead of an allocate/park nudge.
 ${moodPromptFragment(moodTone)}
-${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}
-This wallet's currency is ${currency} (${symbol}). ALL amounts, in the transactions you log and in
-everything you say back, are in ${currency}. When you mention money, write it with "${symbol}"
-(e.g. ${symbol}12, ${symbol}2000). Never use "$" or any other currency's symbol unless "${symbol}"
-literally is "$". The user only ever types plain numbers; the currency is always ${currency}.
+${MODE_AI_CONTEXT[profile.mode] ?? MODE_AI_CONTEXT.individual}${buildUserContextSection(profile)}${milestoneBlock}
+This wallet's currency is ${currency} (${symbol}). When logging transactions, setting balances, or
+stating wallet totals, use ${currency} and write amounts with "${symbol}" (e.g. ${symbol}12,
+${symbol}2000). For ordinary logging the user types plain numbers in ${currency}.
+
+When the user asks about another currency (exchange rates, "what's 12 dollars in kwacha", "convert
+500 ZMW to USD"), call convert_currency with ISO codes and quote BOTH currencies from the tool
+result. Never invent or guess an exchange rate. Still log wallet entries only in ${currency}; if
+they want to record a foreign-currency spend, convert first, then log the ${currency} amount.
+
+Life-milestone planning: when the user wants a plan or budget around a big life goal, asks what
+they should save for, or names something like moving out, buying a car, a bigger home, starting
+a business, school fees, a wedding, a baby, or a trip, treat that as milestone planning.
+Offer 2–4 concrete milestones grounded in the ideas above (or ask one clarifying question if
+signals conflict). When they pick one, stage create_goal with a clear name, target_amount, optional
+target_date, and a fitting icon/motivation. Then help pace it: monthly save amount, what to trim,
+and how it fits budgets / safe-to-spend. Do not invent target amounts without asking or estimating
+from income facts they saved in memory.
 
 If the user seems mid-flow or says they're busy, do NOT block them with clarifying questions.
 Note the question briefly ("I'll ask later: …") and finish the current logging first. You can
@@ -1076,6 +1321,10 @@ happened and record all of it:
   ledger would be left half-updated with a transaction but no matching debt.
 - If money was only promised and hasn't moved yet, record just the debt with create_debt.
 Never record only one half of a two-sided event.
+When logging a debt or loan, always pass due_date if the user mentioned one (any phrasing like
+"due on 1/08/2026", "by Friday", "end of the month"). Convert to ISO YYYY-MM-DD. A due date lets
+Penda remind them the day before and the day it's due. If they didn't mention one, leave it out;
+do not invent a due date.
 
 Repaying or settling a debt is its own action ("I paid K200 toward the Jumo loan", "settle the
 loan", "I cleared my debt with Amara", "mark it paid off"): find the debt id with query_records,
@@ -1091,19 +1340,44 @@ exception: make a reasonable call there and let the user correct it.)
 
 You can also read, edit, and remove the user's data, not just create it:
 - ANSWERING QUESTIONS ("what did I spend this week?", "how much do I owe Amara?", "show my
-  budgets"): use query_records to look things up, or get_spending_summary for totals over a period.
-  Never say you can't check, you can. Reads run immediately and freely.
-- CREATING budgets, goals, or categories: use create_budget, create_goal, create_category.
+  budgets", "total of my budgets"): use query_records to look things up, or get_spending_summary
+  for spending totals over a period. Never say you can't check, you can. Reads run immediately.
+  When summing budgets or recurring rules, use the total the tool returns. Do not add amounts in
+  your head, and always call query_records fresh rather than reusing an older list from this chat.
+  If the user says they updated values in View / the editor / the app, or that your totals are wrong,
+  call query_records immediately and prefer the fresh tool total. Do not defend older numbers from
+  earlier in this chat.
+  Currency questions ("what's 12 dollars in kwacha?", "convert 500 ZMW to USD"): call
+  convert_currency. Never invent an exchange rate. Quote the tool's result, and note it is
+  mid-market / approximate.
+  - Budgets vs recurring bills are different:
+  - create_budget = a spending CAP for a category (weekly/monthly envelope on the Plan Budgets tab).
+  - create_recurring_transaction = rent, salary, subscriptions that POST on a schedule (Plan Recurring tab).
+  If the user says "every month" about a bill/paycheck/subscription, use create_recurring_transaction.
+  If they say "budget", "cap", or "limit", use create_budget.
+- CREATING: create_transaction and create_category apply immediately. create_budget, create_goal,
+  create_debt, create_recurring_transaction, and create_pact STAGE a confirmation card. When staged,
+  ask them to confirm; do not say it is done until they tap Confirm.
 - EDITING or DELETING something that already exists ("actually it was K15 not K10", "delete that
-  duplicate", "rename the trip goal"): you MUST first find the exact record with query_records to
-  get its id, then call update_record or delete_record with that id. NEVER create a new record to
-  "fix" an old one. That leaves a duplicate.
+  duplicate", "rename the trip goal", "pause my Netflix recurring"): you MUST first find the exact
+  record with query_records to get its id, then call update_record or delete_record with that id.
+  NEVER create a new record to "fix" an old one. That leaves a duplicate.
 
-Editing and deleting are special:
-- create_* and reads apply immediately (the user just asked you to log or look something up).
-- update_record stages a change. Trusted users may get small edits applied automatically; large
-  amount changes always need a confirmation card. If staged, phrase your reply as the pending
-  question (e.g. "Want me to change that to K15?"). Do not say it's done until applied.
+RECATEGORIZING an existing entry ("put the dog food entry under a category called Pets", "move that
+to Transport") is a two or three step job you must finish in the same turn, not stop halfway:
+1. If the category doesn't exist yet, create_category (pick a fitting emoji icon).
+2. query_records on domain "transaction" to get the entry's id. Query the TRANSACTION, not the
+   category: a category you just created is already usable and needs no lookup.
+3. update_record with domain "transaction", that id, and changes {category: "<the category name>"}.
+Creating the category alone does NOT move the entry. You are not done until update_record is applied
+or staged, so never end the turn after step 1 or 2.
+
+Confirmation rules:
+- create_transaction, create_category, and reads apply immediately.
+- create_budget / create_goal / create_debt / create_recurring_transaction / create_pact,
+  update_record, and set_balance stage a Yes/Cancel card (trusted users may get small ones
+  auto-applied; large money amounts always need the card). If staged, phrase as a pending question
+  (e.g. "Want me to add a K500 monthly Netflix bill?"). Do not say it's done until applied.
 - delete_record ALWAYS needs a confirmation card, even for trusted users. Never say a delete is
   done until they confirm. Phrase as "Delete the K10 tea entry?"
 
@@ -1119,11 +1393,11 @@ into your replies naturally, don't just list it back.${buildMemorySection(memori
 
   const personalityFragment = PERSONALITY_PROMPTS[personality] ?? PERSONALITY_PROMPTS.balanced_coach
 
-  // Volatile context (current page, today's date) goes LAST: everything above
-  // it is stable across a user's requests, so Gemini's implicit prefix
+  // Volatile context (current page, UI edits, today's date) goes LAST: everything
+  // above it is stable across a user's requests, so Gemini's implicit prefix
   // caching can reuse it. With the page line mid-prompt, every navigation
   // invalidated the cached prefix from that point down (audit finding).
-  return `${houseRules}\n\n${personalityFragment}\n\n${screenLine}Today's date is ${today()}.`
+  return `${houseRules}\n\n${personalityFragment}\n\n${screenLine}${uiEditsLine}Today's date is ${today()}.`
 }
 
 function buildMemorySection(memories: Memory[]): string {
@@ -1132,19 +1406,28 @@ function buildMemorySection(memories: Memory[]): string {
   return `\n\nWhat you remember about this user:\n${lines.join('\n')}`
 }
 
-function buildTools(categories: Category[]): ToolDefinition[] {
+function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefinition[] {
   const categoryNames = categories.map((c) => c.name)
+  const accountNames = accounts.map((a) => a.name)
 
   return [
     {
       name: 'create_transaction',
-      description: 'Log a new expense or income transaction in the user wallet.',
+      description:
+        'Log a new expense or income in a pocket wallet (Cash, Airtel Money, MTN, etc.) under the ' +
+        'current money account. Prefer the matching pocket when the user names one or pastes MoMo.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
           type: { type: 'string', enum: ['expense', 'income'] },
           amount: { type: 'number', description: 'Amount as a decimal number, e.g. 12.50' },
           category: { type: 'string', enum: categoryNames },
+          account: {
+            type: 'string',
+            ...(accountNames.length > 0 ? { enum: accountNames } : {}),
+            description:
+              'Pocket wallet name, e.g. "Cash", "Airtel Money", "MTN MoMo". Defaults to the default pocket.',
+          },
           merchant: { type: 'string' },
           description: { type: 'string' },
           transaction_date: {
@@ -1158,19 +1441,20 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'set_balance',
       description:
-        'Record what the user ACTUALLY has right now across their money (their real balance), e.g. ' +
-        '"my balance is 1200", "I have about 350 in mobile money", "roughly 5k in total". This is the ' +
-        'trust anchor: it reconciles Penda\'s running total to reality and posts a balancing entry for ' +
-        'any gap, so safe-to-spend and every downstream number stays honest. Use this whenever the user ' +
-        'states their current total balance, NOT create_transaction. ALWAYS stages a confirmation card ' +
-        '(never applies immediately, even for trusted users): phrase your reply as the pending question ' +
-        '(e.g. "Set your balance to K10,000?"). Do not say it\'s done until they confirm.',
+        'Record what the user ACTUALLY has right now. Prefer a pocket when they name one ' +
+        '("my Airtel balance is 350"); omit account for the whole money-account total. ' +
+        'ALWAYS stages a confirmation card. Do not say it\'s done until they confirm.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
           amount: {
             type: 'number',
-            description: 'The actual total balance right now, as a decimal number, e.g. 1200 or 349.50.',
+            description: 'The actual balance right now, as a decimal number, e.g. 1200 or 349.50.',
+          },
+          account: {
+            type: 'string',
+            ...(accountNames.length > 0 ? { enum: accountNames } : {}),
+            description: 'Optional pocket name when reconciling one wallet, not the whole account.',
           },
         },
         required: ['amount'],
@@ -1179,9 +1463,9 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     {
       name: 'create_debt',
       description:
-        'Record a debt where money has NOT moved yet, just a promise or IOU with nothing exchanged. ' +
-        'Use log_borrowed_or_lent_money instead whenever cash actually changed hands, so the wallet ' +
-        'transaction and the debt save together atomically.',
+        'Propose a debt where money has NOT moved yet, just a promise or IOU with nothing exchanged. ' +
+        'Stages a confirmation card. Use log_borrowed_or_lent_money instead whenever cash actually ' +
+        'changed hands, so the wallet transaction and the debt save together atomically.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1192,7 +1476,11 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           direction: { type: 'string', enum: ['i_owe', 'owed_to_me'] },
           amount: { type: 'number', description: 'Principal amount as a decimal, e.g. 500.' },
           counterparty: { type: 'string', description: 'Who the debt is with, if mentioned.' },
-          due_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD when it is due.' },
+          due_date: {
+            type: 'string',
+            description:
+              'Optional ISO date YYYY-MM-DD when repayment is due. Pass whenever the user mentions a due date.',
+          },
         },
         required: ['name', 'direction', 'amount'],
       },
@@ -1204,7 +1492,7 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         'debt, in one step, so they save together or not at all. Use this INSTEAD of create_transaction ' +
         'plus create_debt whenever cash actually changes hands for a loan: borrowing (direction "i_owe", ' +
         'wallet goes up) or lending / being owed (direction "owed_to_me", wallet goes down). If money was ' +
-        'only promised and hasn\'t moved yet, use create_debt alone instead.',
+        'only promised and hasn\'t moved yet, use create_debt alone instead. Pass due_date when mentioned.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1213,7 +1501,11 @@ function buildTools(categories: Category[]): ToolDefinition[] {
           name: { type: 'string', description: 'Short label for the debt, e.g. "Loan from Amara".' },
           counterparty: { type: 'string', description: 'Who the debt is with, if mentioned.' },
           category: { type: 'string', enum: categoryNames, description: 'Optional category for the transaction.' },
-          due_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD when the debt is due.' },
+          due_date: {
+            type: 'string',
+            description:
+              'Optional ISO date YYYY-MM-DD when the debt is due. Pass whenever the user mentions a due date.',
+          },
           transaction_date: {
             type: 'string',
             description: 'ISO date YYYY-MM-DD the money moved. Use today unless the user specifies otherwise.',
@@ -1252,7 +1544,9 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     },
     {
       name: 'create_budget',
-      description: 'Create a spending budget for a category over a weekly or monthly period.',
+      description:
+        'Propose a spending budget (cap) for a category over a weekly or monthly period. ' +
+        'Stages a confirmation card; do not say it is done until the user confirms.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1266,14 +1560,28 @@ function buildTools(categories: Category[]): ToolDefinition[] {
     },
     {
       name: 'create_goal',
-      description: 'Create a savings goal the user is working toward.',
+      description:
+        'Propose a savings goal or life milestone the user is working toward (move out, car, ' +
+        'emergency buffer, school fees, wedding, trip, business kitty, etc.). Stages a ' +
+        'confirmation card; do not say it is done until the user confirms.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'What the goal is, e.g. "New laptop".' },
+          name: {
+            type: 'string',
+            description: 'What the goal is, e.g. "Move out deposit" or "New laptop".',
+          },
           target_amount: { type: 'number', description: 'Target amount to save, as a decimal.' },
           current_amount: { type: 'number', description: 'Amount already saved, if any. Defaults to 0.' },
           target_date: { type: 'string', description: 'Optional ISO date YYYY-MM-DD to hit the goal by.' },
+          icon: {
+            type: 'string',
+            description: 'Optional emoji for the goal, e.g. "🏠", "🚗", "🛡️".',
+          },
+          motivation: {
+            type: 'string',
+            description: 'Optional short why this milestone matters to them.',
+          },
         },
         required: ['name', 'target_amount'],
       },
@@ -1291,18 +1599,61 @@ function buildTools(categories: Category[]): ToolDefinition[] {
       },
     },
     {
-      name: 'query_records',
+      name: 'create_recurring_transaction',
       description:
-        'Look up the user\'s existing records to answer questions or to find the id of something the ' +
-        'user wants to edit or delete. Returns each record WITH its id. Runs immediately.',
+        'Create a recurring bill, subscription, or paycheck that posts on a schedule (Plan → Recurring). ' +
+        'Not a budget cap. Use for rent, Netflix, salary, etc.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
-          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category'] },
+          amount: { type: 'number', description: 'Amount as a decimal, e.g. 500.' },
+          type: { type: 'string', enum: ['expense', 'income'] },
+          frequency: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly'] },
+          next_run_date: {
+            type: 'string',
+            description: 'ISO date YYYY-MM-DD of the next time this should post.',
+          },
+          category: { type: 'string', enum: categoryNames, description: 'Category for the recurring entry.' },
+          merchant: { type: 'string', description: 'Optional merchant or payee, e.g. "Netflix".' },
+          description: { type: 'string', description: 'Optional note.' },
+        },
+        required: ['amount', 'type', 'frequency', 'next_run_date'],
+      },
+    },
+    {
+      name: 'create_pact',
+      description:
+        'Create a commitment pact (e.g. "No takeout this week") that holds the user to a category ' +
+        'restriction over a date window.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          description: { type: 'string', description: 'What the user is committing to.' },
+          category: { type: 'string', enum: categoryNames, description: 'Category to restrict, if any.' },
+          start_date: { type: 'string', description: 'ISO date YYYY-MM-DD. Defaults to today.' },
+          end_date: { type: 'string', description: 'ISO date YYYY-MM-DD when the pact ends.' },
+        },
+        required: ['description', 'end_date'],
+      },
+    },
+    {
+      name: 'query_records',
+      description:
+        'Look up the user\'s existing records to answer questions or to find the id of something the ' +
+        'user wants to edit or delete. Returns each record WITH its id. For budgets and recurring, ' +
+        'also returns a server-computed total. Always re-query rather than reusing an older list. ' +
+        'Runs immediately.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          domain: {
+            type: 'string',
+            enum: ['transaction', 'debt', 'budget', 'goal', 'category', 'recurring', 'pact'],
+          },
           search: { type: 'string', description: 'Optional text to match on merchant/description/name.' },
           since: { type: 'string', description: 'Transactions only: ISO date lower bound (inclusive).' },
           until: { type: 'string', description: 'Transactions only: ISO date upper bound (inclusive).' },
-          limit: { type: 'number', description: 'Max rows to return. Defaults to 10.' },
+          limit: { type: 'number', description: 'Max rows to return. Defaults to 10 (50 for budget/recurring).' },
         },
         required: ['domain'],
       },
@@ -1322,6 +1673,30 @@ function buildTools(categories: Category[]): ToolDefinition[] {
       },
     },
     {
+      name: 'convert_currency',
+      description:
+        'Convert an amount between currencies using a live mid-market exchange rate. Use whenever the ' +
+        'user asks what something is worth in another currency (e.g. "what\'s 12 dollars in kwacha", ' +
+        '"convert 500 ZMW to USD", "how much is €20 in kwacha"). Pass ISO 4217 codes when possible ' +
+        '(USD, ZMW, EUR, GBP, …); spoken names like "dollars" or "kwacha" also work. Do NOT guess ' +
+        'rates yourself. Runs immediately.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          amount: { type: 'number', description: 'Amount as a decimal number, e.g. 12 or 12.50.' },
+          from_currency: {
+            type: 'string',
+            description: 'Source currency ISO code or common name, e.g. USD or dollars.',
+          },
+          to_currency: {
+            type: 'string',
+            description: 'Target currency ISO code or common name, e.g. ZMW or kwacha.',
+          },
+        },
+        required: ['amount', 'from_currency', 'to_currency'],
+      },
+    },
+    {
       name: 'update_record',
       description:
         'Edit an existing record. Usually stages a confirmation card; small edits may auto-apply for ' +
@@ -1329,11 +1704,16 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         'query_records. Editable fields by domain: transaction {amount, type, category, merchant, ' +
         'description, transaction_date}; debt {name, direction, counterparty, amount, due_date}; ' +
         'budget {amount, period, category, rollover}; goal {name, target_amount, current_amount, ' +
-        'target_date}; category {name, icon}; wallet {name}. Amounts are decimals; category is a name.',
+        'target_date, icon, motivation}; category {name, icon}; wallet {name}; recurring {amount, type, category, ' +
+        'merchant, description, frequency, next_run_date, is_active}; pact {description, category, ' +
+        'start_date, end_date}. Amounts are decimals; category is a name.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
-          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category', 'wallet'] },
+          domain: {
+            type: 'string',
+            enum: ['transaction', 'debt', 'budget', 'goal', 'category', 'wallet', 'recurring', 'pact'],
+          },
           id: { type: 'string', description: 'The record id from query_records.' },
           changes: {
             type: 'object',
@@ -1352,7 +1732,10 @@ function buildTools(categories: Category[]): ToolDefinition[] {
       parametersJsonSchema: {
         type: 'object',
         properties: {
-          domain: { type: 'string', enum: ['transaction', 'debt', 'budget', 'goal', 'category'] },
+          domain: {
+            type: 'string',
+            enum: ['transaction', 'debt', 'budget', 'goal', 'category', 'recurring', 'pact'],
+          },
           id: { type: 'string', description: 'The record id from query_records.' },
         },
         required: ['domain', 'id'],
@@ -1399,7 +1782,29 @@ function buildTools(categories: Category[]): ToolDefinition[] {
 
 // --- Action trail (UI) -----------------------------------------------------
 
-const STAGING_TOOLS = new Set(['update_record', 'delete_record', 'set_balance'])
+// Tools that only stage Yes/Cancel cards (or fail). Successful stages have no
+// trail "done" row; the pending card is the trail entry.
+const STAGING_TOOLS = new Set([
+  'update_record',
+  'delete_record',
+  'set_balance',
+  'create_budget',
+  'create_goal',
+  'create_debt',
+  'create_recurring_transaction',
+  'create_pact',
+])
+
+const STAGING_FAILURE_LABELS: Record<string, string> = {
+  update_record: 'Couldn’t update that',
+  delete_record: 'Couldn’t delete that',
+  set_balance: 'Couldn’t set the balance',
+  create_budget: 'Couldn’t create that budget',
+  create_goal: 'Couldn’t create that goal',
+  create_debt: 'Couldn’t record that debt',
+  create_recurring_transaction: 'Couldn’t create that recurring item',
+  create_pact: 'Couldn’t create that pact',
+}
 
 const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
   create_transaction: { domain: 'transaction', label: 'Logged transaction' },
@@ -1409,8 +1814,11 @@ const TOOL_TRAIL_META: Record<string, { domain: string; label: string }> = {
   create_budget: { domain: 'budget', label: 'Created budget' },
   create_goal: { domain: 'goal', label: 'Created goal' },
   create_category: { domain: 'category', label: 'Created category' },
+  create_recurring_transaction: { domain: 'recurring', label: 'Created recurring' },
+  create_pact: { domain: 'pact', label: 'Created pact' },
   query_records: { domain: 'query', label: 'Looked that up' },
   get_spending_summary: { domain: 'summary', label: 'Tallied spend' },
+  convert_currency: { domain: 'fx', label: 'Converted currency' },
   save_memory: { domain: 'memory', label: 'Remembered that' },
   teach_categorization: { domain: 'memory', label: 'Taught Penda' },
   money_habit: { domain: 'goal', label: 'Saved via habit' },
@@ -1433,15 +1841,32 @@ function buildCompletedAction(
   ctx: ToolContext,
   threw: boolean,
 ): CompletedAction | null {
-  // Confirm cards already cover staged update/delete, don't duplicate them.
-  if (STAGING_TOOLS.has(call.name)) return null
-
   const meta = TOOL_TRAIL_META[call.name] ?? { domain: 'general', label: 'Did something' }
   const failed = toolFailed(result, threw)
+
+  // A staged update/delete that succeeded already has its own confirm card, so
+  // don't duplicate it. One that failed has no card anywhere, which made the
+  // whole step vanish from the trail and read as if the agent never tried.
+  if (STAGING_TOOLS.has(call.name)) {
+    // "the values already match" is a no-op the reply explains, not a failure.
+    if (!failed || result.startsWith('Nothing to')) return null
+    return {
+      id: call.id,
+      tool: call.name,
+      domain: typeof call.args.domain === 'string' ? call.args.domain : meta.domain,
+      label: STAGING_FAILURE_LABELS[call.name] ?? 'Couldn’t do that',
+      summary: 'Something went wrong',
+      status: 'error',
+    }
+  }
   const args = call.args
   let label = meta.label
   let summary = result
-  let targetId: string | undefined
+  // Looked up by the row's own domain, so View can never be handed an id from a
+  // different table (a borrow/lend row reads as a debt but also saves a
+  // transaction, and it used to deep-link the transaction id as a debt).
+  const targetId = ctx.createdIds[meta.domain]
+  let transactionId: string | undefined
   const details: Record<string, string> = {}
 
   switch (call.name) {
@@ -1458,21 +1883,20 @@ function buildCompletedAction(
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
       if (category) details.Category = category
       if (typeof args.transaction_date === 'string') details.Date = args.transaction_date
-      const tx = ctx.createdTransaction
-      if (tx && typeof tx.id === 'string') targetId = tx.id
       break
     }
     case 'create_debt': {
       const name = typeof args.name === 'string' ? args.name.trim() : ''
       const amount = Number(args.amount)
       const counterparty = typeof args.counterparty === 'string' ? args.counterparty.trim() : ''
+      const dueDate = typeof args.due_date === 'string' ? args.due_date.trim() : ''
       summary = [name || 'Debt', Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
         .filter(Boolean)
         .join(' · ')
       if (name) details.Name = name
       if (counterparty) details.With = counterparty
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
-      targetId = ctx.createdIds.debt
+      if (dueDate) details.Due = dueDate
       break
     }
     case 'log_borrowed_or_lent_money': {
@@ -1480,13 +1904,16 @@ function buildCompletedAction(
       label = direction === 'Lent' ? 'Recorded lending' : 'Recorded borrowing'
       const amount = Number(args.amount)
       const counterparty = typeof args.counterparty === 'string' ? args.counterparty.trim() : ''
+      const dueDate = typeof args.due_date === 'string' ? args.due_date.trim() : ''
       summary = [direction, counterparty || null, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
         .filter(Boolean)
         .join(' · ')
       if (counterparty) details.With = counterparty
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
-      const tx = ctx.createdTransaction
-      if (tx && typeof tx.id === 'string') targetId = tx.id
+      if (dueDate) details.Due = dueDate
+      // targetId is the debt (this row's domain); the wallet entry saved with it
+      // rides along so Undo can reverse both sides.
+      transactionId = ctx.createdIds.transaction
       break
     }
     case 'log_debt_payment': {
@@ -1494,7 +1921,6 @@ function buildCompletedAction(
       // summary already carries the handler's human sentence (amount + what's left).
       const amount = Number(args.amount)
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
-      targetId = ctx.createdIds.debt
       break
     }
     case 'create_budget': {
@@ -1507,7 +1933,6 @@ function buildCompletedAction(
       if (category) details.Category = category
       details.Period = period
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
-      targetId = ctx.createdIds.budget
       break
     }
     case 'create_goal': {
@@ -1519,14 +1944,12 @@ function buildCompletedAction(
         .join(' · ')
       details.Name = name
       if (Number.isFinite(target) && target > 0) details.Target = fmtAmount(target, ctx.symbol)
-      targetId = ctx.createdIds.goal
       break
     }
     case 'create_category': {
       const name = typeof args.name === 'string' ? args.name.trim() : ''
       summary = name || (failed ? 'Couldn’t create category' : 'Category created')
       if (name) details.Name = name
-      targetId = ctx.createdIds.category
       break
     }
     case 'teach_categorization': {
@@ -1559,6 +1982,25 @@ function buildCompletedAction(
       if (typeof args.until === 'string') details.Until = args.until
       break
     }
+    case 'convert_currency': {
+      label = failed ? 'Couldn’t convert' : 'Converted currency'
+      // Prefer the tool's readable line; keep the trail short.
+      const approx = result.split(' (mid-market')[0]?.trim()
+      summary = failed
+        ? result.length > 100
+          ? `${result.slice(0, 97)}…`
+          : result
+        : approx && approx.length <= 100
+          ? approx
+          : result.length > 100
+            ? `${result.slice(0, 97)}…`
+            : result
+      const amount = Number(args.amount)
+      if (Number.isFinite(amount) && amount > 0) details.Amount = String(amount)
+      if (typeof args.from_currency === 'string') details.From = args.from_currency
+      if (typeof args.to_currency === 'string') details.To = args.to_currency
+      break
+    }
     case 'save_memory': {
       const content = typeof args.content === 'string' ? args.content.trim() : ''
       summary = content
@@ -1570,7 +2012,6 @@ function buildCompletedAction(
           : 'Saved'
       if (typeof args.kind === 'string') details.Kind = args.kind
       if (content) details.Note = content
-      targetId = ctx.createdIds.memory
       break
     }
     default: {
@@ -1590,19 +2031,36 @@ function buildCompletedAction(
     summary,
     status: failed ? 'error' : 'done',
     targetId,
+    transactionId,
     details: Object.keys(details).length ? details : undefined,
   }
 }
 
 // --- Tool dispatch ---------------------------------------------------------
 
+// Keyed by domain so the trail can look an id up by the domain it displays; see
+// buildCompletedAction.
+function rememberCreatedTransaction(ctx: ToolContext, tx: Record<string, unknown> | null): void {
+  ctx.createdTransaction = tx
+  // Cleared on failure too, so a step that saved nothing can't inherit the id of
+  // an earlier step in the same turn.
+  ctx.createdIds.transaction = tx && typeof tx.id === 'string' ? tx.id : undefined
+}
+
 async function dispatchTool(ctx: ToolContext, name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'create_transaction': {
       const result = await handleCreateTransaction(
-        ctx.supabase, ctx.walletId, ctx.userId, ctx.currency, ctx.categories, ctx.rules, args,
+        ctx.supabase,
+        ctx.walletId,
+        ctx.userId,
+        ctx.currency,
+        ctx.categories,
+        ctx.accounts,
+        ctx.rules,
+        args,
       )
-      ctx.createdTransaction = result.transaction
+      rememberCreatedTransaction(ctx, result.transaction)
       for (const habit of result.habits ?? []) {
         const label = habit.kind === 'round_up' ? 'Rounded up' : 'Paid yourself first'
         ctx.completedActions.push({
@@ -1623,14 +2081,11 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
     }
     case 'set_balance':
       return await stageSetBalance(ctx, args)
-    case 'create_debt': {
-      const result = await handleCreateDebt(ctx.supabase, ctx.walletId, args)
-      if (result.id) ctx.createdIds.debt = result.id
-      return result.summary
-    }
+    case 'create_debt':
+      return await stageCreateDebt(ctx, args)
     case 'log_borrowed_or_lent_money': {
       const result = await handleLogBorrowOrLend(ctx, args)
-      ctx.createdTransaction = result.transaction
+      rememberCreatedTransaction(ctx, result.transaction)
       if (result.debtId) ctx.createdIds.debt = result.debtId
       return result.summary
     }
@@ -1640,15 +2095,21 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       return result.summary
     }
     case 'create_budget':
-      return await handleCreateBudget(ctx, args)
+      return await stageCreateBudget(ctx, args)
     case 'create_goal':
-      return await handleCreateGoal(ctx, args)
+      return await stageCreateGoal(ctx, args)
     case 'create_category':
       return await handleCreateCategory(ctx, args)
+    case 'create_recurring_transaction':
+      return await stageCreateRecurring(ctx, args)
+    case 'create_pact':
+      return await stageCreatePact(ctx, args)
     case 'query_records':
       return await handleQueryRecords(ctx, args)
     case 'get_spending_summary':
       return await handleSpendingSummary(ctx, args)
+    case 'convert_currency':
+      return await handleConvertCurrency(args)
     case 'update_record':
       return await stageUpdate(ctx, args)
     case 'delete_record':
@@ -1668,6 +2129,7 @@ async function handleCreateTransaction(
   userId: string,
   currency: string,
   categories: Category[],
+  accounts: PocketAccount[],
   rules: CategorizationRule[],
   input: Record<string, unknown>,
 ): Promise<{
@@ -1683,7 +2145,7 @@ async function handleCreateTransaction(
   const merchant = typeof input.merchant === 'string' ? input.merchant : null
   const description = typeof input.description === 'string' ? input.description : null
 
-  let categoryId = categories.find((c) => c.name === input.category)?.id ?? null
+  let categoryId = findCategory(categories, input.category)?.id ?? null
   let matchedRule: CategorizationRule | null = null
   for (const rule of rules) {
     const haystack = (rule.match_type === 'merchant_contains' ? merchant : description) ?? ''
@@ -1694,11 +2156,15 @@ async function handleCreateTransaction(
     }
   }
 
+  const fallbackAccount = await defaultAccountId(supabase, walletId)
+  const accountId = resolveAccountId(accounts, input.account, fallbackAccount)
+
   const { data, error } = await supabase
     .from('transactions')
     .insert({
       wallet_id: walletId,
       created_by: userId,
+      account_id: accountId,
       category_id: categoryId,
       amount_minor: Math.round(amount * 100),
       currency,
@@ -1751,34 +2217,41 @@ async function stageSetBalance(ctx: ToolContext, args: Record<string, unknown>):
     return 'A balance must be a number that is zero or more.'
   }
   const actualMinor = Math.round(amount * 100)
+  const accountId =
+    args.account != null ? resolveAccountId(ctx.accounts, args.account, null) : null
+  const pocket = accountId ? ctx.accounts.find((a) => a.id === accountId) : null
+  // Whole-account reconcile posts the balancing entry on the default pocket.
+  const patchAccountId = accountId ?? (await defaultAccountId(ctx.supabase, ctx.walletId))
 
-  const computedMinor = await computeWalletBalanceMinor(ctx.supabase, ctx.walletId)
+  const computedMinor = accountId
+    ? await computeAccountBalanceMinor(ctx.supabase, accountId)
+    : await computeWalletBalanceMinor(ctx.supabase, ctx.walletId)
+  const where = pocket ? ` on ${pocket.name}` : ''
   const summary =
     computedMinor === actualMinor
-      ? `Confirm the balance is ${fmt(actualMinor, ctx.symbol)} (matches what Penda already shows).`
-      : `Set your balance to ${fmt(actualMinor, ctx.symbol)} (Penda currently shows ${fmt(computedMinor, ctx.symbol)}).`
+      ? `Confirm the balance${where} is ${fmt(actualMinor, ctx.symbol)} (matches what Penda already shows).`
+      : `Set your balance${where} to ${fmt(actualMinor, ctx.symbol)} (Penda currently shows ${fmt(computedMinor, ctx.symbol)}).`
 
   ctx.pendingActions.push(
     await insertPendingAction(ctx, {
       kind: 'reconcile',
       domain: 'reconciliation',
       targetId: ctx.walletId,
-      patch: { amount: actualMinor },
+      patch: {
+        amount: actualMinor,
+        account_id: patchAccountId,
+        // When true, confirm path recomputes money-account total (not pocket).
+        scope_wallet: !accountId,
+      },
       summary,
     }),
   )
   return `Staged, NOT applied: ${summary} The user must confirm it on the card. Ask them to confirm; do not say it's done.`
 }
 
-async function handleCreateDebt(
-  supabase: SupabaseClient,
-  walletId: string,
-  input: Record<string, unknown>,
-): Promise<{ summary: string; id?: string }> {
+async function stageCreateDebt(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
   const amount = Number(input.amount)
-  if (!amount || amount <= 0) {
-    return { summary: 'Debt amount must be a positive number.' }
-  }
+  if (!amount || amount <= 0) return 'Debt amount must be a positive number.'
 
   const direction = input.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe'
   const name =
@@ -1791,10 +2264,17 @@ async function handleCreateDebt(
   const dueDate = typeof input.due_date === 'string' ? input.due_date : null
   const principalMinor = Math.round(amount * 100)
 
-  const { data, error } = await supabase
-    .from('debts')
-    .insert({
-      wallet_id: walletId,
+  const summary =
+    `Add debt "${name}" (${direction === 'i_owe' ? 'I owe' : 'owed to me'} ` +
+    `${fmt(principalMinor, ctx.symbol)}` +
+    (counterparty ? `, ${counterparty}` : '') +
+    ').'
+
+  return await stageCreate(ctx, {
+    domain: 'debt',
+    summary,
+    patch: {
+      wallet_id: ctx.walletId,
       name,
       direction,
       counterparty,
@@ -1802,15 +2282,8 @@ async function handleCreateDebt(
       balance_minor: principalMinor,
       interest_rate: null,
       due_date: dueDate,
-    })
-    .select('*')
-    .single()
-
-  if (error) {
-    return { summary: `Failed to save debt: ${error.message}` }
-  }
-
-  return { summary: `Saved debt: ${JSON.stringify(data)}`, id: data.id as string }
+    },
+  })
 }
 
 // Repaying / settling a debt. Mirrors the "Log a payment" button: insert a
@@ -1894,7 +2367,7 @@ async function handleLogBorrowOrLend(
   const counterparty = typeof input.counterparty === 'string' ? input.counterparty : null
   const dueDate = typeof input.due_date === 'string' ? input.due_date : null
   const transactionDate = typeof input.transaction_date === 'string' ? input.transaction_date : today()
-  const categoryId = ctx.categories.find((c) => c.name === input.category)?.id ?? null
+  const categoryId = findCategory(ctx.categories, input.category)?.id ?? null
   const amountMinor = Math.round(amount * 100)
 
   const { data: rawData, error } = await ctx.supabase
@@ -2015,6 +2488,8 @@ const CRUD_DOMAINS: Record<string, DomainCfg> = {
       target_amount: { column: 'target_amount_minor', kind: 'minor' },
       current_amount: { column: 'current_amount_minor', kind: 'minor' },
       target_date: { column: 'target_date', kind: 'raw' },
+      icon: { column: 'icon', kind: 'raw' },
+      motivation: { column: 'motivation', kind: 'raw' },
     },
     describe: (row, sym) =>
       `the goal "${row.name}" (${fmt(row.current_amount_minor, sym)} of ${fmt(row.target_amount_minor, sym)})`,
@@ -2043,6 +2518,36 @@ const CRUD_DOMAINS: Record<string, DomainCfg> = {
       name: { column: 'name', kind: 'raw' },
     },
     describe: (row) => `the wallet "${row.name}"`,
+  },
+  recurring: {
+    table: 'recurring_transactions',
+    select: '*',
+    softDelete: false,
+    deletable: true,
+    // Flat fields plus template_* handled in buildRecurringPatch.
+    fields: {
+      frequency: { column: 'frequency', kind: 'raw' },
+      next_run_date: { column: 'next_run_date', kind: 'raw' },
+      is_active: { column: 'is_active', kind: 'raw' },
+    },
+    describe: (row, sym) => {
+      const t = (row.template ?? {}) as Record<string, unknown>
+      const label = t.merchant || t.description || 'recurring'
+      return `the ${row.frequency} ${t.type ?? 'expense'} "${label}" (${fmt(t.amount_minor, sym)})`
+    },
+  },
+  pact: {
+    table: 'commitment_pacts',
+    select: '*, category:categories(id, name)',
+    softDelete: false,
+    deletable: true,
+    fields: {
+      description: { column: 'description', kind: 'raw' },
+      category: { column: 'category_id', kind: 'category' },
+      start_date: { column: 'start_date', kind: 'raw' },
+      end_date: { column: 'end_date', kind: 'raw' },
+    },
+    describe: (row) => `the pact "${row.description}"`,
   },
 }
 
@@ -2081,8 +2586,12 @@ function buildPatch(
       if (!isFinite(n) || n < 0) throw new Error(`"${key}" must be a non-negative number.`)
       value = Math.round(n * 100)
     } else if (field.kind === 'category') {
-      const match = categories.find((c) => c.name.toLowerCase() === String(raw).toLowerCase())
-      if (!match) throw new Error(`No category named "${raw}".`)
+      const match = findCategory(categories, raw)
+      if (!match) {
+        throw new Error(
+          `No category named "${raw}". Create it with create_category first, or pick an existing one.`,
+        )
+      }
       value = match.id
     } else {
       value = raw === '' ? null : raw
@@ -2105,10 +2614,83 @@ async function loadTarget(ctx: ToolContext, cfg: DomainCfg, domain: string, id: 
   return data as Row
 }
 
+async function stageCreate(
+  ctx: ToolContext,
+  input: { domain: string; summary: string; patch: Record<string, unknown> },
+): Promise<string> {
+  const highImpact = createPatchIsHighImpact(input.patch)
+  const { consent, trust } = await loadMutationTrust(ctx)
+  if (mayAutoApplyMutation('create', consent, trust, { highImpact })) {
+    ctx.autoApplied = true
+    return await autoApplyCreate(ctx, input)
+  }
+  // Placeholder target_id until confirm inserts the row (NOT NULL on the table).
+  const placeholderId = crypto.randomUUID()
+  ctx.pendingActions.push(
+    await insertPendingAction(ctx, {
+      kind: 'create',
+      domain: input.domain,
+      targetId: placeholderId,
+      patch: input.patch,
+      summary: input.summary,
+    }),
+  )
+  const reason = highImpact
+    ? 'This is a large money create, so'
+    : 'The user must'
+  return `Staged, NOT applied: ${input.summary} ${reason} confirm it on the card. Ask them to confirm; do not say it's done.`
+}
+
+async function autoApplyCreate(
+  ctx: ToolContext,
+  input: { domain: string; summary: string; patch: Record<string, unknown> },
+): Promise<string> {
+  const placeholderId = crypto.randomUUID()
+  const pending = await insertPendingAction(ctx, {
+    kind: 'create',
+    domain: input.domain,
+    targetId: placeholderId,
+    patch: input.patch,
+    summary: input.summary,
+    status: 'auto_applied',
+  })
+  try {
+    const result = await executePendingAction(ctx.supabase, {
+      id: pending.id,
+      kind: 'create',
+      domain: input.domain,
+      target_id: placeholderId,
+      wallet_id: ctx.walletId,
+      user_id: ctx.userId,
+      patch: input.patch,
+      summary: input.summary,
+      status: 'auto_applied',
+    })
+    const targetId = result?.targetId ?? placeholderId
+    ctx.createdIds[input.domain] = targetId
+    const consent = ctx._consent ?? normalizeAiConsent(null)
+    const trust = ctx._trust ?? normalizeAiTrust(null)
+    await persistTrustAfterConfirm(ctx.supabase, ctx.userId, consent, trust)
+    ctx.completedActions.push({
+      id: pending.id,
+      tool: `create_${input.domain === 'recurring' ? 'recurring_transaction' : input.domain}`,
+      domain: input.domain,
+      label: 'Created',
+      summary: input.summary,
+      status: 'done',
+      targetId,
+    })
+    return `Applied (no confirmation needed, user trust/consent allows small creates): ${input.summary} Tell the user it's done.`
+  } catch (error) {
+    await ctx.supabase.from('ai_pending_actions').delete().eq('id', pending.id)
+    throw error
+  }
+}
+
 async function insertPendingAction(
   ctx: ToolContext,
   input: {
-    kind: 'update' | 'delete' | 'reconcile'
+    kind: 'create' | 'update' | 'delete' | 'reconcile'
     domain: string
     targetId: string
     patch: Record<string, unknown> | null
@@ -2212,7 +2794,10 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
   if (guardMsg) return guardMsg
 
   const changes = (args.changes ?? {}) as Record<string, unknown>
-  const { patch, diff } = buildPatch(cfg, row, changes, ctx.categories, ctx.symbol)
+  const { patch, diff } =
+    domain === 'recurring'
+      ? buildRecurringPatch(row, changes, ctx.categories, ctx.symbol)
+      : buildPatch(cfg, row, changes, ctx.categories, ctx.symbol)
   if (Object.keys(patch).length === 0) {
     return `Nothing to change on ${cfg.describe(row, ctx.symbol)}, the values already match.`
   }
@@ -2220,7 +2805,10 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
   const before: Record<string, unknown> = {}
   for (const key of Object.keys(patch)) before[key] = row[key]
   const patchWithUndo = { ...patch, __before: before }
-  const highImpact = patchIsHighImpact(patch, before)
+  const highImpact =
+    domain === 'recurring'
+      ? createPatchIsHighImpact(patch) || patchIsHighImpact(patch, before)
+      : patchIsHighImpact(patch, before)
 
   const summary = `Update ${cfg.describe(row, ctx.symbol)}, ${diff.join('; ')}.`
   const { consent, trust } = await loadMutationTrust(ctx)
@@ -2240,6 +2828,77 @@ async function stageUpdate(ctx: ToolContext, args: Record<string, unknown>): Pro
     ? 'This is a large or multi-field money change, so'
     : 'The user must'
   return `Staged, NOT applied: ${summary} ${reason} confirm it on the card. Ask them to confirm; do not say it's done.`
+}
+
+function buildRecurringPatch(
+  row: Row,
+  changes: Record<string, unknown>,
+  categories: Category[],
+  sym: string,
+): { patch: Record<string, unknown>; diff: string[] } {
+  const patch: Record<string, unknown> = {}
+  const diff: string[] = []
+  const template = { ...((row.template ?? {}) as Record<string, unknown>) }
+  let templateChanged = false
+
+  for (const [key, raw] of Object.entries(changes)) {
+    if (key === 'frequency' || key === 'next_run_date') {
+      const value = raw === '' ? null : raw
+      if (row[key] === value) continue
+      patch[key] = value
+      diff.push(`${key}: ${row[key] ?? 'none'} → ${value ?? 'none'}`)
+      continue
+    }
+    if (key === 'is_active') {
+      const value = raw === true || raw === 'true' || raw === 1 || raw === '1'
+      if (Boolean(row.is_active) === value) continue
+      patch.is_active = value
+      diff.push(`is_active: ${row.is_active} → ${value}`)
+      continue
+    }
+    if (key === 'amount') {
+      const n = Number(raw)
+      if (!isFinite(n) || n < 0) throw new Error('"amount" must be a non-negative number.')
+      const value = Math.round(n * 100)
+      if (template.amount_minor === value) continue
+      template.amount_minor = value
+      templateChanged = true
+      diff.push(`amount: ${fmt(row.template?.amount_minor, sym)} → ${fmt(value, sym)}`)
+      continue
+    }
+    if (key === 'type') {
+      const value = raw === 'income' ? 'income' : 'expense'
+      if (template.type === value) continue
+      const prev = template.type
+      template.type = value
+      templateChanged = true
+      diff.push(`type: ${prev ?? 'none'} → ${value}`)
+      continue
+    }
+    if (key === 'category') {
+      const match = findCategory(categories, raw)
+      if (!match) {
+        throw new Error(
+          `No category named "${raw}". Create it with create_category first, or pick an existing one.`,
+        )
+      }
+      if (template.category_id === match.id) continue
+      template.category_id = match.id
+      templateChanged = true
+      diff.push(`category: ${formatCol('category_id', row.template?.category_id, sym, categories)} → ${match.name}`)
+      continue
+    }
+    if (key === 'merchant' || key === 'description') {
+      const value = raw === '' || raw == null ? null : String(raw)
+      if ((template[key] ?? null) === value) continue
+      template[key] = value
+      templateChanged = true
+      diff.push(`${key}: ${row.template?.[key] ?? 'none'} → ${value ?? 'none'}`)
+    }
+  }
+
+  if (templateChanged) patch.template = template
+  return { patch, diff }
 }
 
 async function stageDelete(ctx: ToolContext, args: Record<string, unknown>): Promise<string> {
@@ -2277,7 +2936,7 @@ async function handleQueryRecords(ctx: ToolContext, args: Record<string, unknown
   const domain = String(args.domain ?? '')
   const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 50)
   const search = sanitizeSearch(args.search)
-  const { supabase, walletId, symbol } = ctx
+  const { supabase, walletId, symbol, categories } = ctx
 
   // Filters are applied while the builder is still a FilterBuilder; .order()/
   // .limit() go last, on the awaited call, since they narrow the builder type.
@@ -2323,17 +2982,69 @@ async function handleQueryRecords(ctx: ToolContext, args: Record<string, unknown
       due_date: r.due_date,
     }))
   } else if (domain === 'budget') {
+    // Budgets are few; default to 50 so totals aren't silently truncated.
+    const budgetLimit = Math.min(Math.max(Number(args.limit) || 50, 1), 50)
     const { data, error } = await supabase
       .from('budgets')
       .select('id, amount_minor, period, rollover, category:categories(name)')
       .eq('wallet_id', walletId)
-      .limit(limit)
+      .order('period')
+      .limit(budgetLimit)
     if (error) throw new Error(error.message)
     rows = (data ?? []).map((r: Row) => ({
       id: r.id,
       amount: fmt(r.amount_minor, symbol),
+      amount_minor: Number(r.amount_minor) || 0,
       period: r.period,
       rollover: r.rollover,
+      category: r.category?.name ?? null,
+    }))
+  } else if (domain === 'recurring') {
+    const recurringLimit = Math.min(Math.max(Number(args.limit) || 50, 1), 50)
+    const { data, error } = await supabase
+      .from('recurring_transactions')
+      .select('id, template, frequency, next_run_date, is_active')
+      .eq('wallet_id', walletId)
+      .order('next_run_date')
+      .limit(recurringLimit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => {
+      const t = (r.template ?? {}) as Record<string, unknown>
+      return {
+        id: r.id,
+        amount: fmt(t.amount_minor, symbol),
+        amount_minor: Number(t.amount_minor) || 0,
+        type: t.type ?? 'expense',
+        merchant: t.merchant ?? null,
+        description: t.description ?? null,
+        frequency: r.frequency,
+        next_run_date: r.next_run_date,
+        is_active: r.is_active,
+        category: categories.find((c) => c.id === t.category_id)?.name ?? null,
+      }
+    })
+    if (search) {
+      const needle = search.toLowerCase()
+      rows = rows.filter(
+        (r) =>
+          String(r.merchant ?? '').toLowerCase().includes(needle) ||
+          String(r.description ?? '').toLowerCase().includes(needle) ||
+          String(r.category ?? '').toLowerCase().includes(needle),
+      )
+    }
+  } else if (domain === 'pact') {
+    const { data, error } = await supabase
+      .from('commitment_pacts')
+      .select('id, description, start_date, end_date, category:categories(name)')
+      .eq('wallet_id', walletId)
+      .order('end_date', { ascending: false })
+      .limit(limit)
+    if (error) throw new Error(error.message)
+    rows = (data ?? []).map((r: Row) => ({
+      id: r.id,
+      description: r.description,
+      start_date: r.start_date,
+      end_date: r.end_date,
       category: r.category?.name ?? null,
     }))
   } else if (domain === 'goal') {
@@ -2365,6 +3076,17 @@ async function handleQueryRecords(ctx: ToolContext, args: Record<string, unknown
   }
 
   if (rows.length === 0) return `No ${domain} records matched.`
+
+  // Server-side totals for money lists so the model does not add in prose.
+  if (domain === 'budget' || domain === 'recurring') {
+    const totalMinor = rows.reduce((sum, r) => sum + (Number(r.amount_minor) || 0), 0)
+    const publicRows = rows.map(({ amount_minor: _omit, ...rest }) => rest)
+    return (
+      `Found ${publicRows.length} ${domain}(s) totaling ${fmt(totalMinor, symbol)}: ` +
+      `${JSON.stringify(publicRows)}. Use this total; do not re-add the amounts yourself.`
+    )
+  }
+
   return `Found ${rows.length} ${domain}(s): ${JSON.stringify(rows)}`
 }
 
@@ -2398,48 +3120,136 @@ async function handleSpendingSummary(ctx: ToolContext, args: Record<string, unkn
   )
 }
 
-async function handleCreateBudget(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+async function handleConvertCurrency(args: Record<string, unknown>): Promise<string> {
+  const result = await convertCurrency(Number(args.amount), args.from_currency, args.to_currency)
+  return result.ok ? result.summary : result.error
+}
+
+async function stageCreateBudget(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
   const amount = Number(input.amount)
   if (!amount || amount <= 0) return 'Budget amount must be a positive number.'
   const period = input.period === 'weekly' ? 'weekly' : 'monthly'
-  const categoryId = ctx.categories.find((c) => c.name === input.category)?.id ?? null
+  const category = findCategory(ctx.categories, input.category)
+  const amountMinor = Math.round(amount * 100)
+  const summary =
+    `Create a ${period} budget of ${fmt(amountMinor, ctx.symbol)}` +
+    (category ? ` for ${category.name}` : '') +
+    '.'
 
-  const { data, error } = await ctx.supabase
-    .from('budgets')
-    .insert({
+  return await stageCreate(ctx, {
+    domain: 'budget',
+    summary,
+    patch: {
       wallet_id: ctx.walletId,
-      category_id: categoryId,
-      amount_minor: Math.round(amount * 100),
+      category_id: category?.id ?? null,
+      amount_minor: amountMinor,
       period,
       rollover: input.rollover === true,
-    })
-    .select('id')
-    .single()
-  if (error) return `Failed to create budget: ${error.message}`
-  if (data?.id) ctx.createdIds.budget = data.id
-  return `Created a ${period} budget of ${fmt(Math.round(amount * 100), ctx.symbol)}.`
+    },
+  })
 }
 
-async function handleCreateGoal(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+async function stageCreateGoal(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
   const target = Number(input.target_amount)
   if (!target || target <= 0) return 'Goal target must be a positive number.'
   const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : 'Savings goal'
   const current = Number(input.current_amount)
+  const targetMinor = Math.round(target * 100)
+  const currentMinor = isFinite(current) && current > 0 ? Math.round(current * 100) : 0
+  const icon =
+    typeof input.icon === 'string' && input.icon.trim() ? input.icon.trim().slice(0, 16) : null
+  const motivation =
+    typeof input.motivation === 'string' && input.motivation.trim()
+      ? input.motivation.trim().slice(0, 280)
+      : null
+  const summary = `Create the goal "${name}" targeting ${fmt(targetMinor, ctx.symbol)}.`
 
-  const { data, error } = await ctx.supabase
-    .from('savings_goals')
-    .insert({
+  return await stageCreate(ctx, {
+    domain: 'goal',
+    summary,
+    patch: {
       wallet_id: ctx.walletId,
       name,
-      target_amount_minor: Math.round(target * 100),
-      current_amount_minor: isFinite(current) && current > 0 ? Math.round(current * 100) : 0,
+      target_amount_minor: targetMinor,
+      current_amount_minor: currentMinor,
       target_date: typeof input.target_date === 'string' ? input.target_date : null,
-    })
-    .select('id')
-    .single()
-  if (error) return `Failed to create goal: ${error.message}`
-  if (data?.id) ctx.createdIds.goal = data.id
-  return `Created the goal "${name}" targeting ${fmt(Math.round(target * 100), ctx.symbol)}.`
+      icon,
+      motivation,
+    },
+  })
+}
+
+const RECURRING_FREQUENCIES = new Set(['daily', 'weekly', 'monthly', 'yearly'])
+
+async function stageCreateRecurring(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const amount = Number(input.amount)
+  if (!amount || amount <= 0) return 'Amount must be a positive number.'
+  const frequency = String(input.frequency ?? '')
+  if (!RECURRING_FREQUENCIES.has(frequency)) {
+    return 'Frequency must be daily, weekly, monthly, or yearly.'
+  }
+  const nextRun = typeof input.next_run_date === 'string' ? input.next_run_date : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextRun)) return 'I need next_run_date as YYYY-MM-DD.'
+  const type = input.type === 'income' ? 'income' : 'expense'
+  const category = findCategory(ctx.categories, input.category)
+  const merchant = typeof input.merchant === 'string' ? input.merchant.trim() || null : null
+  const description = typeof input.description === 'string' ? input.description.trim() || null : null
+  const amountMinor = Math.round(amount * 100)
+  const label = merchant || description || category?.name || (type === 'income' ? 'income' : 'bill')
+  const summary = `Add ${frequency} ${type} "${label}" for ${fmt(amountMinor, ctx.symbol)}, next on ${nextRun}.`
+
+  return await stageCreate(ctx, {
+    domain: 'recurring',
+    summary,
+    patch: {
+      wallet_id: ctx.walletId,
+      created_by: ctx.userId,
+      template: {
+        category_id: category?.id ?? null,
+        amount_minor: amountMinor,
+        currency: ctx.currency,
+        type,
+        merchant,
+        description,
+      },
+      frequency,
+      next_run_date: nextRun,
+      is_active: true,
+    },
+  })
+}
+
+async function stageCreatePact(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const description = typeof input.description === 'string' ? input.description.trim() : ''
+  if (!description) return 'A pact needs a description.'
+  const endDate = typeof input.end_date === 'string' ? input.end_date : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return 'I need end_date as YYYY-MM-DD.'
+  const startDate =
+    typeof input.start_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.start_date)
+      ? input.start_date
+      : today()
+  const category = findCategory(ctx.categories, input.category)
+  const summary =
+    `Create pact "${description}"` +
+    (category ? ` on ${category.name}` : '') +
+    ` until ${endDate}.`
+
+  return await stageCreate(ctx, {
+    domain: 'pact',
+    summary,
+    patch: {
+      wallet_id: ctx.walletId,
+      created_by: ctx.userId,
+      description,
+      category_id: category?.id ?? null,
+      goal_id: null,
+      start_date: startDate,
+      end_date: endDate,
+      stake_kind: null,
+      stake_amount_minor: null,
+      stake_note: null,
+    },
+  })
 }
 
 async function handleCreateCategory(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
@@ -2453,11 +3263,22 @@ async function handleCreateCategory(ctx: ToolContext, input: Record<string, unkn
       name,
       icon: typeof input.icon === 'string' ? input.icon : null,
     })
-    .select('id')
+    .select('id, name')
     .single()
   if (error) return `Failed to create category: ${error.message}`
-  if (data?.id) ctx.createdIds.category = data.id
-  return `Created the category "${name}".`
+  if (!data?.id) return `Created the category "${name}".`
+
+  ctx.createdIds.category = data.id
+  // ctx.categories is the turn's snapshot and every other tool resolves category
+  // names against it, so a category created mid-turn must land here too. Without
+  // this, "create Pets, then move the dog food entry into it" created the
+  // category and then failed the update with "No category named Pets".
+  ctx.categories.push({ id: data.id, name: data.name ?? name })
+  return (
+    `Created the category "${name}". It is usable right now in this same turn: ` +
+    `pass category "${name}" to update_record, create_transaction, or create_budget. ` +
+    `Do not look it up first.`
+  )
 }
 
 const MEMORY_KINDS = new Set(['note', 'mood', 'preference', 'fact'])
@@ -2489,7 +3310,7 @@ async function handleTeachCategorization(ctx: ToolContext, input: Record<string,
   const categoryName = typeof input.category === 'string' ? input.category.trim() : ''
   if (!matchValue) return 'I need a merchant or phrase to learn.'
   if (!categoryName) return 'I need a category name to teach.'
-  const category = ctx.categories.find((c) => c.name.toLowerCase() === categoryName.toLowerCase())
+  const category = findCategory(ctx.categories, categoryName)
   if (!category) return `No category named "${categoryName}". Create it first or pick an existing one.`
 
   const matchType = input.match_type === 'description_contains' ? 'description_contains' : 'merchant_contains'

@@ -51,6 +51,36 @@ describe('undoTargetsFromChatActions', () => {
     ).toEqual([{ type: 'soft_delete_transaction', transactionId: 'tx9' }])
   })
 
+  it('undoes both sides of a borrow/lend, whose row points at the debt', () => {
+    expect(
+      undoTargetsFromChatActions([
+        action({
+          tool: 'log_borrowed_or_lent_money',
+          status: 'done',
+          domain: 'debt',
+          targetId: 'debt-konza',
+          transactionId: 'tx-konza',
+        }),
+      ]),
+    ).toEqual([
+      { type: 'soft_delete_transaction', transactionId: 'tx-konza' },
+      { type: 'delete_created', domain: 'debt', targetId: 'debt-konza' },
+    ])
+  })
+
+  it('still undoes borrow/lend threads persisted with the entry in targetId', () => {
+    expect(
+      undoTargetsFromChatActions([
+        action({
+          tool: 'log_borrowed_or_lent_money',
+          status: 'done',
+          domain: 'debt',
+          targetId: 'tx-legacy',
+        }),
+      ]),
+    ).toEqual([{ type: 'soft_delete_transaction', transactionId: 'tx-legacy' }])
+  })
+
   it('skips creates without a target id and pending confirm rows', () => {
     expect(
       undoTargetsFromChatActions([

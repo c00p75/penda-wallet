@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { fetchBalanceAdjustmentCategoryId } from '../_shared/balanceAdjustment.ts'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
@@ -396,16 +397,26 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
  * its period we are (or is already over). Returns null when nothing crosses the
  * "worth interrupting someone's day" bar.
  */
-export function pickWorstBudget(budgets: BudgetRow[], transactions: TxRow[], now: Date): PaceResult | null {
+export function pickWorstBudget(
+  budgets: BudgetRow[],
+  transactions: TxRow[],
+  now: Date,
+  opts: { excludeCategoryIdsFromOverall?: string[] } = {},
+): PaceResult | null {
   let worst: PaceResult | null = null
   let worstLead = 0
+  const excludeFromOverall = new Set(opts.excludeCategoryIdsFromOverall ?? [])
 
   for (const b of budgets) {
     if (b.amount_minor <= 0) continue
     const bounds = periodBounds(b.period, now)
     const spentMinor = transactions
       .filter((t) => t.transaction_date >= bounds.start && t.transaction_date <= bounds.end)
-      .filter((t) => b.category_id === null || t.category_id === b.category_id)
+      .filter((t) => {
+        if (b.category_id !== null) return t.category_id === b.category_id
+        // Overall budget: ignore ledger corrections (balance adjustment).
+        return t.category_id == null || !excludeFromOverall.has(t.category_id)
+      })
       .reduce((sum, t) => sum + t.amount_minor, 0)
 
     const spentFrac = spentMinor / b.amount_minor

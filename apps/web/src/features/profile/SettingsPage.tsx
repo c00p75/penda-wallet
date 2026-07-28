@@ -246,7 +246,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
           </TabsTrigger>
           {walletPanel && (
             <TabsTrigger value="wallet" className="px-1 text-xs sm:text-sm">
-              Wallet
+              Money
             </TabsTrigger>
           )}
           <TabsTrigger value="money" className="px-1 text-xs sm:text-sm">
@@ -471,7 +471,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                 <div>
                   <p className="text-sm font-medium">Push on this device</p>
                   <p className="text-xs text-muted-foreground">
-                    Budget alerts, bill reminders, and weekly recaps.
+                    Budget alerts, bill and debt reminders, and weekly recaps.
                   </p>
                 </div>
                 <Switch
@@ -501,7 +501,7 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
               </div>
               {(
                 [
-                  ['reminders', 'Bill reminders'],
+                  ['reminders', 'Bill & debt reminders'],
                   ['tips', 'Tips'],
                   ['morning_minute', 'Morning money-minute'],
                   ['insights', 'Weekly insights'],
@@ -523,6 +523,10 @@ export function SettingsContent({ walletPanel }: SettingsContentProps) {
                   {key === 'morning_minute' ? (
                     <p className="text-xs text-muted-foreground">
                       A short daily nudge with yesterday’s snapshot (needs Tips on).
+                    </p>
+                  ) : key === 'reminders' ? (
+                    <p className="text-xs text-muted-foreground">
+                      Bills and debts with a due date, the day before and the day they’re due.
                     </p>
                   ) : null}
                 </div>
