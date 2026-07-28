@@ -64,7 +64,7 @@ export function HeroCard({
           : undefined
       }
       className={cn(
-        'relative isolate min-h-[9.5rem] w-[min(14.5rem,78vw)] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
+        'relative isolate min-h-[9.5rem] w-[min(15.5rem,82vw)] shrink-0 overflow-hidden rounded-[1.75rem] p-5 text-left text-white',
         onClick && 'cursor-pointer transition-transform active:scale-[0.98]',
         className,
       )}

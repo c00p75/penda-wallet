@@ -140,19 +140,27 @@ function BigAmount({
   parts: { whole: string; decimal: string; symbol: string }
   negative?: boolean
 }) {
-  // Only the main digits scale down for very long figures; currency/decimals stay smaller.
+  // Main digits stay prominent; only extreme lengths step down. Currency sits above.
   const digitCount = parts.whole.replace(/\D/g, '').length
   const wholeSize =
-    digitCount >= 8 ? 'text-2xl' : digitCount >= 7 ? 'text-[1.75rem]' : 'text-3xl'
+    digitCount >= 9
+      ? 'text-2xl'
+      : digitCount >= 8
+        ? 'text-3xl'
+        : digitCount >= 7
+          ? 'text-[2rem]'
+          : 'text-4xl'
 
   return (
-    <span className="inline-flex max-w-full flex-wrap items-baseline leading-none">
-      {negative ? <span className={cn(wholeSize, 'font-bold')}>−</span> : null}
-      <span className="mr-1 text-base font-semibold opacity-80">{parts.symbol}</span>
-      <span className={cn(wholeSize, 'font-bold tracking-tight')}>{parts.whole}</span>
-      {parts.decimal ? (
-        <span className="text-base font-semibold opacity-80">{parts.decimal}</span>
-      ) : null}
+    <span className="flex max-w-full flex-col items-start gap-1 leading-none">
+      <span className="text-sm font-semibold tracking-wide opacity-80">{parts.symbol}</span>
+      <span className="inline-flex max-w-full flex-wrap items-baseline">
+        {negative ? <span className={cn(wholeSize, 'font-bold')}>−</span> : null}
+        <span className={cn(wholeSize, 'font-bold tracking-tight')}>{parts.whole}</span>
+        {parts.decimal ? (
+          <span className="text-sm font-semibold opacity-80">{parts.decimal}</span>
+        ) : null}
+      </span>
     </span>
   )
 }
@@ -936,7 +944,7 @@ export function HomePage() {
                   setEditingAccount(null)
                   setAccountFormOpen(true)
                 }}
-                className="flex min-h-[9.5rem] w-[min(14.5rem,78vw)] shrink-0 flex-col items-start justify-between rounded-[1.75rem] border border-dashed border-border/70 bg-card p-5 text-left text-sm text-muted-foreground shadow-[var(--shadow-soft)] snap-start"
+                className="flex min-h-[9.5rem] w-[min(15.5rem,82vw)] shrink-0 flex-col items-start justify-between rounded-[1.75rem] border border-dashed border-border/70 bg-card p-5 text-left text-sm text-muted-foreground shadow-[var(--shadow-soft)] snap-start"
               >
                 <span className="font-semibold text-foreground">Add a pocket</span>
                 <span>Cash, Airtel Money, MTN, or bank</span>
