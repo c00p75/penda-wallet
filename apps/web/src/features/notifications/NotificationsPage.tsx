@@ -25,6 +25,7 @@ const FILTERS: { id: NotificationFilter; label: string }[] = [
   { id: 'insight', label: 'Insights' },
   { id: 'alert', label: 'Alerts' },
   { id: 'update', label: 'Updates' },
+  { id: 'invite', label: 'Invites' },
 ]
 
 function matchesFilter(n: AppNotification, filter: NotificationFilter): boolean {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -88,8 +88,13 @@ function validatePassword(password: string): string | null {
 
 export function LoginPage() {
   const session = useAuthStore((s) => s.session)
-  const [mode, setMode] = useState<AuthMode>('signin')
-  const [email, setEmail] = useState('')
+  const [searchParams] = useSearchParams()
+  // Wallet invite emails deep-link here with ?mode=signup&email=… so
+  // accepting an invite doesn't start with a blank signup form.
+  const [mode, setMode] = useState<AuthMode>(() =>
+    searchParams.get('mode') === 'signup' ? 'signup' : 'signin',
+  )
+  const [email, setEmail] = useState(() => searchParams.get('email') ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [status, setStatus] = useState<Status>('idle')

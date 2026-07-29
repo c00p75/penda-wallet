@@ -15,6 +15,7 @@ import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import { PaywallSheet } from '@/features/entitlements/PaywallSheet'
+import { relativeTimeLabel } from '@/features/memory/relativeTime'
 import {
   defaultAccountId,
   useAccounts,
@@ -27,13 +28,16 @@ import { PocketProviderManager, PocketTypeManager } from '@/features/accounts/Po
 import type { Account, AccountInput } from '@/features/accounts/types'
 import {
   useCreateWallet,
-  useInviteWalletMember,
+  useCreateWalletInvite,
+  useDeliverWalletInvite,
+  usePendingWalletInvites,
   useRemoveWalletMember,
+  useRevokeWalletInvite,
   useUpdateWallet,
   useWalletMembers,
   useWallets,
 } from './hooks'
-import type { Wallet, WalletRole } from './types'
+import type { InviteRole, Wallet, WalletInvite } from './types'
 
 const PREMIUM_REQUIRED_PREFIX = 'PREMIUM_REQUIRED:'
 
@@ -47,7 +51,10 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
   const setCurrentWalletId = useWalletStore((s) => s.setCurrentWalletId)
   const { data: members = [] } = useWalletMembers(wallet.id)
   const { data: accounts = [] } = useAccounts(wallet.id)
-  const inviteMember = useInviteWalletMember(wallet.id)
+  const { data: pendingInvites = [] } = usePendingWalletInvites(wallet.id)
+  const createInvite = useCreateWalletInvite(wallet.id)
+  const deliverInvite = useDeliverWalletInvite(wallet.id)
+  const revokeInvite = useRevokeWalletInvite(wallet.id)
   const removeMember = useRemoveWalletMember(wallet.id)
   const createWallet = useCreateWallet()
   const updateWallet = useUpdateWallet()
@@ -56,7 +63,8 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
   const archiveAccount = useArchiveAccount(wallet.id)
 
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<WalletRole>('editor')
+  const [inviteRole, setInviteRole] = useState<InviteRole>('editor')
+  const [deliveringId, setDeliveringId] = useState<string | null>(null)
   const [newWalletName, setNewWalletName] = useState('')
   const [newWalletCurrency, setNewWalletCurrency] = useState('USD')
   const [showSharedWalletsPaywall, setShowSharedWalletsPaywall] = useState(false)
@@ -93,9 +101,9 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
     if (!inviteEmail.trim()) return
+    let invite: WalletInvite
     try {
-      await inviteMember.mutateAsync({ email: inviteEmail.trim(), role: inviteRole })
-      toast(`Invited ${inviteEmail.trim()}.`)
+      invite = await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole })
       setInviteEmail('')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not invite that email.'
@@ -104,6 +112,54 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
       } else {
         toast.error(message)
       }
+      return
+    }
+
+    setDeliveringId(invite.id)
+    try {
+      const result = await deliverInvite.mutateAsync(invite.id)
+      if (result.emailSent) {
+        toast(`Invited ${invite.invited_email}, invite email sent.`)
+      } else {
+        toast.error(
+          `Invited ${invite.invited_email}, but the email didn't send${
+            result.emailError ? ` (${result.emailError})` : ''
+          }. You can resend it below.`,
+        )
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `Invite created, but delivery failed: ${error.message}`
+          : 'Invite created, but delivery failed. You can resend it below.',
+      )
+    } finally {
+      setDeliveringId(null)
+    }
+  }
+
+  async function handleResend(invite: WalletInvite) {
+    setDeliveringId(invite.id)
+    try {
+      const result = await deliverInvite.mutateAsync(invite.id)
+      if (result.emailSent) {
+        toast(`Invite email resent to ${invite.invited_email}.`)
+      } else {
+        toast.error(result.emailError || 'Could not send the invite email.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not resend invite.')
+    } finally {
+      setDeliveringId(null)
+    }
+  }
+
+  async function handleRevoke(invite: WalletInvite) {
+    try {
+      await revokeInvite.mutateAsync(invite.id)
+      toast(`Invite to ${invite.invited_email} revoked.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong.')
     }
   }
 
@@ -299,6 +355,48 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
           )}
         </div>
 
+        {isOwner && pendingInvites.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <Label>Pending invites</Label>
+            {pendingInvites.map((invite) => (
+              <div
+                key={invite.id}
+                className="flex items-center justify-between gap-2 rounded-2xl bg-secondary/30 px-3 py-2.5 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate">{invite.invited_email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {invite.role === 'editor' ? 'Editor' : 'Coach / advisor'}
+                    {' · '}
+                    {invite.email_sent_at
+                      ? `Sent ${relativeTimeLabel(invite.email_sent_at).toLowerCase()}`
+                      : 'Not sent yet'}
+                    {!invite.invited_user_id && ' · no Penda account yet'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deliverInvite.isPending && deliveringId === invite.id}
+                    onClick={() => handleResend(invite)}
+                  >
+                    {invite.email_sent_at ? 'Resend' : 'Send'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={revokeInvite.isPending}
+                    onClick={() => handleRevoke(invite)}
+                  >
+                    Revoke
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {isOwner && (
           <>
             <Separator />
@@ -313,7 +411,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
                   placeholder="roommate@example.com"
                   className="flex-1"
                 />
-                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as WalletRole)}>
+                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as InviteRole)}>
                   <SelectTrigger className="w-28">
                     <SelectValue />
                   </SelectTrigger>
@@ -323,11 +421,12 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="submit" disabled={inviteMember.isPending}>
+              <Button type="submit" disabled={createInvite.isPending || deliverInvite.isPending}>
                 Send invite
               </Button>
               <p className="text-xs text-muted-foreground">
-                They need an existing Penda account with this email.
+                We'll email them a link. If they don't have Penda yet, the invite is waiting for
+                them as soon as they sign up with this address.
               </p>
             </form>
           </>

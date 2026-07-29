@@ -2,14 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import {
+  acceptWalletInvite,
   createWallet,
+  createWalletInvite,
+  declineWalletInvite,
+  deliverWalletInvite,
+  fetchMyWalletInvites,
+  fetchPendingWalletInvites,
   fetchWallets,
   fetchWalletMembers,
-  inviteWalletMember,
   removeWalletMember,
+  revokeWalletInvite,
   updateWallet,
 } from './api'
-import type { Wallet, WalletRole } from './types'
+import type { InviteRole, Wallet } from './types'
 
 export function useWallets() {
   const userId = useAuthStore((s) => s.session?.user.id)
@@ -69,16 +75,83 @@ export function useWalletMembers(walletId: string | undefined) {
   })
 }
 
-export function useInviteWalletMember(walletId: string | undefined) {
+export function usePendingWalletInvites(walletId: string | undefined) {
+  return useQuery({
+    queryKey: ['wallet-invites', walletId],
+    queryFn: () => fetchPendingWalletInvites(walletId!),
+    enabled: !!walletId,
+  })
+}
+
+/**
+ * Creates (or refreshes) the pending invite row, then triggers delivery
+ * (email + in-app notification). Delivery failure doesn't undo the invite,
+ * it stays pending so the caller can retry via `useDeliverWalletInvite`.
+ */
+export function useCreateWalletInvite(walletId: string | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ email, role }: { email: string; role: WalletRole }) =>
-      inviteWalletMember(walletId!, email, role),
+    mutationFn: ({ email, role }: { email: string; role: InviteRole }) =>
+      createWalletInvite(walletId!, email, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['wallet-members', walletId] })
-      queryClient.invalidateQueries({ queryKey: ['wallets'] })
+      queryClient.invalidateQueries({ queryKey: ['wallet-invites', walletId] })
     },
+  })
+}
+
+export function useDeliverWalletInvite(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (inviteId: string) => deliverWalletInvite(inviteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wallet-invites', walletId] })
+    },
+  })
+}
+
+export function useRevokeWalletInvite(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (inviteId: string) => revokeWalletInvite(inviteId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wallet-invites', walletId] }),
+  })
+}
+
+/** Pending invites addressed to the current user, across all wallets. */
+export function useMyWalletInvites() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+
+  return useQuery({
+    queryKey: ['my-wallet-invites', userId],
+    queryFn: fetchMyWalletInvites,
+    enabled: !!userId,
+  })
+}
+
+export function useAcceptWalletInvite() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (inviteId: string) => acceptWalletInvite(inviteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-wallet-invites', userId] })
+      queryClient.invalidateQueries({ queryKey: ['wallets'] })
+      queryClient.invalidateQueries({ queryKey: ['wallet-members'] })
+    },
+  })
+}
+
+export function useDeclineWalletInvite() {
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (inviteId: string) => declineWalletInvite(inviteId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-wallet-invites', userId] }),
   })
 }
 
