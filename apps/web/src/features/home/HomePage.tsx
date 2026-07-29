@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { HeroCard } from '@/components/ui/hero-card'
@@ -77,7 +77,7 @@ import { upcomingFixedCosts } from '@/features/planning/fixedCosts'
 import { totalMonthlyGoalReserve } from '@/features/goals/goalContribution'
 import { useRecurringTransactions } from '@/features/recurring/hooks'
 import { useDebts } from '@/features/debts/hooks'
-import { useProfile } from '@/features/profile/hooks'
+import { useProfile, useUpdateProfile } from '@/features/profile/hooks'
 import { DEFAULT_COMPANION_PREFS, personalityMeta } from '@/features/profile/types'
 import { upsertCoachingNotification } from '@/features/notifications/api'
 import { explainSafeToSpend } from '@/features/planning/safeToSpendExplain'
@@ -98,6 +98,9 @@ import {
 import { projectCashflow } from '@/features/cashflow/projection'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { HeroDetailSheet, type HeroDetail } from '@/features/home/HeroDetailSheet'
+import { HomeCardLayoutSheet, type HomeCardLayoutItem } from '@/features/home/HomeCardLayoutSheet'
+import { moveCardToFront, pocketCardId, resolveCardOrder } from '@/features/home/cardLayout'
+import { HERO_TONE_HEX } from '@/lib/heroGradient'
 import { GettingStartedCard } from '@/features/onboarding/GettingStartedCard'
 import {
   buildGettingStartedSteps,
@@ -211,6 +214,7 @@ export function HomePage() {
 
   const { isPremium, data: entitlement } = useEntitlement(session?.user.id)
   const { data: profile } = useProfile(session?.user.id)
+  const updateProfile = useUpdateProfile(session?.user.id)
   const persona = personalityMeta(profile?.ai_personality)
   const blindBudgeting = !!profile?.blind_budgeting
   const pauseImpulse = useImpulseStore((s) => s.pause)
@@ -239,6 +243,7 @@ export function HomePage() {
   const [needsYouTick, setNeedsYouTick] = useState(0)
   const [whyInsightId, setWhyInsightId] = useState<string | null>(null)
   const [heroDetail, setHeroDetail] = useState<HeroDetail | null>(null)
+  const [layoutSheetOpen, setLayoutSheetOpen] = useState(false)
   const [gettingStarted, setGettingStarted] = useState<GettingStartedState | null>(null)
   const receiptInputRef = useRef<HTMLInputElement>(null)
   const walkthroughActive = useOnboardingStore((s) => s.walkthroughActive)
@@ -789,6 +794,270 @@ export function HomePage() {
     .sort((a, b) => b.transaction_date.localeCompare(a.transaction_date) || b.created_at.localeCompare(a.created_at))
     .slice(0, 5)
 
+  type HomeCardEntry = {
+    id: string
+    label: string
+    icon: string
+    color: string | null
+    defaultColor: string
+    node: ReactNode
+  }
+
+  const homeCardColors = profile?.home_card_colors ?? {}
+
+  const homeCardEntries: HomeCardEntry[] = [
+    ...accounts.map((account): HomeCardEntry => {
+      const pocketMinor = accountBalanceMinor(transactions, account.id)
+      const pocketNegative = pocketMinor < 0
+      const pocketParts = splitBalance(pocketMinor, currency)
+      return {
+        id: pocketCardId(account.id),
+        label: pocketBalanceLabel(account),
+        icon: account.icon ?? '💳',
+        color: account.color,
+        defaultColor: HERO_TONE_HEX[pocketHeroTone(account.kind)],
+        node: (
+          <HeroCard
+            key={account.id}
+            tone={pocketHeroTone(account.kind)}
+            color={account.color}
+            className="snap-start"
+            onClick={() => setDetailAccount(account)}
+            label={
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span aria-hidden className="shrink-0">
+                  {account.icon ?? '💳'}
+                </span>
+                <span className="truncate">{pocketBalanceLabel(account)}</span>
+              </span>
+            }
+            corner={
+              <BalanceVisibilityToggle
+                id={`pocket-${account.id}`}
+                className="size-5 text-white/85 transition-colors hover:text-white"
+              />
+            }
+            value={
+              <HiddenAmount id={`pocket-${account.id}`}>
+                <BigAmount parts={pocketParts} negative={pocketNegative} />
+              </HiddenAmount>
+            }
+          />
+        ),
+      }
+    }),
+    {
+      id: 'summary:primary',
+      label: dayZero ? 'Total balance' : blindBudgeting ? 'Status' : hasBudgets ? 'Safe to spend' : 'Total balance',
+      icon: '💰',
+      color: homeCardColors['summary:primary'] ?? null,
+      defaultColor: HERO_TONE_HEX.iris,
+      node: (
+        <HeroCard
+          key="summary:primary"
+          tone="iris"
+          color={homeCardColors['summary:primary'] ?? null}
+          className="snap-start"
+          onClick={() => {
+            const balanceLabel = `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`
+            if (dayZero || (!hasBudgets && !blindBudgeting)) {
+              setHeroDetail({ kind: 'balance', valueLabel: balanceLabel })
+              return
+            }
+            if (blindBudgeting) {
+              setHeroDetail({ kind: 'status', valueLabel: auraLabel })
+              return
+            }
+            const explained = planSafe
+              ? explainSafeToSpend(
+                  {
+                    intendedMinor: plan!.intended_amount_minor,
+                    spentMinor: monthSpentForPlan,
+                    upcomingFixedMinor: planSafe.reservedFixedMinor,
+                    daysLeftInMonth: planSafe.daysLeftInclusive,
+                    safeDailyMinor: planSafe.perDayMinor,
+                    safeTotalMinor: planSafe.discretionaryRemainingMinor,
+                  },
+                  (m) => formatMoney(m, currency),
+                )
+              : {
+                  summary: 'Safe to spend from your budgets and days left in the month.',
+                  bullets: ['Open budgets to refine the plan behind this number.'],
+                }
+            setHeroDetail({
+              kind: 'safe-to-spend',
+              valueLabel: `${formatMoney(safeToSpendPerDayMinor, currency)}/day`,
+              summary: explained.summary,
+              bullets: explained.bullets,
+            })
+          }}
+          label={
+            dayZero
+              ? 'Total balance'
+              : blindBudgeting
+                ? 'Status'
+                : hasBudgets
+                  ? 'Safe to spend'
+                  : 'Total balance'
+          }
+          corner={
+            !blindBudgeting && (
+              <BalanceVisibilityToggle
+                id={dayZero || !hasBudgets ? 'balance' : 'safe-to-spend'}
+                className="size-5 text-white/85 transition-colors hover:text-white"
+              />
+            )
+          }
+          value={
+            dayZero || (!hasBudgets && !blindBudgeting) ? (
+              <HiddenAmount id="balance">
+                <BigAmount parts={balanceParts} negative={isNegative} />
+              </HiddenAmount>
+            ) : blindBudgeting ? (
+              auraLabel
+            ) : (
+              <HiddenAmount id="safe-to-spend">
+                <span>
+                  {formatMoney(safeToSpendPerDayMinor, currency)}
+                  <span className="text-sm font-medium opacity-80">{' '}/day</span>
+                </span>
+              </HiddenAmount>
+            )
+          }
+        />
+      ),
+    },
+    ...(!dayZero && hasBudgets
+      ? [
+          {
+            id: 'summary:balance',
+            label: 'Total balance',
+            icon: '💰',
+            color: homeCardColors['summary:balance'] ?? null,
+            defaultColor: HERO_TONE_HEX.iris,
+            node: (
+              <HeroCard
+                key="summary:balance"
+                tone="iris"
+                color={homeCardColors['summary:balance'] ?? null}
+                className="snap-start"
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'balance',
+                    valueLabel: `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`,
+                  })
+                }
+                label="Total balance"
+                corner={<BalanceVisibilityToggle id="balance" className="size-5 text-white/85 transition-colors hover:text-white" />}
+                value={
+                  <HiddenAmount id="balance">
+                    <BigAmount parts={balanceParts} negative={isNegative} />
+                  </HiddenAmount>
+                }
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(!dayZero && topGoal
+      ? [
+          {
+            id: 'summary:goal',
+            label: topGoal.name,
+            icon: '🎯',
+            color: homeCardColors['summary:goal'] ?? null,
+            defaultColor: HERO_TONE_HEX.apricot,
+            node: (
+              <HeroCard
+                key="summary:goal"
+                tone="apricot"
+                color={homeCardColors['summary:goal'] ?? null}
+                className="snap-start"
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'goal',
+                    name: topGoal.name,
+                    goalId: topGoal.id,
+                    valueLabel: `${topGoalPct ?? 0}%`,
+                    progressLine: `${formatMoney(topGoal.current_amount_minor, currency)} of ${formatMoney(topGoal.target_amount_minor, currency)}`,
+                  })
+                }
+                label={topGoal.name}
+                corner={<BalanceVisibilityToggle id={`goal-${topGoal.id}`} className="size-5 text-white/85 transition-colors hover:text-white" />}
+                value={
+                  <HiddenAmount id={`goal-${topGoal.id}`}>
+                    <span>
+                      {topGoalPct ?? 0}
+                      <span className="text-[0.72em] font-semibold opacity-80">%</span>
+                    </span>
+                  </HiddenAmount>
+                }
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(!dayZero && (blindBudgeting || monthSpending > 0)
+      ? [
+          {
+            id: 'summary:month',
+            label: 'This month',
+            icon: '📅',
+            color: homeCardColors['summary:month'] ?? null,
+            defaultColor: HERO_TONE_HEX.mint,
+            node: (
+              <HeroCard
+                key="summary:month"
+                tone="mint"
+                color={homeCardColors['summary:month'] ?? null}
+                className="snap-start"
+                onClick={() =>
+                  setHeroDetail({
+                    kind: 'month',
+                    valueLabel: blindBudgeting ? 'Hidden' : formatMoney(monthSpending, currency),
+                  })
+                }
+                label="This month"
+                corner={!blindBudgeting && <BalanceVisibilityToggle id="month" className="size-5 text-white/85 transition-colors hover:text-white" />}
+                value={
+                  blindBudgeting ? (
+                    '···'
+                  ) : (
+                    <HiddenAmount id="month">
+                      <BigAmount parts={monthSpendingParts} />
+                    </HiddenAmount>
+                  )
+                }
+              />
+            ),
+          },
+        ]
+      : []),
+  ]
+
+  const homeCardOrder = resolveCardOrder(
+    homeCardEntries.map((c) => c.id),
+    profile?.home_card_order ?? [],
+  )
+  const homeCardsById = new Map(homeCardEntries.map((c) => [c.id, c]))
+  const orderedHomeCards = homeCardOrder
+    .map((id) => homeCardsById.get(id))
+    .filter((c): c is HomeCardEntry => !!c)
+  const homeCardLayoutItems: HomeCardLayoutItem[] = orderedHomeCards.map(
+    ({ id, label, icon, color, defaultColor }) => ({ id, label, icon, color, defaultColor }),
+  )
+
+  function handleHomeCardColorChange(id: string, color: string | null) {
+    if (id.startsWith('pocket:')) {
+      void updateAccount.mutateAsync({ id: id.slice('pocket:'.length), input: { color } })
+      return
+    }
+    const next = { ...homeCardColors }
+    if (color) next[id] = color
+    else delete next[id]
+    void updateProfile.mutateAsync({ home_card_colors: next })
+  }
+
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <AppHeader />
@@ -892,6 +1161,7 @@ export function HomePage() {
               setTransferFromId(defaultAccountId(accounts))
               setTransferOpen(true)
             }}
+            onCustomize={() => setLayoutSheetOpen(true)}
           />
 
           {accounts.length === 1 && accounts[0]?.kind === 'cash' && (
@@ -901,42 +1171,9 @@ export function HomePage() {
           )}
         </div>
 
-        {/* Pockets first, then total / plan figures in one carousel. */}
+        {/* Pockets first, then total / plan figures in one carousel. Order + colors are customizable. */}
         <div className="-mx-4 overflow-x-auto pb-1 [scrollbar-width:none] pt-2">
           <div className="flex w-max gap-3 px-4 snap-x snap-mandatory pb-[3rem]">
-            {accounts.map((account) => {
-              const pocketMinor = accountBalanceMinor(transactions, account.id)
-              const pocketNegative = pocketMinor < 0
-              const pocketParts = splitBalance(pocketMinor, currency)
-              return (
-                <HeroCard
-                  key={account.id}
-                  tone={pocketHeroTone(account.kind)}
-                  className="snap-start"
-                  onClick={() => setDetailAccount(account)}
-                  label={
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span aria-hidden className="shrink-0">
-                        {account.icon ?? '💳'}
-                      </span>
-                      <span className="truncate">{pocketBalanceLabel(account)}</span>
-                    </span>
-                  }
-                  corner={
-                    <BalanceVisibilityToggle
-                      id={`pocket-${account.id}`}
-                      className="size-5 text-white/85 transition-colors hover:text-white"
-                    />
-                  }
-                  value={
-                    <HiddenAmount id={`pocket-${account.id}`}>
-                      <BigAmount parts={pocketParts} negative={pocketNegative} />
-                    </HiddenAmount>
-                  }
-                />
-              )
-            })}
-
             {accounts.length === 0 && (
               <button
                 type="button"
@@ -951,143 +1188,7 @@ export function HomePage() {
               </button>
             )}
 
-            <HeroCard
-              tone="iris"
-              className="snap-start"
-              onClick={() => {
-                const balanceLabel = `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`
-                if (dayZero || (!hasBudgets && !blindBudgeting)) {
-                  setHeroDetail({ kind: 'balance', valueLabel: balanceLabel })
-                  return
-                }
-                if (blindBudgeting) {
-                  setHeroDetail({ kind: 'status', valueLabel: auraLabel })
-                  return
-                }
-                const explained = planSafe
-                  ? explainSafeToSpend(
-                      {
-                        intendedMinor: plan!.intended_amount_minor,
-                        spentMinor: monthSpentForPlan,
-                        upcomingFixedMinor: planSafe.reservedFixedMinor,
-                        daysLeftInMonth: planSafe.daysLeftInclusive,
-                        safeDailyMinor: planSafe.perDayMinor,
-                        safeTotalMinor: planSafe.discretionaryRemainingMinor,
-                      },
-                      (m) => formatMoney(m, currency),
-                    )
-                  : {
-                      summary: 'Safe to spend from your budgets and days left in the month.',
-                      bullets: ['Open budgets to refine the plan behind this number.'],
-                    }
-                setHeroDetail({
-                  kind: 'safe-to-spend',
-                  valueLabel: `${formatMoney(safeToSpendPerDayMinor, currency)}/day`,
-                  summary: explained.summary,
-                  bullets: explained.bullets,
-                })
-              }}
-              label={
-                dayZero
-                  ? 'Total balance'
-                  : blindBudgeting
-                    ? 'Status'
-                    : hasBudgets
-                      ? 'Safe to spend'
-                      : 'Total balance'
-              }
-              corner={
-                !blindBudgeting && (
-                  <BalanceVisibilityToggle
-                    id={dayZero || !hasBudgets ? 'balance' : 'safe-to-spend'}
-                    className="size-5 text-white/85 transition-colors hover:text-white"
-                  />
-                )
-              }
-              value={
-                dayZero || (!hasBudgets && !blindBudgeting) ? (
-                  <HiddenAmount id="balance">
-                    <BigAmount parts={balanceParts} negative={isNegative} />
-                  </HiddenAmount>
-                ) : blindBudgeting ? (
-                  auraLabel
-                ) : (
-                  <HiddenAmount id="safe-to-spend">
-                    <span>
-                      {formatMoney(safeToSpendPerDayMinor, currency)}
-                      <span className="text-sm font-medium opacity-80">{'\u00A0'}/day</span>
-                    </span>
-                  </HiddenAmount>
-                )
-              }
-            />
-            {!dayZero && hasBudgets && (
-              <HeroCard
-                tone="iris"
-                className="snap-start"
-                onClick={() =>
-                  setHeroDetail({
-                    kind: 'balance',
-                    valueLabel: `${isNegative ? '−' : ''}${formatMoney(Math.abs(balanceMinor), currency)}`,
-                  })
-                }
-                label="Total balance"
-                corner={<BalanceVisibilityToggle id="balance" className="size-5 text-white/85 transition-colors hover:text-white" />}
-                value={
-                  <HiddenAmount id="balance">
-                    <BigAmount parts={balanceParts} negative={isNegative} />
-                  </HiddenAmount>
-                }
-              />
-            )}
-            {!dayZero && topGoal && (
-              <HeroCard
-                tone="apricot"
-                className="snap-start"
-                onClick={() =>
-                  setHeroDetail({
-                    kind: 'goal',
-                    name: topGoal.name,
-                    goalId: topGoal.id,
-                    valueLabel: `${topGoalPct ?? 0}%`,
-                    progressLine: `${formatMoney(topGoal.current_amount_minor, currency)} of ${formatMoney(topGoal.target_amount_minor, currency)}`,
-                  })
-                }
-                label={topGoal.name}
-                corner={<BalanceVisibilityToggle id={`goal-${topGoal.id}`} className="size-5 text-white/85 transition-colors hover:text-white" />}
-                value={
-                  <HiddenAmount id={`goal-${topGoal.id}`}>
-                    <span>
-                      {topGoalPct ?? 0}
-                      <span className="text-[0.72em] font-semibold opacity-80">%</span>
-                    </span>
-                  </HiddenAmount>
-                }
-              />
-            )}
-            {!dayZero && (blindBudgeting || monthSpending > 0) && (
-              <HeroCard
-                tone="mint"
-                className="snap-start"
-                onClick={() =>
-                  setHeroDetail({
-                    kind: 'month',
-                    valueLabel: blindBudgeting ? 'Hidden' : formatMoney(monthSpending, currency),
-                  })
-                }
-                label="This month"
-                corner={!blindBudgeting && <BalanceVisibilityToggle id="month" className="size-5 text-white/85 transition-colors hover:text-white" />}
-                value={
-                  blindBudgeting ? (
-                    '···'
-                  ) : (
-                    <HiddenAmount id="month">
-                      <BigAmount parts={monthSpendingParts} />
-                    </HiddenAmount>
-                  )
-                }
-              />
-            )}
+            {orderedHomeCards.map((card) => card.node)}
           </div>
         </div>
 
@@ -1143,11 +1244,11 @@ export function HomePage() {
                 type="button"
                 onClick={(e) => {
                   captureOverlayOrigin(e.currentTarget)
-                  openChat('I spent ', { mode: 'quick' })
+                  openAddForm()
                 }}
                 className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
               >
-                Tell Penda
+                + Add
               </button>
             }
           />
@@ -1252,12 +1353,20 @@ export function HomePage() {
         existingNames={accounts.map((a) => a.name)}
         onSubmit={async (input: AccountInput) => {
           try {
+            let accountId: string
             if (editingAccount) {
               await updateAccount.mutateAsync({ id: editingAccount.id, input })
+              accountId = editingAccount.id
               toast('Pocket updated.')
             } else {
-              await createAccount.mutateAsync(input)
+              const created = await createAccount.mutateAsync(input)
+              accountId = created.id
               toast('Pocket added.')
+            }
+            if (input.is_default) {
+              await updateProfile.mutateAsync({
+                home_card_order: moveCardToFront(profile?.home_card_order ?? [], pocketCardId(accountId)),
+              })
             }
           } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -1281,6 +1390,14 @@ export function HomePage() {
         isSubmitting={
           createAccount.isPending || updateAccount.isPending || archiveAccount.isPending
         }
+      />
+
+      <HomeCardLayoutSheet
+        open={layoutSheetOpen}
+        onOpenChange={setLayoutSheetOpen}
+        items={homeCardLayoutItems}
+        onReorder={(orderedIds) => void updateProfile.mutateAsync({ home_card_order: orderedIds })}
+        onColorChange={handleHomeCardColorChange}
       />
 
       <TransferForm

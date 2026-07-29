@@ -2,16 +2,17 @@ import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Transaction } from '@/features/transactions/types'
 
 export interface BudgetSuggestion {
-  categoryId: string
+  /** `null` means "Overall (all categories)", used by the Pay Yourself First strategy. */
+  categoryId: string | null
   categoryName: string
   categoryIcon: string | null
-  /** Rounded average monthly spend over the window. Zero for persona-sourced suggestions. */
+  /** Rounded average monthly spend over the window. Zero for persona/strategy-sourced suggestions. */
   monthlyAverageMinor: number
   /** The proposed monthly budget (average rounded up to a clean step). */
   suggestedAmountMinor: number
   transactionCount: number
-  /** `history` = derived from past spend; `persona` = a cold-start starter budget (see starterBudgets.ts). */
-  source: 'history' | 'persona'
+  /** `history` = derived from past spend; `persona` = a cold-start starter budget (see starterBudgets.ts); `strategy` = a named budgeting-strategy template (see strategies.ts). */
+  source: 'history' | 'persona' | 'strategy'
 }
 
 export interface SuggestBudgetsOptions {

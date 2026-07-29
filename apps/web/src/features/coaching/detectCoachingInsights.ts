@@ -109,7 +109,7 @@ export function detectCoachingInsights(ctx: CoachingContext): CoachingInsight[] 
       tone: 'default',
       amountMinor: topUnbudgeted.suggestedAmountMinor,
       text: `You’re spending about ${formatMoney(topUnbudgeted.monthlyAverageMinor, currency)}/mo on ${topUnbudgeted.categoryName} with no budget. Want one?`,
-      action: { label: 'Set a budget', kind: 'create-budget', categoryId: topUnbudgeted.categoryId },
+      action: { label: 'Set a budget', kind: 'create-budget', categoryId: topUnbudgeted.categoryId ?? undefined },
     })
   }
 

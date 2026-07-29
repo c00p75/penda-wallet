@@ -1545,15 +1545,27 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
     {
       name: 'create_budget',
       description:
-        'Propose a spending budget (cap) for a category over a weekly or monthly period. ' +
+        'Propose a spending budget (cap) for a category over a weekly, monthly, or custom date-range period. ' +
+        'For period "custom", also pass start_date and end_date. ' +
         'Stages a confirmation card; do not say it is done until the user confirms.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
           amount: { type: 'number', description: 'Budget limit as a decimal, e.g. 500.' },
-          period: { type: 'string', enum: ['weekly', 'monthly'] },
+          period: { type: 'string', enum: ['weekly', 'monthly', 'custom'] },
           category: { type: 'string', enum: categoryNames, description: 'Category this budget caps.' },
-          rollover: { type: 'boolean', description: 'Whether unused budget carries into the next period.' },
+          rollover: {
+            type: 'boolean',
+            description: 'Whether unused budget carries into the next period. Ignored for period "custom".',
+          },
+          start_date: {
+            type: 'string',
+            description: 'Date YYYY-MM-DD the custom range starts. Only used when period is "custom". Defaults to today.',
+          },
+          end_date: {
+            type: 'string',
+            description: 'Date YYYY-MM-DD the custom range ends. Required when period is "custom".',
+          },
         },
         required: ['amount', 'period'],
       },
@@ -1925,13 +1937,17 @@ function buildCompletedAction(
     }
     case 'create_budget': {
       const amount = Number(args.amount)
-      const period = args.period === 'weekly' ? 'weekly' : 'monthly'
+      const period = args.period === 'weekly' || args.period === 'custom' ? args.period : 'monthly'
       const category = typeof args.category === 'string' ? args.category.trim() : ''
-      summary = [category || 'Budget', period, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
+      const periodLabel =
+        period === 'custom' && typeof args.start_date === 'string' && typeof args.end_date === 'string'
+          ? `${args.start_date} to ${args.end_date}`
+          : period
+      summary = [category || 'Budget', periodLabel, Number.isFinite(amount) && amount > 0 ? fmtAmount(amount, ctx.symbol) : null]
         .filter(Boolean)
         .join(' · ')
       if (category) details.Category = category
-      details.Period = period
+      details.Period = periodLabel
       if (Number.isFinite(amount) && amount > 0) details.Amount = fmtAmount(amount, ctx.symbol)
       break
     }
@@ -2473,9 +2489,13 @@ const CRUD_DOMAINS: Record<string, DomainCfg> = {
       period: { column: 'period', kind: 'raw' },
       category: { column: 'category_id', kind: 'category' },
       rollover: { column: 'rollover', kind: 'raw' },
+      start_date: { column: 'start_date', kind: 'raw' },
+      end_date: { column: 'end_date', kind: 'raw' },
     },
     describe: (row, sym) =>
-      `the ${row.period} budget of ${fmt(row.amount_minor, sym)}` +
+      (row.period === 'custom'
+        ? `the ${row.start_date} to ${row.end_date} budget of ${fmt(row.amount_minor, sym)}`
+        : `the ${row.period} budget of ${fmt(row.amount_minor, sym)}`) +
       (row.category ? ` for ${row.category.name}` : ''),
   },
   goal: {
@@ -3128,13 +3148,31 @@ async function handleConvertCurrency(args: Record<string, unknown>): Promise<str
 async function stageCreateBudget(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
   const amount = Number(input.amount)
   if (!amount || amount <= 0) return 'Budget amount must be a positive number.'
-  const period = input.period === 'weekly' ? 'weekly' : 'monthly'
+  const period = input.period === 'weekly' || input.period === 'custom' ? input.period : 'monthly'
   const category = findCategory(ctx.categories, input.category)
   const amountMinor = Math.round(amount * 100)
+
+  let startDate: string | undefined
+  let endDate: string | null = null
+  if (period === 'custom') {
+    const rawEnd = typeof input.end_date === 'string' ? input.end_date : ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) return 'I need end_date as YYYY-MM-DD for a custom-range budget.'
+    startDate =
+      typeof input.start_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.start_date)
+        ? input.start_date
+        : today()
+    if (rawEnd < startDate) return 'end_date must be on or after start_date.'
+    endDate = rawEnd
+  }
+
   const summary =
-    `Create a ${period} budget of ${fmt(amountMinor, ctx.symbol)}` +
-    (category ? ` for ${category.name}` : '') +
-    '.'
+    period === 'custom'
+      ? `Create a budget of ${fmt(amountMinor, ctx.symbol)} from ${startDate} to ${endDate}` +
+        (category ? ` for ${category.name}` : '') +
+        '.'
+      : `Create a ${period} budget of ${fmt(amountMinor, ctx.symbol)}` +
+        (category ? ` for ${category.name}` : '') +
+        '.'
 
   return await stageCreate(ctx, {
     domain: 'budget',
@@ -3144,7 +3182,8 @@ async function stageCreateBudget(ctx: ToolContext, input: Record<string, unknown
       category_id: category?.id ?? null,
       amount_minor: amountMinor,
       period,
-      rollover: input.rollover === true,
+      rollover: period === 'custom' ? false : input.rollover === true,
+      ...(period === 'custom' ? { start_date: startDate, end_date: endDate } : {}),
     },
   })
 }

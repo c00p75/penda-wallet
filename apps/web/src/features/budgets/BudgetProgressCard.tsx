@@ -2,8 +2,18 @@ import { formatMoney } from '@/lib/money'
 import { cardAccentClass, type CardAccent } from '@/components/ui/cardAccent'
 import { cn } from '@/lib/utils'
 import { HiddenAmount } from '@/features/lock/HiddenAmount'
+import { localDateStr, parseLocalDate } from '@/lib/dates'
 import type { Category } from '@/features/categories/types'
 import type { BudgetProgress } from './types'
+
+function formatRangeLabel(startStr: string, endStr: string): string {
+  const start = parseLocalDate(startStr)
+  const end = parseLocalDate(endStr)
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
+  const startLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const endLabel = end.toLocaleDateString(undefined, sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' })
+  return `${startLabel} to ${endLabel}`
+}
 
 interface BudgetProgressCardProps {
   progress: BudgetProgress
@@ -17,7 +27,7 @@ interface BudgetProgressCardProps {
 function statusColorFor(pct: number): {
   bg: string
   fg: string
-  accent: CardAccent
+  accent: CardAccent | undefined
   label: string
 } {
   if (pct >= 1) return { bg: 'var(--rose-soft)', fg: 'var(--rose)', accent: 'rose', label: 'Over' }
@@ -47,7 +57,10 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
   const pct = cap > 0 ? progress.spent_minor / cap : 0
   const pctLabel = Math.round(pct * 100)
   const remaining = cap - progress.spent_minor
-  const status = statusColorFor(pct)
+  const isEndedCustom = progress.period === 'custom' && localDateStr() > progress.period_end
+  const status = isEndedCustom
+    ? { bg: 'var(--muted)', fg: 'var(--muted-foreground)', accent: undefined, label: 'Ended' }
+    : statusColorFor(pct)
   const iconTint = iconTintFor(category)
 
   return (
@@ -76,6 +89,11 @@ export function BudgetProgressCard({ progress, category, currency, onSelect }: B
 
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{category?.name ?? 'Overall'}</p>
+        {progress.period === 'custom' && (
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {formatRangeLabel(progress.period_start, progress.period_end)}
+          </p>
+        )}
         <p
           className="mt-1 text-lg font-bold leading-none tabular-nums tracking-tight"
           style={{ color: remaining >= 0 ? undefined : 'var(--rose)' }}

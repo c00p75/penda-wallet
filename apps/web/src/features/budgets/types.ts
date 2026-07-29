@@ -1,4 +1,4 @@
-export type BudgetPeriod = 'weekly' | 'monthly'
+export type BudgetPeriod = 'weekly' | 'monthly' | 'custom'
 
 export interface Budget {
   id: string
@@ -8,6 +8,8 @@ export interface Budget {
   period: BudgetPeriod
   rollover: boolean
   start_date: string
+  /** Only meaningful when period === 'custom'. */
+  end_date: string | null
   created_at: string
   updated_at: string
 }
@@ -17,6 +19,9 @@ export interface BudgetInput {
   amount_minor: number
   period: BudgetPeriod
   rollover: boolean
+  /** Only sent (and only meaningful) when period === 'custom'. */
+  start_date?: string
+  end_date?: string | null
 }
 
 export interface BudgetProgress {

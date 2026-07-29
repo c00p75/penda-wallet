@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import { Sparkle } from '@/components/icons/product'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
@@ -14,11 +15,21 @@ interface BudgetSuggestionsSheetProps {
   currency: string
   onCreate: (selected: BudgetSuggestion[]) => Promise<void>
   isCreating?: boolean
+  /** Overrides the default history/persona title (used by the strategies picker). */
+  title?: string
+  description?: string
+  /** Extra informational line above the list, e.g. a strategy's savings-reserve note. */
+  note?: ReactNode
+}
+
+function keyFor(id: string | null): string {
+  return id ?? 'overall'
 }
 
 /**
- * Presents budgets Penda derived from recent spending. Everything starts
- * selected, the user deselects what they don't want and confirms in one tap.
+ * Presents budgets Penda derived from recent spending (or a chosen budgeting
+ * strategy). Everything starts selected, the user deselects what they don't
+ * want and confirms in one tap.
  */
 export function BudgetSuggestionsSheet({
   open,
@@ -27,8 +38,11 @@ export function BudgetSuggestionsSheet({
   currency,
   onCreate,
   isCreating,
+  title,
+  description,
+  note,
 }: BudgetSuggestionsSheetProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string | null>>(new Set())
 
   useEffect(() => {
     if (open) setSelected(new Set(suggestions.map((s) => s.categoryId)))
@@ -38,7 +52,7 @@ export function BudgetSuggestionsSheet({
   const total = chosen.reduce((sum, s) => sum + s.suggestedAmountMinor, 0)
   const isStarter = suggestions.length > 0 && suggestions.every((s) => s.source === 'persona')
 
-  function toggle(id: string) {
+  function toggle(id: string | null) {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -53,21 +67,23 @@ export function BudgetSuggestionsSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Sparkle className="size-5 text-primary" weight="duotone" />
-            {isStarter ? 'A starting point' : 'Budgets from your spending'}
+            {title ?? (isStarter ? 'A starting point' : 'Budgets from your spending')}
           </SheetTitle>
           <SheetDescription>
-            {isStarter
-              ? "No spending history yet, so here's a sensible starting split for your plan. Tweak any later."
-              : 'Based on your last few months. I rounded each one just above what you usually spend, tweak any later.'}
+            {description ??
+              (isStarter
+                ? "No spending history yet, so here's a sensible starting split for your plan. Tweak any later."
+                : 'Based on your last few months. I rounded each one just above what you usually spend, tweak any later.')}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex flex-col gap-2 px-4 pb-4">
+          {note && <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{note}</div>}
           {suggestions.map((s) => {
             const isSelected = selected.has(s.categoryId)
             return (
               <button
-                key={s.categoryId}
+                key={keyFor(s.categoryId)}
                 type="button"
                 onClick={() => toggle(s.categoryId)}
                 aria-pressed={isSelected}
@@ -84,9 +100,9 @@ export function BudgetSuggestionsSheet({
                 <span className="flex-1">
                   <span className="block text-sm font-medium">{s.categoryName}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {s.source === 'persona'
-                      ? 'Suggested starting point'
-                      : `You average ${formatMoney(s.monthlyAverageMinor, currency)}/mo`}
+                    {s.monthlyAverageMinor > 0
+                      ? `You average ${formatMoney(s.monthlyAverageMinor, currency)}/mo`
+                      : 'Suggested starting point'}
                   </span>
                 </span>
                 <span className="text-sm font-semibold">

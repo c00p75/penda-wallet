@@ -31,7 +31,6 @@ export function AppHeader() {
     <>
       <header className="flex items-center justify-between gap-2 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3">
         <div className="flex min-w-0 items-center gap-2">
-          <MoneyAccountSwitcher />
           <button
             type="button"
             onClick={(e) => {
@@ -51,6 +50,7 @@ export function AppHeader() {
               </span>
             )}
           </button>
+          <MoneyAccountSwitcher />
         </div>
 
         <div className="flex items-center gap-2">

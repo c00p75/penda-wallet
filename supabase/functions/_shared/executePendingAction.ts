@@ -53,8 +53,8 @@ export const DOMAIN_TABLES: Record<
     table: 'budgets',
     softDelete: false,
     deletable: true,
-    columns: ['amount_minor', 'period', 'category_id', 'rollover'],
-    createColumns: ['wallet_id', 'category_id', 'amount_minor', 'period', 'rollover'],
+    columns: ['amount_minor', 'period', 'category_id', 'rollover', 'start_date', 'end_date'],
+    createColumns: ['wallet_id', 'category_id', 'amount_minor', 'period', 'rollover', 'start_date', 'end_date'],
   },
   goal: {
     table: 'savings_goals',

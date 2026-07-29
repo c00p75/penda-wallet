@@ -3,7 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
 import { fetchBudget } from '@/features/budgets/api'
 import { MessageCircle, Pencil, Plus } from 'lucide-react'
-import { Lightbulb, Sparkle } from '@/components/icons/product'
+import { Lightbulb, Sparkle, SquaresFour } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -33,8 +33,10 @@ import { useBudgetProgress, useBudgets, useCreateBudget, useDeleteBudget, useUpd
 import { BudgetForm } from './BudgetForm'
 import { BudgetProgressCard } from './BudgetProgressCard'
 import { BudgetSuggestionsSheet } from './BudgetSuggestionsSheet'
+import { BudgetStrategiesSheet } from './BudgetStrategiesSheet'
 import { suggestBudgets, type BudgetSuggestion } from './suggestBudgets'
 import { starterBudgetsForPersona } from './starterBudgets'
+import type { StrategyResult } from './strategies'
 import { SpendingPlanCard } from '@/features/planning/SpendingPlanCard'
 import { useSpendingPlan } from '@/features/planning/hooks'
 import { computeSafeToSpend } from '@/features/planning/spendingPlan'
@@ -55,6 +57,9 @@ import {
 import { RecurringForm } from '@/features/recurring/RecurringForm'
 import { RecurringList } from '@/features/recurring/RecurringList'
 import type { RecurringInput, RecurringTransaction } from '@/features/recurring/types'
+
+/** Average calendar weeks per month, used to fold weekly envelopes into the monthly hero total. */
+const WEEKS_PER_MONTH = 30.44 / 7
 
 export function BudgetsPage() {
   const session = useAuthStore((s) => s.session)
@@ -94,6 +99,12 @@ export function BudgetsPage() {
   const [budgetFormOpen, setBudgetFormOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [suggestOpen, setSuggestOpen] = useState(false)
+  const [strategiesOpen, setStrategiesOpen] = useState(false)
+  const [strategyPreview, setStrategyPreview] = useState<{
+    suggestions: BudgetSuggestion[]
+    title: string
+    description: string
+  } | null>(null)
   const [recurringFormOpen, setRecurringFormOpen] = useState(false)
   const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null)
   const [pactsOpen, setPactsOpen] = useState(false)
@@ -205,6 +216,7 @@ export function BudgetsPage() {
         })
       }
       setSuggestOpen(false)
+      setStrategyPreview(null)
       toast(`Created ${selected.length} budget${selected.length === 1 ? '' : 's'}.`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -273,8 +285,25 @@ export function BudgetsPage() {
     : null
 
   const monthlyProgress = progress.filter((p) => p.period === 'monthly')
-  const totalCap = monthlyProgress.reduce((s, p) => s + p.effective_amount_minor, 0)
-  const totalSpent = monthlyProgress.reduce((s, p) => s + p.spent_minor, 0)
+  // Weekly envelopes don't disappear from the "this month" total, they're folded in
+  // at a monthly-equivalent: the cap scales by the average weeks per month, and the
+  // spend is that category's actual month-to-date total (not just the current week).
+  const weeklyProgress = progress.filter((p) => p.period === 'weekly')
+  const weeklyMonthlyEquivalents = weeklyProgress.map((p) => ({
+    capMinor: Math.round(p.effective_amount_minor * WEEKS_PER_MONTH),
+    spentMinor: transactions
+      .filter(
+        (tx) =>
+          tx.type === 'expense' && tx.transaction_date >= monthStart && tx.category_id === p.category_id,
+      )
+      .reduce((sum, tx) => sum + (tx.converted_amount_minor ?? tx.amount_minor), 0),
+  }))
+  const totalCap =
+    monthlyProgress.reduce((s, p) => s + p.effective_amount_minor, 0) +
+    weeklyMonthlyEquivalents.reduce((s, w) => s + w.capMinor, 0)
+  const totalSpent =
+    monthlyProgress.reduce((s, p) => s + p.spent_minor, 0) +
+    weeklyMonthlyEquivalents.reduce((s, w) => s + w.spentMinor, 0)
   const spentPct = totalCap > 0 ? Math.min(100, Math.round((totalSpent / totalCap) * 100)) : 0
   const envelopeRemaining = totalCap - totalSpent
 
@@ -433,6 +462,22 @@ export function BudgetsPage() {
                 )}
                 <button
                   type="button"
+                  onClick={() => setStrategiesOpen(true)}
+                  className={cn(
+                    'flex items-center gap-3 rounded-[1.5rem] bg-card p-4 text-left shadow-[var(--shadow-soft)] transition-transform active:scale-[0.99]',
+                    cardAccentClass('mint'),
+                  )}
+                >
+                  <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--mint-soft)] text-[var(--mint)]">
+                    <SquaresFour className="size-5" weight="duotone" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">Budgeting strategies</p>
+                    <p className="text-sm text-muted-foreground">50/30/20, zero-based, and more</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => {
                     captureOverlayOrigin(e.currentTarget)
                     openChat(
@@ -559,7 +604,18 @@ export function BudgetsPage() {
           <section className="flex flex-col gap-3">
             <SectionHeader
               title="Envelopes"
-              actionLabel="Add"
+              leadingAction={
+                plan ? (
+                  <button
+                    type="button"
+                    onClick={() => setStrategiesOpen(true)}
+                    className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    Strategies
+                  </button>
+                ) : undefined
+              }
+              actionLabel="+ Add"
               onAction={() => {
                 setEditingBudget(null)
                 setBudgetFormOpen(true)
@@ -709,6 +765,35 @@ export function BudgetsPage() {
         currency={currency}
         onCreate={handleCreateSuggested}
         isCreating={createBudget.isPending}
+      />
+
+      <BudgetSuggestionsSheet
+        open={!!strategyPreview}
+        onOpenChange={(open) => !open && setStrategyPreview(null)}
+        suggestions={strategyPreview?.suggestions ?? []}
+        currency={currency}
+        onCreate={handleCreateSuggested}
+        isCreating={createBudget.isPending}
+        title={strategyPreview?.title}
+        description={strategyPreview?.description}
+      />
+
+      <BudgetStrategiesSheet
+        open={strategiesOpen}
+        onOpenChange={setStrategiesOpen}
+        planAmountMinor={plan?.intended_amount_minor ?? 0}
+        currency={currency}
+        monthLabel={monthLabel}
+        categories={categories}
+        transactions={transactions}
+        goals={goals}
+        existingCategoryIds={existingBudgetCategoryIds}
+        hasOverallBudget={budgets.some((b) => b.category_id === null)}
+        payYourselfFirstPct={profile?.pay_yourself_first_pct ?? 0}
+        onPreview={(result: StrategyResult, meta) =>
+          setStrategyPreview({ suggestions: result.suggestions, title: meta.title, description: meta.description })
+        }
+        onTalk={(prompt) => openChat(prompt, { autoSend: true, mode: 'full' })}
       />
 
       <PactForm

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { CARD_COLOR_SWATCHES } from '@/lib/heroGradient'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -49,6 +51,7 @@ export function AccountForm({
   const [kind, setKind] = useState<AccountKind>('cash')
   const [provider, setProvider] = useState<AccountProvider | 'none'>('none')
   const [icon, setIcon] = useState('💵')
+  const [color, setColor] = useState<string | null>(null)
   const [isDefault, setIsDefault] = useState(false)
 
   useEffect(() => {
@@ -58,12 +61,14 @@ export function AccountForm({
       setKind(account.kind)
       setProvider(account.provider ?? 'none')
       setIcon(account.icon ?? '💵')
+      setColor(account.color ?? null)
       setIsDefault(account.is_default)
     } else {
       setName('')
       setKind('cash')
       setProvider('none')
       setIcon('💵')
+      setColor(null)
       setIsDefault(false)
     }
   }, [open, account])
@@ -83,6 +88,7 @@ export function AccountForm({
       kind,
       provider: provider === 'none' ? null : provider,
       icon,
+      color,
       is_default: isDefault,
     })
     onOpenChange(false)
@@ -174,6 +180,47 @@ export function AccountForm({
               onChange={(e) => setIcon(e.target.value)}
               maxLength={8}
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Card color</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setColor(null)}
+                className={cn(
+                  'rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium',
+                  color === null && 'border-primary text-primary',
+                )}
+              >
+                Auto
+              </button>
+              {CARD_COLOR_SWATCHES.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  onClick={() => setColor(swatch)}
+                  aria-label={`Use ${swatch}`}
+                  className={cn(
+                    'size-8 shrink-0 rounded-full ring-offset-2 ring-offset-background',
+                    color === swatch && 'ring-2 ring-primary',
+                  )}
+                  style={{ background: swatch }}
+                />
+              ))}
+              <label className="relative size-8 shrink-0 cursor-pointer overflow-hidden rounded-full border border-dashed border-border/70">
+                <input
+                  type="color"
+                  value={color ?? '#6c63ff'}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                  aria-label="Custom card color"
+                />
+                <span aria-hidden className="pointer-events-none grid size-full place-items-center text-xs">
+                  🎨
+                </span>
+              </label>
+            </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

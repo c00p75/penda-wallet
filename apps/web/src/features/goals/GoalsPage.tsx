@@ -3,10 +3,11 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { suggestMilestones } from '@penda/money-core'
 import { useDeepLinkEntityOpen } from '@/features/chat/useDeepLinkEntityOpen'
 import { fetchDebt } from '@/features/debts/api'
-import { Plus, Sparkles } from 'lucide-react'
+import { ArrowUpDown, Check, Plus, Sparkles } from 'lucide-react'
 import { Target } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { HeroCard } from '@/components/ui/hero-card'
 import { SectionHeader } from '@/components/ui/section-header'
@@ -118,6 +119,9 @@ export function GoalsPage() {
   const [debtFormOpen, setDebtFormOpen] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
+  const [debtFilter, setDebtFilter] = useState<'outstanding' | 'cleared' | 'all'>('outstanding')
+  const [debtSort, setDebtSort] = useState<'dueDate' | 'amount' | 'name'>('dueDate')
+  const [debtSortMenuOpen, setDebtSortMenuOpen] = useState(false)
 
   const milestoneIdeas = useMemo(() => {
     if (goals.length >= 3) return []
@@ -198,7 +202,16 @@ export function GoalsPage() {
     void refetchDebts()
   }, [tab, wallet?.id, refetchDebts])
 
-  const sortedDebts = useMemo(() => sortDebtsByDueDate(debts), [debts])
+  const sortedDebts = useMemo(() => {
+    if (debtSort === 'amount') return [...debts].sort((a, b) => b.balance_minor - a.balance_minor)
+    if (debtSort === 'name') return [...debts].sort((a, b) => a.name.localeCompare(b.name))
+    return sortDebtsByDueDate(debts)
+  }, [debts, debtSort])
+  const filteredDebts = useMemo(() => {
+    if (debtFilter === 'outstanding') return sortedDebts.filter((d) => d.balance_minor > 0)
+    if (debtFilter === 'cleared') return sortedDebts.filter((d) => d.balance_minor <= 0)
+    return sortedDebts
+  }, [sortedDebts, debtFilter])
 
   if (!session) return <Navigate to="/login" replace />
   if (!wallet) return null
@@ -539,7 +552,7 @@ export function GoalsPage() {
           <section className="flex flex-col gap-3">
             <SectionHeader
               title="Your goals"
-              actionLabel="Add"
+              actionLabel="+ Add"
               onAction={() => openNewGoal(null)}
             />
             {goals.map((goal, i) => (
@@ -681,24 +694,94 @@ export function GoalsPage() {
           <section className="flex flex-col gap-3">
             <SectionHeader
               title="Your debts"
-              actionLabel="Add"
+              actionLabel="+ Add"
               onAction={() => {
                 setEditingDebt(null)
                 setDebtFormOpen(true)
               }}
             />
-            {sortedDebts.map((debt) => (
-              <DebtProgressCard
-                key={debt.id}
-                debt={debt}
-                currency={wallet.base_currency}
-                onSelect={() => {
-                  setEditingDebt(debt)
-                  setDebtFormOpen(true)
-                }}
-                onLogPayment={() => setPayingDebt(debt)}
-              />
-            ))}
+
+            <div className="flex items-center gap-2">
+              <div className="-mx-4 flex flex-1 gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+                {(
+                  [
+                    { value: 'outstanding', label: 'Outstanding' },
+                    { value: 'cleared', label: 'Cleared' },
+                    { value: 'all', label: 'All' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setDebtFilter(opt.value)}
+                    className={cn(
+                      'shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors',
+                      debtFilter === opt.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border/70 bg-card text-muted-foreground',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <Popover open={debtSortMenuOpen} onOpenChange={setDebtSortMenuOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Sort debts"
+                    className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 bg-card text-muted-foreground"
+                  >
+                    <ArrowUpDown className="size-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-44 p-2">
+                  <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Sort by</p>
+                  <div className="flex flex-col gap-0.5">
+                    {(
+                      [
+                        { value: 'dueDate', label: 'Due date' },
+                        { value: 'amount', label: 'Amount' },
+                        { value: 'name', label: 'Name' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setDebtSort(opt.value)
+                          setDebtSortMenuOpen(false)
+                        }}
+                        className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-accent"
+                      >
+                        <span>{opt.label}</span>
+                        {debtSort === opt.value && <Check className="size-4 shrink-0 text-primary" />}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {filteredDebts.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                {debtFilter === 'outstanding' ? 'No outstanding debts. Nice and clear.' : 'No cleared debts yet.'}
+              </p>
+            ) : (
+              filteredDebts.map((debt) => (
+                <DebtProgressCard
+                  key={debt.id}
+                  debt={debt}
+                  currency={wallet.base_currency}
+                  onSelect={() => {
+                    setEditingDebt(debt)
+                    setDebtFormOpen(true)
+                  }}
+                  onLogPayment={() => setPayingDebt(debt)}
+                />
+              ))
+            )}
           </section>
 
           {archivedDebts.length > 0 && (

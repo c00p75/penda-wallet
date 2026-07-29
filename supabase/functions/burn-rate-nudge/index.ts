@@ -255,19 +255,24 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
   })
   if (progressError) throw progressError
 
-  const budgets: BudgetRow[] = (progressRows ?? []).map(
-    (row: {
-      budget_id: string
-      category_id: string | null
-      effective_amount_minor: number
-      period: Period
-    }) => ({
-      id: row.budget_id,
-      category_id: row.category_id,
-      amount_minor: Number(row.effective_amount_minor),
-      period: row.period,
-    }),
-  )
+  // Custom-range budgets have no recurring cadence for periodBounds to pace
+  // against, so they're excluded from burn-rate nudges rather than silently
+  // treated as monthly.
+  const budgets: BudgetRow[] = (progressRows ?? [])
+    .filter((row: { period: string }) => row.period !== 'custom')
+    .map(
+      (row: {
+        budget_id: string
+        category_id: string | null
+        effective_amount_minor: number
+        period: Period
+      }) => ({
+        id: row.budget_id,
+        category_id: row.category_id,
+        amount_minor: Number(row.effective_amount_minor),
+        period: row.period,
+      }),
+    )
 
   const now = new Date()
   let worst: PaceResult | null = null

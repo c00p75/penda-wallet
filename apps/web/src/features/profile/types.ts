@@ -116,6 +116,10 @@ export interface Profile {
   life_event: LifeEvent | null
   /** Set when first-run (money-account) onboarding finishes. Not pocket-scoped. */
   onboarding_completed_at: string | null
+  /** Card ids in display order for the home carousel (pockets + summary cards). Missing ids fall back to default order. */
+  home_card_order: string[]
+  /** Custom hex color per home-card id, keyed the same way as `home_card_order`. Pockets keep their own `color` column instead. */
+  home_card_colors: Record<string, string>
   created_at: string
 }
 
@@ -141,6 +145,8 @@ export interface ProfileInput {
   habits_goal_id?: string | null
   life_event?: LifeEvent | null
   onboarding_completed_at?: string | null
+  home_card_order?: string[]
+  home_card_colors?: Record<string, string>
 }
 
 export interface PersonalityMeta {

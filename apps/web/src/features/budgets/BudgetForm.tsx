@@ -24,6 +24,7 @@ import { isBalanceAdjustmentCategory } from '@penda/money-core'
 import type { Category } from '@/features/categories/types'
 import type { Budget, BudgetInput, BudgetPeriod } from './types'
 import { fromMinorUnits, toMinorUnits } from '@/lib/money'
+import { localDateStr } from '@/lib/dates'
 
 interface BudgetFormProps {
   open: boolean
@@ -55,6 +56,8 @@ export function BudgetForm({
   const [amount, setAmount] = useState('')
   const [period, setPeriod] = useState<BudgetPeriod>('monthly')
   const [rollover, setRollover] = useState(false)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -63,24 +66,32 @@ export function BudgetForm({
       setAmount(fromMinorUnits(budget.amount_minor).toString())
       setPeriod(budget.period)
       setRollover(budget.rollover)
+      setStartDate(budget.period === 'custom' ? budget.start_date : localDateStr())
+      setEndDate(budget.period === 'custom' ? (budget.end_date ?? '') : '')
     } else {
       setCategoryId('')
       setAmount('')
       setPeriod('monthly')
       setRollover(false)
+      setStartDate(localDateStr())
+      setEndDate('')
     }
   }, [open, budget])
+
+  const customRangeInvalid = period === 'custom' && (!startDate || !endDate || endDate < startDate)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const amountNumber = Number(amount)
     if (!amountNumber || amountNumber <= 0) return
+    if (customRangeInvalid) return
 
     await onSubmit({
       category_id: categoryId || null,
       amount_minor: toMinorUnits(amountNumber),
       period,
-      rollover,
+      rollover: period === 'custom' ? false : rollover,
+      ...(period === 'custom' ? { start_date: startDate, end_date: endDate } : { end_date: null }),
     })
     onOpenChange(false)
   }
@@ -141,18 +152,54 @@ export function BudgetForm({
               <ToggleGroupItem value="monthly" className="flex-1">
                 Monthly
               </ToggleGroupItem>
+              <ToggleGroupItem value="custom" className="flex-1">
+                Custom
+              </ToggleGroupItem>
             </ToggleGroup>
           </div>
 
-          <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-secondary/30 p-4 shadow-[var(--shadow-soft)]">
-            <div>
-              <Label htmlFor="budget-rollover">Roll over unused amount</Label>
-              <p className="text-xs text-muted-foreground">
-                Carry what you don't spend into the next period.
-              </p>
+          {period === 'custom' && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-3">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="budget-start-date">Starts</Label>
+                  <Input
+                    id="budget-start-date"
+                    type="date"
+                    required
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="budget-end-date">Ends</Label>
+                  <Input
+                    id="budget-end-date"
+                    type="date"
+                    required
+                    min={startDate || undefined}
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              {startDate && endDate && endDate < startDate && (
+                <p className="text-xs text-destructive">End date must be on or after the start date.</p>
+              )}
             </div>
-            <Switch id="budget-rollover" checked={rollover} onCheckedChange={setRollover} />
-          </div>
+          )}
+
+          {period !== 'custom' && (
+            <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-secondary/30 p-4 shadow-[var(--shadow-soft)]">
+              <div>
+                <Label htmlFor="budget-rollover">Roll over unused amount</Label>
+                <p className="text-xs text-muted-foreground">
+                  Carry what you don't spend into the next period.
+                </p>
+              </div>
+              <Switch id="budget-rollover" checked={rollover} onCheckedChange={setRollover} />
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground">Amounts are in {currency}.</p>
 
@@ -167,7 +214,7 @@ export function BudgetForm({
                 Cancel
               </Button>
             </SheetClose>
-            <Button type="submit" disabled={isSubmitting} className="flex-1">
+            <Button type="submit" disabled={isSubmitting || customRangeInvalid} className="flex-1">
               {budget ? 'Save' : 'Add'}
             </Button>
           </SheetFooter>

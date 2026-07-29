@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { heroGradientFromHex } from '@/lib/heroGradient'
 import { cn } from '@/lib/utils'
 
 export type HeroTone = 'iris' | 'apricot' | 'sun' | 'mint' | 'rose'
@@ -22,6 +23,8 @@ const HERO_GLOW: Record<HeroTone, string> = {
 
 type HeroCardProps = {
   tone?: HeroTone
+  /** Custom hex color override (e.g. "#7c5cff"). Wins over `tone` when set. */
+  color?: string | null
   label?: ReactNode
   value?: ReactNode
   children?: ReactNode
@@ -41,6 +44,7 @@ type HeroCardProps = {
  */
 export function HeroCard({
   tone = 'iris',
+  color,
   label,
   value,
   children,
@@ -48,6 +52,7 @@ export function HeroCard({
   onClick,
   corner,
 }: HeroCardProps) {
+  const custom = color ? heroGradientFromHex(color) : null
   return (
     <div
       role={onClick ? 'button' : undefined}
@@ -69,8 +74,8 @@ export function HeroCard({
         className,
       )}
       style={{
-        background: HERO_BG[tone],
-        boxShadow: HERO_GLOW[tone],
+        background: custom?.background ?? HERO_BG[tone],
+        boxShadow: custom?.boxShadow ?? HERO_GLOW[tone],
       }}
     >
       <div

@@ -10,6 +10,20 @@ import {
   type ProfileInput,
 } from './types'
 
+function normalizeHomeCardOrder(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((id): id is string => typeof id === 'string')
+}
+
+function normalizeHomeCardColors(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') out[key] = value
+  }
+  return out
+}
+
 function normalizeAiTrust(raw: unknown): AiTrust {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_AI_TRUST }
   const o = raw as Record<string, unknown>
@@ -39,6 +53,8 @@ function normalizeProfile(row: Record<string, unknown>): Profile {
     life_event: normalizeLifeEvent(row.life_event),
     timezone: (row.timezone as string | null) ?? null,
     onboarding_completed_at: (row.onboarding_completed_at as string | null) ?? null,
+    home_card_order: normalizeHomeCardOrder(row.home_card_order),
+    home_card_colors: normalizeHomeCardColors(row.home_card_colors),
   }
 }
 

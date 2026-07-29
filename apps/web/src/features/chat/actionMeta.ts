@@ -157,7 +157,7 @@ export function viewHrefFor(domain: string, targetId?: string): string | undefin
         ? `/budgets?tab=recurring&recurring=${encodeURIComponent(targetId)}`
         : '/budgets?tab=recurring'
     case 'pact':
-      return '/budgets'
+      return '/budgets#pacts'
     case 'goal':
       return targetId ? `/goals/${targetId}` : '/goals'
     case 'debt':
@@ -182,8 +182,9 @@ export function listHrefFor(domain: string): string | undefined {
     case 'reconciliation':
       return '/transactions'
     case 'budget':
-    case 'pact':
       return '/budgets'
+    case 'pact':
+      return '/budgets#pacts'
     case 'recurring':
       return '/budgets?tab=recurring'
     case 'goal':
