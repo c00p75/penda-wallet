@@ -10,6 +10,8 @@
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test:web && npm run test:mobile && npm run test:money-core && npm run test:edge",
     "supabase": "supabase",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:mobile": "npm run start --workspace=apps/mobile",
@@ -20,9 +22,12 @@
     "test:web": "npm run test --workspace=apps/web",
     "test:money-core": "npm run test --workspace=@penda/money-core",
     "test:mobile": "npm run test --workspace=apps/mobile",
-    "test:edge": "deno test --allow-env supabase/functions/_shared"
+    "test:edge": "deno test --allow-env supabase/functions/_shared",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0",
     "supabase": "^2.109.1"
   }
 }
