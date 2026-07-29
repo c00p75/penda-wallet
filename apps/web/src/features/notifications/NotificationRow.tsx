@@ -4,6 +4,7 @@ import {
   Lightbulb,
   Sparkle,
   TrendDown,
+  Users,
   type Icon,
 } from '@/components/icons/product'
 import { ActivityRow } from '@/components/ui/activity-row'
@@ -43,6 +44,12 @@ const KIND_META: Record<
     label: 'Update',
     soft: 'var(--muted)',
     ink: 'var(--foreground)',
+  },
+  invite: {
+    icon: Users,
+    label: 'Invite',
+    soft: 'color-mix(in srgb, var(--sun) 22%, transparent)',
+    ink: 'var(--sun)',
   },
 }
 

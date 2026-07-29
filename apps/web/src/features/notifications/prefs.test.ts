@@ -69,6 +69,11 @@ describe('isKindEnabled', () => {
     expect(isKindEnabled(prefs, 'tip')).toBe(false)
     expect(isKindEnabled(prefs, 'reminder')).toBe(true)
   })
+
+  it('gates invite notifications on the updates pref', () => {
+    expect(isKindEnabled({ ...DEFAULT_NOTIFICATION_PREFS, updates: false }, 'invite')).toBe(false)
+    expect(isKindEnabled({ ...DEFAULT_NOTIFICATION_PREFS, updates: true }, 'invite')).toBe(true)
+  })
 })
 
 describe('groupNotificationsByDay', () => {

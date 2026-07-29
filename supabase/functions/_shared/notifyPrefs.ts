@@ -1,6 +1,6 @@
 /** Notification category prefs, kept in sync with profiles.notification_prefs. */
 
-export type NotificationKind = 'tip' | 'reminder' | 'insight' | 'update' | 'alert'
+export type NotificationKind = 'tip' | 'reminder' | 'insight' | 'update' | 'alert' | 'invite'
 
 export type NotificationPrefs = {
   reminders: boolean
@@ -28,6 +28,7 @@ const KIND_TO_PREF: Record<NotificationKind, keyof NotificationPrefs> = {
   insight: 'insights',
   alert: 'alerts',
   update: 'updates',
+  invite: 'updates',
 }
 
 export function normalizeNotificationPrefs(raw: unknown): NotificationPrefs {
