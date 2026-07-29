@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { PageContext } from './pageContext'
-import type { ChatResponse, ConfirmActionResponse } from './types'
+import type { ChatConversationSummary, ChatMessage, ChatResponse, ConfirmActionResponse } from './types'
 import type { UiEdit } from './uiEdits'
 
 // supabase.functions.invoke surfaces every non-2xx as a FunctionsHttpError
@@ -219,4 +219,66 @@ export async function confirmAiAction(
   if (error) throw await unwrapFunctionError(error)
   if (!data) throw new Error('Empty response from confirm-ai-action function')
   return data
+}
+
+// Provider-agnostic message content, mirrors the edge function's NeutralPart
+// (only the `text` shape matters to the client, tool calls/results render nothing).
+type StoredPart = { type: string; text?: string }
+
+function joinTextParts(content: unknown): string {
+  if (!Array.isArray(content)) return ''
+  return (content as StoredPart[])
+    .filter((p) => p && p.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text!.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+const CHAT_HISTORY_LIMIT = 30
+
+export async function fetchChatConversations(
+  userId: string,
+  walletId: string,
+): Promise<ChatConversationSummary[]> {
+  const { data, error } = await supabase
+    .from('chat_conversations')
+    .select('id, created_at, chat_messages(content)')
+    .eq('user_id', userId)
+    .eq('wallet_id', walletId)
+    .order('created_at', { ascending: true, foreignTable: 'chat_messages' })
+    .limit(1, { foreignTable: 'chat_messages' })
+    .order('created_at', { ascending: false })
+    .limit(CHAT_HISTORY_LIMIT)
+
+  if (error) throw error
+
+  return (data ?? [])
+    .map((row) => {
+      const first = (row.chat_messages as Array<{ content: unknown }> | null)?.[0]
+      return {
+        id: row.id as string,
+        createdAt: row.created_at as string,
+        preview: joinTextParts(first?.content),
+      }
+    })
+    .filter((c) => c.preview)
+}
+
+export async function fetchChatConversationMessages(conversationId: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, role, content, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+
+  return (data ?? [])
+    .map((row) => ({
+      id: row.id as string,
+      role: row.role as 'user' | 'assistant',
+      text: joinTextParts(row.content),
+    }))
+    // Tool-call/tool-result turns carry no text part, drop them from the transcript.
+    .filter((m) => m.text)
 }

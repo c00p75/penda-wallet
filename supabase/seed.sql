@@ -10,5 +10,6 @@ insert into categories (name, icon, color, is_system) values
   ('Income', 'banknote', '#22c55e', true),
   ('Transfer', 'arrow-left-right', '#64748b', true),
   ('Balance adjustment', 'scale', '#78716c', true),
+  ('Transfer charges', '🧾', '#0891b2', true),
   ('Other', 'ellipsis', '#94a3b8', true)
 on conflict do nothing;

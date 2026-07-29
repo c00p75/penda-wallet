@@ -145,7 +145,7 @@ export function TransferForm({
               id="transfer-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Cash to Airtel"
+              placeholder="Cash to Bank"
             />
           </div>
           <SheetFooter>

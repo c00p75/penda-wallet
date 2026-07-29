@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +9,12 @@ import { Text, LoadingView } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { TransactionRow } from '@/src/components/TransactionRow';
 import { colors, spacing } from '@/src/lib/theme';
-import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
+import { fetchTransactions } from '@/src/api/transactions';
 import { fetchAccounts } from '@/src/api/accounts';
 import { uploadReceipt } from '@/src/api/receipts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { useAuthStore } from '@/src/store/authStore';
+import { useDeleteTransactionFlow } from '@/src/hooks/useDeleteTransactionFlow';
 import { parseMoMoText } from '@/src/lib/momoParser';
 import type { Transaction } from '@/src/api/types';
 
@@ -36,27 +37,10 @@ export default function LedgerScreen() {
     enabled: !!wallet?.id,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteTransaction(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
-      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
-    },
-    onError: (err) => {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');
-    },
-  });
+  const deleteFlow = useDeleteTransactionFlow(wallet?.id);
 
   function confirmDelete(tx: Transaction) {
-    const title = tx.merchant || tx.description || 'this transaction';
-    Alert.alert('Delete transaction?', `Remove ${title}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteMutation.mutate(tx.id),
-      },
-    ]);
+    void deleteFlow.confirmDelete(tx, transactions, accounts);
   }
 
   async function handlePasteMoMo() {

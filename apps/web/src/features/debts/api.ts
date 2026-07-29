@@ -83,10 +83,34 @@ export async function addPayment(
   amountMinor: number,
   date: string,
   accountId: string | null,
+  transactionId: string | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('debt_payments')
-    .insert({ debt_id: debtId, amount_minor: amountMinor, paid_date: date, account_id: accountId })
+  const { error } = await supabase.from('debt_payments').insert({
+    debt_id: debtId,
+    amount_minor: amountMinor,
+    paid_date: date,
+    account_id: accountId,
+    transaction_id: transactionId,
+  })
 
+  if (error) throw error
+}
+
+/** The payment a linked pocket transaction posted, if it was one. Used to offer reversing it on delete. */
+export async function fetchPaymentByTransactionId(
+  transactionId: string,
+): Promise<(DebtPayment & { debt: { name: string } | null }) | null> {
+  const { data, error } = await supabase
+    .from('debt_payments')
+    .select('*, debt:debts(name)')
+    .eq('transaction_id', transactionId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as (DebtPayment & { debt: { name: string } | null }) | null
+}
+
+export async function deleteDebtPayment(id: string): Promise<void> {
+  const { error } = await supabase.from('debt_payments').delete().eq('id', id)
   if (error) throw error
 }

@@ -2373,28 +2373,38 @@ async function handleLogDebtPayment(
   const fallbackAccount = await defaultAccountId(ctx.supabase, ctx.walletId)
   const accountId = resolveAccountId(ctx.accounts, args.account, fallbackAccount)
 
+  let transactionId: string | null = null
   if (accountId) {
     const categoryId = findCategory(ctx.categories, DEBT_PAYMENT_CATEGORY_NAME)?.id ?? null
-    const { error: txError } = await ctx.supabase.from('transactions').insert({
-      wallet_id: ctx.walletId,
-      created_by: ctx.userId,
-      account_id: accountId,
-      category_id: categoryId,
-      amount_minor: amountMinor,
-      currency: ctx.currency,
-      type: debt.direction === 'i_owe' ? 'expense' : 'income',
-      merchant: null,
-      description: `Payment: ${debt.name}`,
-      transaction_date: paidDate,
-      source: 'chat',
-      user_confirmed: true,
-    })
+    const { data: tx, error: txError } = await ctx.supabase
+      .from('transactions')
+      .insert({
+        wallet_id: ctx.walletId,
+        created_by: ctx.userId,
+        account_id: accountId,
+        category_id: categoryId,
+        amount_minor: amountMinor,
+        currency: ctx.currency,
+        type: debt.direction === 'i_owe' ? 'expense' : 'income',
+        merchant: null,
+        description: `Payment: ${debt.name}`,
+        transaction_date: paidDate,
+        source: 'chat',
+        user_confirmed: true,
+      })
+      .select('id')
+      .single()
     if (txError) return { summary: `Failed to log the linked transaction: ${txError.message}` }
+    transactionId = tx.id
   }
 
-  const { error: insertError } = await ctx.supabase
-    .from('debt_payments')
-    .insert({ debt_id: debt.id, amount_minor: amountMinor, paid_date: paidDate, account_id: accountId })
+  const { error: insertError } = await ctx.supabase.from('debt_payments').insert({
+    debt_id: debt.id,
+    amount_minor: amountMinor,
+    paid_date: paidDate,
+    account_id: accountId,
+    transaction_id: transactionId,
+  })
   if (insertError) return { summary: `Failed to log payment: ${insertError.message}` }
 
   const remaining = outstanding - amountMinor

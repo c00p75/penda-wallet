@@ -1,4 +1,4 @@
-import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,15 +9,16 @@ import { TransactionRow } from '@/src/components/TransactionRow';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { colors, spacing } from '@/src/lib/theme';
 import { formatMoney } from '@/src/lib/money';
-import { deleteTransaction, fetchTransactions } from '@/src/api/transactions';
+import { fetchTransactions } from '@/src/api/transactions';
 import { fetchBudgetProgress } from '@/src/api/budgets';
 import { fetchSavingsGoals } from '@/src/api/goals';
 import { fetchCategories } from '@/src/api/categories';
-import { createAccount, fetchAccounts } from '@/src/api/accounts';
+import { createAccount, fetchAccounts, fetchPocketTypes } from '@/src/api/accounts';
 import { useCurrentWallet } from '@/src/hooks/useCurrentWallet';
 import { computeMonthlyBalance } from '@/src/lib/transactions';
 import { useAuthStore } from '@/src/store/authStore';
 import { useChatStore } from '@/src/store/chatStore';
+import { useDeleteTransactionFlow } from '@/src/hooks/useDeleteTransactionFlow';
 import type { Transaction } from '@/src/api/types';
 import { accountBalanceMinor } from '@penda/money-core';
 
@@ -49,27 +50,10 @@ export default function HomeScreen() {
     enabled: !!wallet?.id,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteTransaction(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
-      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
-    },
-    onError: (err) => {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');
-    },
-  });
+  const deleteFlow = useDeleteTransactionFlow(wallet?.id);
 
   function confirmDelete(tx: Transaction) {
-    const title = tx.merchant || tx.description || 'this transaction';
-    Alert.alert('Delete transaction?', `Remove ${title}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteMutation.mutate(tx.id),
-      },
-    ]);
+    void deleteFlow.confirmDelete(tx, transactions, accounts);
   }
 
   const { data: budgetProgress = [], refetch: refetchBudgets } = useQuery({
@@ -96,13 +80,21 @@ export default function HomeScreen() {
     enabled: !!wallet?.id,
   });
 
-  const addAirtel = useMutation({
+  const { data: pocketTypes = [] } = useQuery({
+    queryKey: ['pocket-types', wallet?.id],
+    queryFn: () => fetchPocketTypes(wallet!.id),
+    enabled: !!wallet?.id,
+  });
+
+  const hasCashPocket = accounts.some((a) => a.name.trim().toLowerCase() === 'cash');
+  const cashType = pocketTypes.find((t) => t.name.trim().toLowerCase() === 'cash');
+
+  const addCash = useMutation({
     mutationFn: () =>
       createAccount(wallet!.id, {
-        name: 'Airtel Money',
-        kind: 'mobile_money',
-        provider: 'airtel',
-        icon: '📱',
+        name: 'Cash',
+        kind_id: cashType?.id ?? null,
+        icon: '💵',
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['accounts', wallet?.id] });
@@ -163,17 +155,17 @@ export default function HomeScreen() {
 
       <View style={styles.sectionHeader}>
         <Text variant="h3">Pockets</Text>
-        {!accounts.some((a) => a.provider === 'airtel') ? (
-          <AnimatedPressable onPress={() => addAirtel.mutate()} disabled={addAirtel.isPending}>
+        {!hasCashPocket ? (
+          <AnimatedPressable onPress={() => addCash.mutate()} disabled={addCash.isPending}>
             <Text variant="label" color={colors.iris}>
-              Add Airtel
+              Add Cash
             </Text>
           </AnimatedPressable>
         ) : null}
       </View>
-      {accounts.length === 1 && accounts[0]?.kind === 'cash' ? (
+      {accounts.length === 1 && hasCashPocket ? (
         <Text variant="caption" color={colors.textSecondary} style={styles.pocketNudge}>
-          Add Airtel Money, MTN, or a bank pocket so MoMo logs land in the right place.
+          Add a mobile money or bank pocket so logs land in the right place.
         </Text>
       ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pocketRow}>

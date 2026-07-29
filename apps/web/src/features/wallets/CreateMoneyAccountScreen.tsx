@@ -37,7 +37,7 @@ export function CreateMoneyAccountScreen() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Create a money account</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          You need at least one money account. Add pockets like Cash or Airtel Money inside it
+          You need at least one money account. Add pockets like Cash or mobile money inside it
           next.
         </p>
       </div>

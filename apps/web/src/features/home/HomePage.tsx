@@ -54,11 +54,12 @@ import type { PremiumFeature } from '@/features/entitlements/types'
 import {
   useConfirmReceiptItems,
   useCreateTransaction,
-  useDeleteTransaction,
   useTransactions,
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
+import { DeleteTransactionDialog } from '@/features/transactions/DeleteTransactionDialog'
+import { useDeleteTransactionFlow } from '@/features/transactions/useDeleteTransactionFlow'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useQuickActionStore } from '@/features/home/quickActionStore'
@@ -206,7 +207,7 @@ export function HomePage() {
 
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
-  const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const deleteFlow = useDeleteTransactionFlow(wallet?.id, transactions, accounts)
   const confirmReceiptItems = useConfirmReceiptItems(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
 
@@ -447,9 +448,15 @@ export function HomePage() {
 
   async function handleDelete() {
     if (!editing) return
-    const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
+    await deleteFlow.requestDelete(editing)
+  }
+
+  async function handleConfirmDelete() {
+    const target = deleteFlow.pending?.transaction
+    if (!target) return
+    const wasDraft = target.source === 'receipt' && !target.user_confirmed
     try {
-      await deleteTransaction.mutateAsync(editing.id)
+      await deleteFlow.confirm()
       toast(wasDraft ? 'Receipt discarded.' : 'Transaction deleted.')
       setFormOpen(false)
     } catch (error) {
@@ -803,11 +810,11 @@ export function HomePage() {
         label: pocketBalanceLabel(account),
         icon: account.icon ?? '💳',
         color: account.color,
-        defaultColor: HERO_TONE_HEX[pocketHeroTone(account.kind)],
+        defaultColor: HERO_TONE_HEX[pocketHeroTone(account.kind_id)],
         node: (
           <HeroCard
             key={account.id}
-            tone={pocketHeroTone(account.kind)}
+            tone={pocketHeroTone(account.kind_id)}
             color={account.color}
             className="snap-start"
             onClick={() => setDetailAccount(account)}
@@ -1123,9 +1130,9 @@ export function HomePage() {
             onCustomize={() => setLayoutSheetOpen(true)}
           />
 
-          {accounts.length === 1 && accounts[0]?.kind === 'cash' && (
+          {accounts.length === 1 && accounts[0]?.name.trim().toLowerCase() === 'cash' && (
             <p className="text-sm text-muted-foreground">
-              Add Airtel Money, MTN, or a bank pocket so MoMo paste and logs land in the right place.
+              Add a mobile money or bank pocket so MoMo paste and logs land in the right place.
             </p>
           )}
         </div>
@@ -1143,7 +1150,7 @@ export function HomePage() {
                 className="flex min-h-[9.5rem] w-[min(15.5rem,82vw)] shrink-0 flex-col items-start justify-between rounded-[1.75rem] border border-dashed border-border/70 bg-card p-5 text-left text-sm text-muted-foreground shadow-[var(--shadow-soft)] snap-start"
               >
                 <span className="font-semibold text-foreground">Add a pocket</span>
-                <span>Cash, Airtel Money, MTN, or bank</span>
+                <span>Cash, mobile money, or bank</span>
               </button>
             )}
 
@@ -1302,12 +1309,23 @@ export function HomePage() {
         }
       />
 
+      <DeleteTransactionDialog
+        transaction={deleteFlow.pending?.transaction ?? null}
+        linkage={deleteFlow.pending?.linkage ?? null}
+        reverseLinked={deleteFlow.reverseLinked}
+        onReverseLinkedChange={deleteFlow.setReverseLinked}
+        onOpenChange={(open) => !open && deleteFlow.cancel()}
+        onConfirm={handleConfirmDelete}
+        isPending={deleteFlow.isPending}
+      />
+
       <AccountForm
         open={accountFormOpen}
         onOpenChange={(open) => {
           setAccountFormOpen(open)
           if (!open) setEditingAccount(null)
         }}
+        walletId={wallet?.id}
         account={editingAccount}
         existingNames={accounts.map((a) => a.name)}
         onSubmit={async (input: AccountInput) => {

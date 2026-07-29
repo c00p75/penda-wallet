@@ -87,3 +87,11 @@ export interface ConfirmActionResponse {
   targetId?: string
   kind?: 'create' | 'update' | 'delete' | 'reconcile'
 }
+
+/** A past conversation surfaced in the chat history picker. */
+export interface ChatConversationSummary {
+  id: string
+  createdAt: string
+  /** First user message, used as the row's title. */
+  preview: string
+}

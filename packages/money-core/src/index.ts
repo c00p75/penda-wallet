@@ -7,6 +7,7 @@ export {
   DEBT_PAYMENT_CATEGORY_NAME,
   isDebtPaymentCategory,
 } from './debtPaymentCategory'
+export { findTransferSibling, type TransferLegLike } from './transferSibling'
 export { parseMoMoText, type MoMoProvider, type ParsedMoMo } from './momoParser'
 export {
   projectCashflow,

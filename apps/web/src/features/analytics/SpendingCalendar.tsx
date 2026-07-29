@@ -1,4 +1,5 @@
 import { formatMoney } from '@/lib/money'
+import { localDateStr } from '@/lib/dates'
 import type { Transaction } from '@/features/transactions/types'
 
 interface SpendingCalendarProps {
@@ -6,6 +7,7 @@ interface SpendingCalendarProps {
   currency: string
   year: number
   month: number // 0-indexed, matches Date#getMonth()
+  onDayClick?: (dateStr: string) => void
 }
 
 const RAMP_STEPS = ['var(--viz-seq-150)', 'var(--viz-seq-300)', 'var(--viz-seq-450)', 'var(--viz-seq-550)', 'var(--viz-seq-650)']
@@ -18,7 +20,7 @@ function bucketFor(amount: number, max: number): string | null {
   return RAMP_STEPS[index]
 }
 
-export function SpendingCalendar({ transactions, currency, year, month }: SpendingCalendarProps) {
+export function SpendingCalendar({ transactions, currency, year, month, onDayClick }: SpendingCalendarProps) {
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const firstWeekday = new Date(year, month, 1).getDay()
 
@@ -50,14 +52,16 @@ export function SpendingCalendar({ transactions, currency, year, month }: Spendi
           const background = bucketFor(amount, maxDay)
           const isToday = isCurrentMonth && today.getDate() === day
           return (
-            <div
+            <button
               key={day}
+              type="button"
+              onClick={() => onDayClick?.(localDateStr(new Date(year, month, day)))}
               title={amount > 0 ? `${monthDayLabel(year, month, day)}: ${formatMoney(amount, currency)}` : monthDayLabel(year, month, day)}
-              className={`flex aspect-square items-center justify-center rounded-md text-[11px] ${isToday ? 'ring-2 ring-primary' : ''}`}
+              className={`flex aspect-square items-center justify-center rounded-md text-[11px] transition-opacity hover:opacity-80 ${isToday ? 'ring-2 ring-primary' : ''}`}
               style={{ backgroundColor: background ?? 'var(--muted)', color: background ? 'white' : 'var(--viz-muted-ink)' }}
             >
               {day}
-            </div>
+            </button>
           )
         })}
       </div>

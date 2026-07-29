@@ -200,6 +200,15 @@ export interface Debt {
   updated_at: string;
 }
 
+export interface DebtPayment {
+  id: string;
+  debt_id: string;
+  amount_minor: number;
+  paid_date: string;
+  account_id: string | null;
+  transaction_id: string | null;
+}
+
 export type MemoryKind = 'note' | 'mood' | 'preference' | 'fact';
 
 export interface AiMemory {

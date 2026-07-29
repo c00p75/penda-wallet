@@ -28,11 +28,12 @@ import type { PremiumFeature } from '@/features/entitlements/types'
 import {
   useConfirmReceiptItems,
   useCreateTransaction,
-  useDeleteTransaction,
   useTransactions,
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
+import { DeleteTransactionDialog } from '@/features/transactions/DeleteTransactionDialog'
+import { useDeleteTransactionFlow } from '@/features/transactions/useDeleteTransactionFlow'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { useUploadReceipt } from '@/features/receipts/hooks'
 import { detectCoachingInsights } from '@/features/coaching/detectCoachingInsights'
@@ -151,12 +152,14 @@ export function LedgerPage() {
   const { data: transactions = [], isLoading: isTransactionsLoading } = useTransactions(wallet?.id)
   const [searchParams] = useSearchParams()
   const deepLinkTxId = searchParams.get('tx')
+  const [highlightDate] = useState(() => searchParams.get('date'))
+  const highlightRef = useRef<HTMLElement | null>(null)
   const { data: budgets = [] } = useBudgets(wallet?.id)
   const { data: goals = [] } = useSavingsGoals(wallet?.id)
 
   const createTransaction = useCreateTransaction(wallet?.id)
   const updateTransaction = useUpdateTransaction(wallet?.id)
-  const deleteTransaction = useDeleteTransaction(wallet?.id)
+  const deleteFlow = useDeleteTransactionFlow(wallet?.id, transactions, accounts)
   const confirmReceiptItems = useConfirmReceiptItems(wallet?.id)
   const uploadReceipt = useUploadReceipt(wallet?.id)
   const offlineQueue = useOfflinePending()
@@ -172,10 +175,25 @@ export function LedgerPage() {
   const [dismissedInsightIds, setDismissedInsightIds] = useState<Set<string>>(new Set())
   const [splitTx, setSplitTx] = useState<Transaction | null>(null)
   const [members, setMembers] = useState<{ user_id: string; label: string }[]>([])
-  const [period, setPeriod] = useState<Period>('month')
+  const [period, setPeriod] = useState<Period>(() => (highlightDate ? 'all' : 'month'))
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all')
   const [accountFilter, setAccountFilter] = useState<string | 'all'>('all')
   const receiptInputRef = useRef<HTMLInputElement>(null)
+
+  // Analytics calendar landed here with ?date= pointing at a day; scroll that
+  // day's section into view once, then drop the param.
+  useEffect(() => {
+    if (!searchParams.get('date')) return
+    const params = new URLSearchParams(searchParams)
+    params.delete('date')
+    const search = params.toString()
+    navigate({ search: search ? `?${search}` : '' }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (highlightDate) highlightRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [highlightDate])
 
   useEffect(() => {
     if (!wallet?.id) return
@@ -293,9 +311,15 @@ export function LedgerPage() {
 
   async function handleDelete() {
     if (!editing) return
-    const wasDraft = editing.source === 'receipt' && !editing.user_confirmed
+    await deleteFlow.requestDelete(editing)
+  }
+
+  async function handleConfirmDelete() {
+    const target = deleteFlow.pending?.transaction
+    if (!target) return
+    const wasDraft = target.source === 'receipt' && !target.user_confirmed
     try {
-      await deleteTransaction.mutateAsync(editing.id)
+      await deleteFlow.confirm()
       toast(wasDraft ? 'Receipt discarded.' : 'Transaction deleted.')
       setFormOpen(false)
     } catch (error) {
@@ -530,7 +554,13 @@ export function LedgerPage() {
       ) : (
         <div className="flex flex-col gap-5">
           {groups.map(([date, txs]) => (
-            <section key={date}>
+            <section
+              key={date}
+              ref={date === highlightDate ? (el) => { highlightRef.current = el } : undefined}
+              className={cn(
+                date === highlightDate && 'rounded-[1.5rem] ring-2 ring-[var(--iris)] ring-offset-2 ring-offset-background',
+              )}
+            >
               <SectionHeader
                 title={
                   <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
@@ -620,6 +650,16 @@ export function LedgerPage() {
           updateTransaction.isPending ||
           confirmReceiptItems.isPending
         }
+      />
+
+      <DeleteTransactionDialog
+        transaction={deleteFlow.pending?.transaction ?? null}
+        linkage={deleteFlow.pending?.linkage ?? null}
+        reverseLinked={deleteFlow.reverseLinked}
+        onReverseLinkedChange={deleteFlow.setReverseLinked}
+        onOpenChange={(open) => !open && deleteFlow.cancel()}
+        onConfirm={handleConfirmDelete}
+        isPending={deleteFlow.isPending}
       />
 
       <PaywallSheet

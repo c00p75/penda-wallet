@@ -6,29 +6,37 @@ import { Textarea } from '@/components/ui/textarea'
 import { parseMoMoText, type ParsedMoMo } from './momoParser'
 import type { TransactionDraft } from './types'
 
-/** Map a MoMo provider hint onto a pocket id when the user has one. */
-export function accountIdForMoMoProvider(
-  provider: ParsedMoMo['provider'],
-  accounts: Array<{ id: string; provider: string | null; name: string; kind: string }>,
-): string | null {
-  if (provider === 'unknown' || accounts.length === 0) return null
-  const providerKey = provider === 'bank' ? 'zanaco' : provider
-  const byProvider = accounts.find((a) => a.provider === providerKey)
-  if (byProvider) return byProvider.id
-  if (provider === 'bank') {
-    return accounts.find((a) => a.kind === 'bank')?.id ?? null
-  }
-  if (provider === 'airtel' || provider === 'mtn' || provider === 'zamtel') {
-    const nameHit = accounts.find((a) => a.name.toLowerCase().includes(provider))
-    return nameHit?.id ?? accounts.find((a) => a.kind === 'mobile_money')?.id ?? null
-  }
-  return null
+interface MoMoAccount {
+  id: string
+  name: string
+  kind: { name: string } | null
+  provider: { name: string } | null
 }
 
-export function parsedToDraft(
-  parsed: ParsedMoMo,
-  accounts: Array<{ id: string; provider: string | null; name: string; kind: string }> = [],
-): TransactionDraft {
+/**
+ * Map a MoMo provider hint onto a pocket id when the user has one. Pockets no
+ * longer carry a fixed provider slug, so this matches loosely against
+ * whatever the user named their pocket, Type, or Provider.
+ */
+export function accountIdForMoMoProvider(
+  provider: ParsedMoMo['provider'],
+  accounts: MoMoAccount[],
+): string | null {
+  if (provider === 'unknown' || accounts.length === 0) return null
+
+  const needle = provider === 'bank' ? ['bank'] : [provider]
+  const hit = accounts.find((a) =>
+    needle.some(
+      (word) =>
+        a.provider?.name.toLowerCase().includes(word) ||
+        a.kind?.name.toLowerCase().includes(word) ||
+        a.name.toLowerCase().includes(word),
+    ),
+  )
+  return hit?.id ?? null
+}
+
+export function parsedToDraft(parsed: ParsedMoMo, accounts: MoMoAccount[] = []): TransactionDraft {
   const label = parsed.type === 'income' ? 'Received' : 'Sent'
   return {
     type: parsed.type,
@@ -47,8 +55,8 @@ interface MoMoPasteSheetProps {
   onOpenChange: (open: boolean) => void
   /** Clipboard text captured when the chip was tapped, if any. */
   initialText?: string
-  /** Pockets used to pre-select Airtel/MTN/bank when the SMS matches. */
-  accounts?: Array<{ id: string; provider: string | null; name: string; kind: string }>
+  /** Pockets used to pre-select a matching mobile-money/bank pocket when the SMS matches. */
+  accounts?: MoMoAccount[]
   onParsed: (draft: TransactionDraft) => void
   onFallbackToAi: (text: string) => void
 }

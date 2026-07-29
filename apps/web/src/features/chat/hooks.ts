@@ -1,8 +1,20 @@
-import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { confirmAiAction, sendChatMessage } from './api'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { confirmAiAction, fetchChatConversations, sendChatMessage } from './api'
 import type { ChatResponse } from './types'
 import type { PageContext } from './pageContext'
 import type { UiEdit } from './uiEdits'
+
+export function useChatConversations(
+  userId: string | undefined,
+  walletId: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['chat-conversations', userId, walletId],
+    queryFn: () => fetchChatConversations(userId!, walletId!),
+    enabled: enabled && !!userId && !!walletId,
+  })
+}
 
 /** Shared cache bust after a chat turn creates/updates records. */
 export function invalidateAfterChatResponse(

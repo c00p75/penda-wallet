@@ -149,7 +149,7 @@ export function HeroDetailSheet({
       : detail.kind === 'goal' && detail.progressLine
         ? detail.progressLine
         : detail.kind === 'balance'
-          ? 'This is the total across your pockets (Cash, MoMo, bank). Open a pocket card for a single balance.'
+          ? 'This is the total across all your pockets. Open a pocket card for a single balance.'
           : detail.kind === 'status'
             ? 'Blind budgeting hides exact figures. Open budgets if you want to adjust the plan.'
             : detail.kind === 'month'

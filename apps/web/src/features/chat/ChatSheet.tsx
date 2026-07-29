@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Maximize2, Send, X } from 'lucide-react'
+import { ChevronRight, History, Maximize2, NotebookText, Send, SquarePen, X } from 'lucide-react'
 import { Camera, Microphone, Stop } from '@/components/icons/product'
 import { toast } from 'sonner'
 import {
@@ -43,14 +43,17 @@ import { GoalForm } from '@/features/goals/GoalForm'
 import { useArchiveSavingsGoal, useUpdateSavingsGoal } from '@/features/goals/hooks'
 import type { SavingsGoal, SavingsGoalInput } from '@/features/goals/types'
 import { TransactionForm } from '@/features/transactions/TransactionForm'
+import { DeleteTransactionDialog } from '@/features/transactions/DeleteTransactionDialog'
+import { useDeleteTransactionFlow } from '@/features/transactions/useDeleteTransactionFlow'
 import {
   useConfirmReceiptItems,
-  useDeleteTransaction,
+  useTransactions,
   useUpdateTransaction,
 } from '@/features/transactions/hooks'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
-import { sendChatMessageStream } from './api'
+import { fetchChatConversationMessages, sendChatMessageStream } from './api'
 import { ActionTrail } from './ActionTrail'
+import { ChatHistorySheet } from './ChatHistorySheet'
 import {
   finalizeLiveActions,
   mergeTrailActions,
@@ -257,6 +260,7 @@ export function ChatSheet({
   const canScanReceipt = isPremium || !entitlement?.receipt_scan_preview_used
   const { data: categories = [] } = useCategories(walletId)
   const { data: accounts = [] } = useAccounts(walletId)
+  const { data: transactions = [] } = useTransactions(walletId)
   const voiceTurnRef = useRef(false)
   const continuityInjectedRef = useRef(false)
   /** View-sheet edits since the last chat turn; flushed into the next send. */
@@ -271,7 +275,7 @@ export function ChatSheet({
   const silenceSinceRef = useRef<number | null>(null)
   const uploadReceipt = useUploadReceipt(walletId)
   const updateTransaction = useUpdateTransaction(walletId)
-  const deleteTransaction = useDeleteTransaction(walletId)
+  const deleteFlow = useDeleteTransactionFlow(walletId, transactions, accounts)
   const confirmReceiptItems = useConfirmReceiptItems(walletId)
   const updateBudget = useUpdateBudget(walletId)
   const deleteBudget = useDeleteBudget(walletId)
@@ -282,6 +286,8 @@ export function ChatSheet({
 
   const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(null)
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   /** Shared transaction sheet: receipt drafts and View-from-chat edits. */
   const [overlayTx, setOverlayTx] = useState<Transaction | null>(null)
   const [overlayBudget, setOverlayBudget] = useState<Budget | null>(null)
@@ -357,6 +363,31 @@ export function ChatSheet({
   function openInApp(href: string) {
     clearEntityOverlays()
     navigateAway(href)
+  }
+
+  /** Swap the live thread for a past conversation picked from history. */
+  async function loadConversation(id: string) {
+    if (id === conversationId) {
+      setHistoryOpen(false)
+      return
+    }
+    setHistoryLoading(true)
+    try {
+      const loaded = await fetchChatConversationMessages(id)
+      streamAbortRef.current?.abort()
+      setMessages(loaded)
+      setConversationId(id)
+      sentConversationIdRef.current = id
+      setActionStatus({})
+      setLiveActions([])
+      setStreamingId(null)
+      setInput('')
+      setHistoryOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not load that conversation.')
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   // Warm destination caches while the View button is on screen.
@@ -971,6 +1002,16 @@ export function ChatSheet({
     }
   }
 
+  // One tap for a whole batch of proposals (e.g. several budgets staged in the
+  // same turn): confirms each still-pending one in turn, reusing resolveAction
+  // so a single failure just posts its own error message and the rest continue.
+  async function confirmAllPending(pending: PendingAction[]) {
+    for (const action of pending) {
+      if (actionStatus[action.id]) continue
+      await resolveAction(action, 'confirm')
+    }
+  }
+
   async function undoTarget(target: ChatUndoTarget, userId: string): Promise<void> {
     switch (target.type) {
       case 'pending_action': {
@@ -1191,8 +1232,13 @@ export function ChatSheet({
 
   async function deleteOverlayTransaction() {
     if (!overlayTx) return
+    await deleteFlow.requestDelete(overlayTx)
+  }
+
+  async function handleConfirmDeleteOverlayTransaction() {
+    if (!deleteFlow.pending) return
     try {
-      await deleteTransaction.mutateAsync(overlayTx.id)
+      await deleteFlow.confirm()
       toast(isReceiptOverlay ? 'Receipt discarded.' : 'Transaction deleted.')
       setOverlayTx(null)
     } catch (error) {
@@ -1487,22 +1533,36 @@ export function ChatSheet({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs text-muted-foreground"
+                  size="icon-sm"
+                  className="text-muted-foreground"
                   onClick={() => navigateAway('/journal')}
+                  aria-label="Open memory journal"
                 >
-                  Memory
+                  <NotebookText className="size-4" />
+                </Button>
+              )}
+              {!isQuick && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-label="Open chat history"
+                >
+                  <History className="size-4" />
                 </Button>
               )}
               {messages.length > 0 && (
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs text-muted-foreground"
+                  size="icon-sm"
+                  className="text-muted-foreground"
                   onClick={() => onNewTopic?.()}
+                  aria-label="Start new topic"
                 >
-                  New topic
+                  <SquarePen className="size-4" />
                 </Button>
               )}
               {isQuick && (
@@ -1624,6 +1684,7 @@ export function ChatSheet({
                     {(() => {
                       const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)
                       const undoTargets = resolveUndoTargets(m)
+                      const pendingCount = trail.filter((a) => a.status === 'pending').length
                       const showAudit =
                         trail.length > 0 ||
                         m.autoApplied ||
@@ -1639,6 +1700,17 @@ export function ChatSheet({
                           onResolvePending={resolveAction}
                           footer={
                             <>
+                              {pendingCount > 1 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-7 px-2.5 text-xs"
+                                  disabled={resolvingId !== null}
+                                  onClick={() => void confirmAllPending(m.pendingActions ?? [])}
+                                >
+                                  Confirm all ({pendingCount})
+                                </Button>
+                              )}
                               {m.viewHref && (
                                 <Button
                                   type="button"
@@ -1841,9 +1913,19 @@ export function ChatSheet({
             openInAppLabel={listLabelFor('transaction')}
             isSubmitting={
               updateTransaction.isPending ||
-              deleteTransaction.isPending ||
+              deleteFlow.isPending ||
               confirmReceiptItems.isPending
             }
+          />
+
+          <DeleteTransactionDialog
+            transaction={deleteFlow.pending?.transaction ?? null}
+            linkage={deleteFlow.pending?.linkage ?? null}
+            reverseLinked={deleteFlow.reverseLinked}
+            onReverseLinkedChange={deleteFlow.setReverseLinked}
+            onOpenChange={(open) => !open && deleteFlow.cancel()}
+            onConfirm={handleConfirmDeleteOverlayTransaction}
+            isPending={deleteFlow.isPending}
           />
 
           <BudgetForm
@@ -1911,6 +1993,18 @@ export function ChatSheet({
           open={aiSettingsOpen}
           onOpenChange={setAiSettingsOpen}
           onOpenFullSettings={() => navigateAway('/settings?tab=ai')}
+        />
+      )}
+
+      {!isQuick && (
+        <ChatHistorySheet
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          userId={session?.user.id}
+          walletId={walletId}
+          activeConversationId={conversationId}
+          busy={historyLoading}
+          onSelect={loadConversation}
         />
       )}
     </>

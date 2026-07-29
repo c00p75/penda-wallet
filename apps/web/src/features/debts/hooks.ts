@@ -5,6 +5,7 @@ import {
   addPayment,
   archiveDebt,
   createDebt,
+  deleteDebtPayment,
   fetchArchivedDebts,
   fetchDebts,
   fetchPayments,
@@ -121,9 +122,10 @@ export function useAddPayment(walletId: string | undefined, debtId: string | und
       debtName: string
       direction: DebtDirection
     }) => {
+      let transactionId: string | null = null
       if (accountId) {
         const categoryId = await fetchDebtPaymentCategoryId()
-        await createTransaction.mutateAsync({
+        const tx = await createTransaction.mutateAsync({
           category_id: categoryId,
           amount_minor: amountMinor,
           currency,
@@ -133,12 +135,26 @@ export function useAddPayment(walletId: string | undefined, debtId: string | und
           transaction_date: date,
           account_id: accountId,
         })
+        transactionId = tx.id
       }
-      return addPayment(debtId!, amountMinor, date, accountId)
+      return addPayment(debtId!, amountMinor, date, accountId, transactionId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: debtsKey(walletId) })
       queryClient.invalidateQueries({ queryKey: paymentsKey(debtId) })
+      queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })
+      queryClient.invalidateQueries({ queryKey: ['budget-progress', walletId] })
+    },
+  })
+}
+
+/** Reverses a debt payment (deleting it restores the debt's balance via trigger). */
+export function useReverseDebtPayment(walletId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (paymentId: string) => deleteDebtPayment(paymentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: debtsKey(walletId) })
       queryClient.invalidateQueries({ queryKey: ['transactions', walletId] })
       queryClient.invalidateQueries({ queryKey: ['budget-progress', walletId] })
     },

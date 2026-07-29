@@ -31,4 +31,6 @@ export interface DebtPayment {
   paid_date: string
   /** Pocket the payment was paid from (i_owe) or received into (owed_to_me). */
   account_id: string | null
+  /** The linked pocket transaction this payment posted, if any. */
+  transaction_id: string | null
 }

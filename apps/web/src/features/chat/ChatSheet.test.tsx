@@ -16,6 +16,7 @@ const { sendMock, confirmMock, streamMock } = vi.hoisted(() => ({
 vi.mock('./hooks', () => ({
   useSendChatMessage: () => ({ mutateAsync: sendMock, isPending: false }),
   useConfirmAiAction: () => ({ mutateAsync: confirmMock, isPending: false }),
+  useChatConversations: () => ({ data: [], isLoading: false }),
   invalidateAfterChatResponse: vi.fn(),
 }))
 vi.mock('./api', async () => {
@@ -60,6 +61,7 @@ vi.mock('@/features/transactions/hooks', () => ({
   useUpdateTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useConfirmReceiptItems: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTransactions: () => ({ data: [] }),
 }))
 vi.mock('@/features/budgets/hooks', () => ({
   useUpdateBudget: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -68,6 +70,7 @@ vi.mock('@/features/budgets/hooks', () => ({
 vi.mock('@/features/debts/hooks', () => ({
   useUpdateDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useArchiveDebt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReverseDebtPayment: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/features/goals/hooks', () => ({
   useUpdateSavingsGoal: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -417,6 +420,49 @@ describe('ChatSheet staged edit/delete confirmation', () => {
     )
     expect(await screen.findByText('Cancelled')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull()
+  })
+
+  it('shows Confirm all for multiple pending items, and confirms each one in turn', async () => {
+    const pendingA = {
+      id: 'b1',
+      kind: 'create' as const,
+      domain: 'budget',
+      summary: 'Create a monthly budget of K1200.00 for Housing.',
+    }
+    const pendingB = {
+      id: 'b2',
+      kind: 'create' as const,
+      domain: 'budget',
+      summary: 'Create a monthly budget of K900.00 for Food.',
+    }
+    sendMock.mockResolvedValue(reply({ pendingActions: [pendingA, pendingB] }))
+    confirmMock.mockImplementation(async ({ actionId }: { actionId: string; decision: string }) => ({
+      ok: true,
+      status: 'confirmed',
+      domain: 'budget',
+      summary: actionId === pendingA.id ? pendingA.summary : pendingB.summary,
+    }))
+    renderSheet('ZMW')
+
+    await send('set up my budgets')
+    expect(await screen.findByRole('button', { name: 'Confirm all (2)' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm all (2)' }))
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(2))
+    expect(confirmMock).toHaveBeenNthCalledWith(1, { actionId: pendingA.id, decision: 'confirm' })
+    expect(confirmMock).toHaveBeenNthCalledWith(2, { actionId: pendingB.id, decision: 'confirm' })
+    await waitFor(() => expect(screen.getAllByText('Applied')).toHaveLength(2))
+  })
+
+  it('hides Confirm all when only one item is pending', async () => {
+    sendMock.mockResolvedValue(reply({ pendingActions: [pending] }))
+    renderSheet('ZMW')
+
+    await send('actually it was K15 not K10')
+
+    expect(await screen.findByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    expect(screen.queryByText(/Confirm all/)).toBeNull()
   })
 })
 

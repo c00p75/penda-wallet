@@ -23,6 +23,7 @@ import {
   useUpdateAccount,
 } from '@/features/accounts/hooks'
 import { AccountForm } from '@/features/accounts/AccountForm'
+import { PocketProviderManager, PocketTypeManager } from '@/features/accounts/PocketAttributeManager'
 import type { Account, AccountInput } from '@/features/accounts/types'
 import {
   useCreateWallet,
@@ -221,8 +222,8 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Pockets under this money account (Cash, Airtel Money, MTN, Zanaco…). Default for new
-            logs: {accounts.find((a) => a.id === defaultAccountId(accounts))?.name ?? 'Cash'}.
+            Pockets under this money account (Cash, mobile money, bank…). Default for new logs:{' '}
+            {accounts.find((a) => a.id === defaultAccountId(accounts))?.name ?? 'Cash'}.
           </p>
           {accounts.map((account) => (
             <button
@@ -245,6 +246,24 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
           {accounts.length === 0 && (
             <p className="text-sm text-muted-foreground">No pockets yet. Add Cash to get started.</p>
           )}
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2">
+          <Label>Pocket types</Label>
+          <p className="text-xs text-muted-foreground">
+            Add, rename, or delete the Types pockets can use (Cash, Mobile money, Bank…).
+          </p>
+          <PocketTypeManager walletId={wallet.id} />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>Providers</Label>
+          <p className="text-xs text-muted-foreground">
+            Your banks, mobile money operators, or other providers — fully custom to you.
+          </p>
+          <PocketProviderManager walletId={wallet.id} />
         </div>
 
         <Separator />
@@ -340,6 +359,7 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
           setAccountFormOpen(open)
           if (!open) setEditingAccount(null)
         }}
+        walletId={wallet.id}
         account={editingAccount}
         existingNames={accounts.map((a) => a.name)}
         onSubmit={handleAccountSubmit}

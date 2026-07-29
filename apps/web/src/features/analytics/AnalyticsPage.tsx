@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Bell, BellRinging, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -56,6 +56,7 @@ export function AnalyticsContent() {
   const { isPremium } = useEntitlement(session?.user.id)
   const [period, setPeriod] = useState<AnalyticsPeriod>('6m')
   const [categoryType, setCategoryType] = useState<'expense' | 'income'>('expense')
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [highlightInsightId] = useState(() => searchParams.get('insight'))
 
@@ -239,6 +240,7 @@ export function AnalyticsContent() {
             currency={wallet.base_currency}
             year={now.getFullYear()}
             month={now.getMonth()}
+            onDayClick={(date) => navigate(`/transactions?date=${date}`)}
           />
         </CardContent>
       </Card>
