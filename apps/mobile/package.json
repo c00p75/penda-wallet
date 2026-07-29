@@ -47,6 +47,7 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "eas-cli": "^21.0.2",
+    "oxlint": "^1.71.0",
     "typescript": "~6.0.3",
     "vitest": "^3.2.7"
   },
@@ -57,6 +58,7 @@
     "web": "expo start --web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
     "prebuild": "expo prebuild",
     "build:dev": "eas build --profile development --platform all",
     "build:preview": "eas build --profile preview --platform all",
