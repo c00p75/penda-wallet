@@ -209,6 +209,7 @@ describe('ChatSheet auto-send (Penda speaks first)', () => {
       undefined,
       expect.any(Object),
       expect.any(AbortSignal),
+      [],
     )
     // The seed shows as the user's turn and Penda replies first.
     expect(screen.getByText('Help me plan my budget')).toBeInTheDocument()
@@ -442,6 +443,7 @@ describe('ChatSheet failed sends', () => {
       undefined,
       expect.any(Object),
       expect.any(AbortSignal),
+      [],
     )
   })
 })
@@ -461,6 +463,7 @@ describe('ChatSheet suggested prompts', () => {
         undefined,
         expect.any(Object),
         expect.any(AbortSignal),
+        [],
       ),
     )
     expect(await screen.findByText('Here you go.')).toBeInTheDocument()
