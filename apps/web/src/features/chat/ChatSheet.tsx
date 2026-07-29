@@ -58,6 +58,7 @@ import {
   toolUi,
   listHrefFor,
   listLabelFor,
+  viewHrefFor,
   withViewHrefs,
 } from './actionMeta'
 import type { ChatMode } from './chatStore'
@@ -672,7 +673,13 @@ export function ChatSheet({
         ? withViewHrefs(result.actions)
         : finalizeLiveActions(liveActionsRef.current)
     const undoTargets = resolveUndoTargets({ actions })
-    const primaryViewHref = actions.find((a) => a.viewHref)?.viewHref
+    // Prefer a specific entity's View (opens its detail sheet) over an earlier
+    // step's hub-only link (e.g. the query_records lookup that found the debt
+    // before log_debt_payment settled it would otherwise win and send View to
+    // /analytics instead of the debt itself).
+    const primaryViewHref =
+      actions.find((a) => a.viewHref && parseViewHref(a.viewHref).id)?.viewHref ??
+      actions.find((a) => a.viewHref)?.viewHref
     const reply: ChatMessage = {
       id: bubbleId,
       role: 'assistant',
@@ -1863,9 +1870,14 @@ export function ChatSheet({
             onSubmit={saveOverlayDebt}
             onArchive={overlayDebt ? archiveOverlayDebt : undefined}
             onOpenInApp={
-              overlayDebt ? () => openInApp(listHrefFor('debt') ?? '/goals?tab=debts') : undefined
+              overlayDebt
+                ? () =>
+                    openInApp(
+                      viewHrefFor('debt', overlayDebt.id) ?? listHrefFor('debt') ?? '/goals?tab=debts',
+                    )
+                : undefined
             }
-            openInAppLabel={listLabelFor('debt')}
+            openInAppLabel="View debt"
             isSubmitting={updateDebt.isPending || archiveDebt.isPending}
           />
 
