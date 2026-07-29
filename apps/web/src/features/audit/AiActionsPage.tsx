@@ -40,9 +40,12 @@ export function AiActionsPage() {
       toast('Undone. AI confirmations are required again.')
       await queryClient.invalidateQueries({ queryKey: ['transactions'] })
       await queryClient.invalidateQueries({ queryKey: ['budgets'] })
+      await queryClient.invalidateQueries({ queryKey: ['budget-progress'] })
       await queryClient.invalidateQueries({ queryKey: ['savings-goals'] })
       await queryClient.invalidateQueries({ queryKey: ['debts'] })
       await queryClient.invalidateQueries({ queryKey: ['categories'] })
+      await queryClient.invalidateQueries({ queryKey: ['recurring-transactions'] })
+      await queryClient.invalidateQueries({ queryKey: ['commitment-pacts'] })
       await queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', userId] })
       await queryClient.invalidateQueries({ queryKey: ['profile', userId] })
     } catch (error) {

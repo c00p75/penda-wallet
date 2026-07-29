@@ -176,19 +176,23 @@ async function generateForWallet(
   let notified = 0
   for (let i = 0; i < premiumIds.length; i++) {
     const digestText = digestByKey.get(profileKey(profiles[i]))!
-    await supabase.from('ai_insights').insert({
-      wallet_id: walletId,
-      user_id: premiumIds[i],
-      type: 'weekly_digest',
-      content: {
-        text: digestText,
-        total_spent_minor: totalSpentMinor,
-        total_income_minor: totalIncomeMinor,
-        top_categories: topCategories,
-      },
-      period_start: periodStart,
-      period_end: periodEnd,
-    })
+    const { data: insightRow } = await supabase
+      .from('ai_insights')
+      .insert({
+        wallet_id: walletId,
+        user_id: premiumIds[i],
+        type: 'weekly_digest',
+        content: {
+          text: digestText,
+          total_spent_minor: totalSpentMinor,
+          total_income_minor: totalIncomeMinor,
+          top_categories: topCategories,
+        },
+        period_start: periodStart,
+        period_end: periodEnd,
+      })
+      .select('id')
+      .single()
 
     await notifyUser(supabase, {
       userId: premiumIds[i],
@@ -196,9 +200,9 @@ async function generateForWallet(
       kind: 'insight',
       title: 'Your weekly recap',
       body: digestText,
-      href: '/analytics',
+      href: insightRow?.id ? `/analytics?insight=${insightRow.id}` : '/analytics',
       dedupeKey: `weekly:${walletId}:${periodEnd}`,
-      payload: { period_start: periodStart, period_end: periodEnd },
+      payload: { period_start: periodStart, period_end: periodEnd, insight_id: insightRow?.id ?? null },
     })
     notified++
   }
@@ -290,21 +294,25 @@ async function generateAnnualRecap(
       recapByKey.set(key, body)
     }
 
-    await supabase.from('ai_insights').insert({
-      wallet_id: walletId,
-      user_id: userId,
-      type: 'weekly_digest',
-      content: {
-        text: body,
-        kind: 'annual_recap',
-        year,
-        total_spent_minor: spent,
-        total_income_minor: income,
-        top_categories: topCategories,
-      },
-      period_start: periodStart,
-      period_end: periodEnd,
-    })
+    const { data: insightRow } = await supabase
+      .from('ai_insights')
+      .insert({
+        wallet_id: walletId,
+        user_id: userId,
+        type: 'weekly_digest',
+        content: {
+          text: body,
+          kind: 'annual_recap',
+          year,
+          total_spent_minor: spent,
+          total_income_minor: income,
+          top_categories: topCategories,
+        },
+        period_start: periodStart,
+        period_end: periodEnd,
+      })
+      .select('id')
+      .single()
 
     await notifyUser(supabase, {
       userId,
@@ -312,9 +320,9 @@ async function generateAnnualRecap(
       kind: 'insight',
       title: `${year} year in review`,
       body,
-      href: '/analytics',
+      href: insightRow?.id ? `/analytics?insight=${insightRow.id}` : '/analytics',
       dedupeKey: `annual:${walletId}:${year}`,
-      payload: { year },
+      payload: { year, insight_id: insightRow?.id ?? null },
     })
     notified++
   }

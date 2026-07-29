@@ -23,6 +23,7 @@ import {
   type AiTrust,
 } from '../_shared/aiTrust.ts'
 import { findCategory } from '../_shared/categories.ts'
+import { DEBT_PAYMENT_CATEGORY_NAME } from '../_shared/debtPaymentCategory.ts'
 import { executePendingAction } from '../_shared/executePendingAction.ts'
 import {
   computeAccountBalanceMinor,
@@ -1299,12 +1300,18 @@ right?" so the user can correct lasting mistakes.
 
 When the user describes a purchase, payment, or income (e.g. "I spent 12 on coffee at Blue Bottle",
 "got paid 2000"), call the create_transaction tool with your best judgment for amount, type,
-category, merchant, and date.
+category, merchant, and date. If they name a pocket anywhere in the sentence, in phrasing like
+"into Airtel Money", "from my Cash", "on my MTN MoMo", "via", or "with", set account to that exact
+pocket name, it does not have to be the first or last word. Only omit account when no pocket is
+named, so it defaults to the default pocket.
 
 When the user tells you their actual current balance or total, what they HAVE right now rather than
 a single transaction (e.g. "my balance is 1200", "I have about 350 in mobile money", "roughly 5k in
 total"), call set_balance with that number. Do NOT log it as an income transaction: set_balance
-reconciles the running total to reality and posts any balancing entry for you.
+reconciles the running total to reality and posts any balancing entry for you. If they name a pocket
+(e.g. "I have about 350 in mobile money" -> account "MTN MoMo" or whichever pocket that is), set
+account to that pocket so only it gets reconciled. Only omit account when they mean their whole
+money account total, since omitting it reconciles everything, not just one pocket.
 
 Tell apart a payment that just happened from a description of their situation. "Got paid 2000" is a
 real income event, log it with create_transaction. "I usually earn about 2000 a month" or "I get
@@ -1522,9 +1529,12 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
         'loan", "settle the loan", "I cleared my debt with Amara", or "mark it paid off" mean. It logs ' +
         'a payment so the debt balance drops and the card\'s progress bar fills, exactly like tapping ' +
         '"Log a payment" on the debt. Find the debt id first with query_records. To settle a debt in ' +
-        'full, omit amount and the entire outstanding balance is paid. Runs immediately. This is the ' +
-        'ONLY correct way to pay down or settle a debt: never edit the principal with update_record ' +
-        'and never delete the debt to mark it paid.',
+        'full, omit amount and the entire outstanding balance is paid. Also posts a linked transaction ' +
+        'to the pocket the money moved through, so that pocket\'s balance actually reflects the payment. ' +
+        'If they name a pocket ("via Mobile Money", "from my Cash"), set account to it; otherwise it ' +
+        'falls back to the default pocket, same as leaving the pocket picker on its default in the app. ' +
+        'Runs immediately. This is the ONLY correct way to pay down or settle a debt: never edit the ' +
+        'principal with update_record and never delete the debt to mark it paid.',
       parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -1533,6 +1543,13 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
             type: 'number',
             description:
               'Payment amount as a decimal, e.g. 200. Omit to settle the full outstanding balance.',
+          },
+          account: {
+            type: 'string',
+            ...(accountNames.length > 0 ? { enum: accountNames } : {}),
+            description:
+              'Pocket the payment was paid from (i_owe) or received into (owed_to_me), e.g. "Airtel ' +
+              'Money". Omit if no pocket is mentioned; it defaults to the default pocket.',
           },
           paid_date: {
             type: 'string',
@@ -2302,10 +2319,15 @@ async function stageCreateDebt(ctx: ToolContext, input: Record<string, unknown>)
   })
 }
 
-// Repaying / settling a debt. Mirrors the "Log a payment" button: insert a
-// debt_payments row and let the sync_debt_balance trigger drop balance_minor
-// (which is what fills the card's progress bar). Never touches principal or
-// deletes the debt, so history stays intact and the card reads correctly.
+// Repaying / settling a debt. Mirrors the "Log a payment" button: posts a
+// linked transaction to the resolved pocket (so its balance actually reflects
+// the payment, filed under the system "Debt payment" category), then inserts
+// a debt_payments row and lets the sync_debt_balance trigger drop
+// balance_minor (which is what fills the card's progress bar). Never touches
+// principal or deletes the debt, so history stays intact and the card reads
+// correctly. Same two-step shape as the app's own PaymentForm → useAddPayment
+// (not the atomic log_borrow_or_lend RPC) — kept consistent with that path
+// rather than introduced as a one-off.
 async function handleLogDebtPayment(
   ctx: ToolContext,
   args: Record<string, unknown>,
@@ -2315,7 +2337,7 @@ async function handleLogDebtPayment(
 
   const { data: debt, error: loadError } = await ctx.supabase
     .from('debts')
-    .select('id, name, balance_minor, wallet_id, archived_at')
+    .select('id, name, direction, balance_minor, wallet_id, archived_at')
     .eq('id', id)
     .maybeSingle()
   if (loadError) return { summary: `Failed to load that debt: ${loadError.message}` }
@@ -2346,16 +2368,42 @@ async function handleLogDebtPayment(
   const paidDate =
     typeof args.paid_date === 'string' && args.paid_date ? args.paid_date : today()
 
+  // Resolve the pocket the payment moved through, same fallback as
+  // create_transaction: the named pocket, else the wallet's default one.
+  const fallbackAccount = await defaultAccountId(ctx.supabase, ctx.walletId)
+  const accountId = resolveAccountId(ctx.accounts, args.account, fallbackAccount)
+
+  if (accountId) {
+    const categoryId = findCategory(ctx.categories, DEBT_PAYMENT_CATEGORY_NAME)?.id ?? null
+    const { error: txError } = await ctx.supabase.from('transactions').insert({
+      wallet_id: ctx.walletId,
+      created_by: ctx.userId,
+      account_id: accountId,
+      category_id: categoryId,
+      amount_minor: amountMinor,
+      currency: ctx.currency,
+      type: debt.direction === 'i_owe' ? 'expense' : 'income',
+      merchant: null,
+      description: `Payment: ${debt.name}`,
+      transaction_date: paidDate,
+      source: 'chat',
+      user_confirmed: true,
+    })
+    if (txError) return { summary: `Failed to log the linked transaction: ${txError.message}` }
+  }
+
   const { error: insertError } = await ctx.supabase
     .from('debt_payments')
-    .insert({ debt_id: debt.id, amount_minor: amountMinor, paid_date: paidDate })
+    .insert({ debt_id: debt.id, amount_minor: amountMinor, paid_date: paidDate, account_id: accountId })
   if (insertError) return { summary: `Failed to log payment: ${insertError.message}` }
 
   const remaining = outstanding - amountMinor
+  const accountName = accountId ? ctx.accounts.find((a) => a.id === accountId)?.name : null
+  const viaLabel = accountName ? ` via ${accountName}` : ''
   const summary =
     remaining <= 0
-      ? `Paid ${fmt(amountMinor, ctx.symbol)} toward "${debt.name}", now fully settled.`
-      : `Paid ${fmt(amountMinor, ctx.symbol)} toward "${debt.name}", ${fmt(remaining, ctx.symbol)} left.`
+      ? `Paid ${fmt(amountMinor, ctx.symbol)}${viaLabel} toward "${debt.name}", now fully settled.`
+      : `Paid ${fmt(amountMinor, ctx.symbol)}${viaLabel} toward "${debt.name}", ${fmt(remaining, ctx.symbol)} left.`
   return { summary, debtId: debt.id as string }
 }
 

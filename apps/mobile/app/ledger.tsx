@@ -40,6 +40,7 @@ export default function LedgerScreen() {
     mutationFn: (id: string) => deleteTransaction(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
     },
     onError: (err) => {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');
@@ -104,6 +105,7 @@ export default function LedgerScreen() {
         asset.mimeType ?? 'image/jpeg',
       );
       void queryClient.invalidateQueries({ queryKey: ['transactions', wallet.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet.id] });
       Alert.alert('Receipt scanned', 'A draft transaction was created from your receipt.');
     } catch (err) {
       Alert.alert('Scan failed', err instanceof Error ? err.message : 'Could not read receipt');

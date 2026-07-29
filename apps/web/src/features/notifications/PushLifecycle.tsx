@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
 import { recordNotificationOpen, refreshPushSubscription } from './api'
@@ -11,12 +11,35 @@ import { recordNotificationOpen, refreshPushSubscription } from './api'
 export function PushLifecycle() {
   const userId = useAuthStore((s) => s.session?.user.id)
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
 
   useEffect(() => {
     if (!userId) return
     void refreshPushSubscription(userId).catch(() => {})
   }, [userId])
+
+  // Cold start from a push notification: the service worker had no window
+  // client to postMessage, so it appended ?notif=<id> to the opened URL
+  // instead. Record the open here, then strip the param.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const notificationId = params.get('notif')
+    if (!notificationId) return
+
+    params.delete('notif')
+    const search = params.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true })
+
+    void recordNotificationOpen(notificationId)
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+        void queryClient.invalidateQueries({ queryKey: ['notifications-unread'] })
+      })
+      .catch(() => {})
+    // Runs once per landed URL; navigate/queryClient are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return

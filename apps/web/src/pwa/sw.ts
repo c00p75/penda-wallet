@@ -83,6 +83,15 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   )
 })
 
+// Cold-start (no window client yet) has no one to receive a postMessage, so
+// the notification id rides along in the URL instead — PushLifecycle picks it
+// up on boot and records the open there. Warm clients get it via postMessage.
+function withNotifParam(url: string, notificationId: string): string {
+  const parsed = new URL(url, self.location.origin)
+  parsed.searchParams.set('notif', notificationId)
+  return parsed.pathname + parsed.search + parsed.hash
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const data = event.notification.data as { url?: string; notificationId?: string | null } | undefined
@@ -93,23 +102,16 @@ self.addEventListener('notificationclick', (event) => {
     (async () => {
       const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of clientsList) {
-        if (notificationId) {
-          client.postMessage({ type: 'NOTIFICATION_OPENED', notificationId, url: targetUrl })
-        }
-        if ('focus' in client) {
-          await client.focus()
-          if ('navigate' in client && typeof (client as WindowClient).navigate === 'function') {
-            try {
-              await (client as WindowClient).navigate(targetUrl)
-              return
-            } catch {
-              // fall through to openWindow
-            }
-          }
-          return
-        }
+        if (!('focus' in client)) continue
+        // Let the page itself navigate via React Router — calling
+        // client.navigate() here too would race it with a hard document
+        // navigation, sometimes landing the SPA on the wrong screen.
+        client.postMessage({ type: 'NOTIFICATION_OPENED', notificationId, url: targetUrl })
+        await client.focus()
+        return
       }
-      await self.clients.openWindow(targetUrl)
+      const openUrl = notificationId ? withNotifParam(targetUrl, notificationId) : targetUrl
+      await self.clients.openWindow(openUrl)
     })(),
   )
 })

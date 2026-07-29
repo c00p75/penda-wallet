@@ -60,6 +60,9 @@ const MoneyRadarPage = lazy(() =>
 const NotificationsPage = lazy(() =>
   import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
 )
+const CalculatorPage = lazy(() =>
+  import('@/features/calculator/CalculatorPage').then((m) => ({ default: m.CalculatorPage })),
+)
 
 function OfflineQueueHost() {
   useOfflineQueueSync()
@@ -95,6 +98,7 @@ function App() {
           <Route path="/family" element={<FamilyHubPage />} />
           <Route path="/settle-up" element={<SettleUpPage />} />
           <Route path="/radar" element={<MoneyRadarPage />} />
+          <Route path="/calculator" element={<CalculatorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

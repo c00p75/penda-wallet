@@ -78,10 +78,15 @@ export async function fetchPayments(debtId: string): Promise<DebtPayment[]> {
   return data
 }
 
-export async function addPayment(debtId: string, amountMinor: number, date: string): Promise<void> {
+export async function addPayment(
+  debtId: string,
+  amountMinor: number,
+  date: string,
+  accountId: string | null,
+): Promise<void> {
   const { error } = await supabase
     .from('debt_payments')
-    .insert({ debt_id: debtId, amount_minor: amountMinor, paid_date: date })
+    .insert({ debt_id: debtId, amount_minor: amountMinor, paid_date: date, account_id: accountId })
 
   if (error) throw error
 }

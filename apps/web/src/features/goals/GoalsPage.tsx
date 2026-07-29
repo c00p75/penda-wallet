@@ -23,6 +23,7 @@ import { HiddenAmount } from '@/features/lock/HiddenAmount'
 import { useChatStore } from '@/features/chat/chatStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCurrentWallet } from '@/features/wallets/hooks'
+import { useAccounts } from '@/features/accounts/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { lifeEventActive } from '@/features/lifeEvents/types'
@@ -94,6 +95,7 @@ export function GoalsPage() {
   const { data: wallet } = useCurrentWallet()
   const { data: profile } = useProfile(session?.user.id)
   const { data: transactions = [] } = useTransactions(wallet?.id)
+  const { data: accounts = [] } = useAccounts(wallet?.id)
   const [searchParams, setSearchParams] = useSearchParams()
   const deepLinkDebtId = searchParams.get('debt')
   const tabParam = searchParams.get('tab')
@@ -277,9 +279,17 @@ export function GoalsPage() {
     }
   }
 
-  async function handlePayment(amountMinor: number, date: string) {
+  async function handlePayment(amountMinor: number, date: string, accountId: string | null) {
+    if (!payingDebt || !wallet) return
     try {
-      await addPayment.mutateAsync({ amountMinor, date })
+      await addPayment.mutateAsync({
+        amountMinor,
+        date,
+        accountId,
+        currency: wallet.base_currency,
+        debtName: payingDebt.name,
+        direction: payingDebt.direction,
+      })
       toast('Payment logged.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong.')
@@ -869,6 +879,7 @@ export function GoalsPage() {
         open={!!payingDebt}
         onOpenChange={(open) => !open && setPayingDebt(null)}
         debtName={payingDebt?.name ?? ''}
+        accounts={accounts}
         onSubmit={handlePayment}
         isSubmitting={addPayment.isPending}
       />

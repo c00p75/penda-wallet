@@ -1013,9 +1013,12 @@ export function ChatSheet({
       const userId = session.user.id
       void queryClient.invalidateQueries({ queryKey: ['transactions'] })
       void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+      void queryClient.invalidateQueries({ queryKey: ['budget-progress'] })
       void queryClient.invalidateQueries({ queryKey: ['savings-goals'] })
       void queryClient.invalidateQueries({ queryKey: ['debts'] })
       void queryClient.invalidateQueries({ queryKey: ['categories'] })
+      void queryClient.invalidateQueries({ queryKey: ['recurring-transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['commitment-pacts'] })
       void queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', userId] })
       void queryClient.invalidateQueries({ queryKey: ['profile', userId] })
       void queryClient.invalidateQueries({ queryKey: ['insights', walletId] })

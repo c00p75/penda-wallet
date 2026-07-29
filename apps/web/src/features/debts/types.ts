@@ -29,4 +29,6 @@ export interface DebtPayment {
   debt_id: string
   amount_minor: number
   paid_date: string
+  /** Pocket the payment was paid from (i_owe) or received into (owed_to_me). */
+  account_id: string | null
 }

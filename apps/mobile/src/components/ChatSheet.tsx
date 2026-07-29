@@ -34,6 +34,24 @@ interface ChatSheetProps {
   onClose: () => void;
 }
 
+// Every wallet-scoped domain the AI tools can create/edit/confirm (create_transaction,
+// set_balance, create_debt, create_budget, create_goal, create_recurring_transaction,
+// create_pact, create_category, log_borrowed_or_lent_money, delete_record), so any staged
+// or streamed AI action busts every screen that could be showing stale data for it.
+const AI_MUTATED_QUERY_DOMAINS = [
+  'transactions',
+  'accounts',
+  'budgets',
+  'budgetProgress',
+  'goals',
+  'goals-archived',
+  'debts',
+  'categories',
+  'recurring',
+  'missions',
+  'missions-archived',
+];
+
 const HOLD_THRESHOLD_MS = 250;
 const SILENCE_LEVEL = 0.08;
 const SILENCE_STOP_MS = 1400;
@@ -206,9 +224,9 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
                 actions: payload.actions,
                 autoApplied: payload.autoApplied,
               });
-              void queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
-              void queryClient.invalidateQueries({ queryKey: ['budgets', walletId] });
-              void queryClient.invalidateQueries({ queryKey: ['goals', walletId] });
+              AI_MUTATED_QUERY_DOMAINS.forEach((domain) =>
+                void queryClient.invalidateQueries({ queryKey: [domain, walletId] }),
+              );
               scrollToEnd();
               maybeRelisten(payload.reply, payload.pendingActions);
             },
@@ -251,7 +269,9 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
     try {
       await confirmAiAction(action.id, decision);
       setActionStatus(action.id, decision === 'confirm' ? 'confirmed' : 'cancelled');
-      void queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
+      AI_MUTATED_QUERY_DOMAINS.forEach((domain) =>
+        void queryClient.invalidateQueries({ queryKey: [domain, walletId] }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed');
     } finally {
@@ -267,7 +287,9 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       if (!full) throw new Error('That change is no longer available to undo.');
       await undoAiAction(full, session.user.id);
       setActionStatus(action.id, 'undone');
-      void queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
+      AI_MUTATED_QUERY_DOMAINS.forEach((domain) =>
+        void queryClient.invalidateQueries({ queryKey: [domain, walletId] }),
+      );
       void queryClient.invalidateQueries({ queryKey: ['profile', session.user.id] });
       void queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', session.user.id] });
     } catch (err) {

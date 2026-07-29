@@ -106,6 +106,9 @@
   --viz-seq-650: #104281;
   --viz-muted-ink: #898781;
   --viz-gridline: #e1e0d9;
+  /* Categorical pair for income vs. expense (cashflow trend, category toggle); mode-invariant, validated */
+  --viz-income: #5a7cf1;
+  --viz-expense: #dc5f82;
   /* Status colors (budget/goal progress); reserved, never used for series identity */
   --status-good: #1a7f4b;
   --status-warning: #b7791f;
@@ -277,6 +280,8 @@ body {
   --viz-seq-650: #86b6ef;
   --viz-muted-ink: #898781;
   --viz-gridline: #2c2c2a;
+  --viz-income: #5a7cf1;
+  --viz-expense: #dc5f82;
   --status-good: #3fb87f;
   --status-warning: #d9a441;
   --status-critical: #e0685c;

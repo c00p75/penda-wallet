@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
+  Calculator,
   CalendarBlank,
   Camera,
   ChatCircle,
@@ -93,6 +94,12 @@ export function WalletSheet({ open, onOpenChange }: WalletSheetProps) {
       label: 'Compete',
       tone: 'rose' as const,
       onTap: () => runAndClose(() => navigate('/challenges')),
+    },
+    {
+      icon: Calculator,
+      label: 'Calculator',
+      tone: 'mint' as const,
+      onTap: () => runAndClose(() => navigate('/calculator')),
     },
   ]
 

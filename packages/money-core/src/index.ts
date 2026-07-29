@@ -3,6 +3,10 @@ export {
   BALANCE_ADJUSTMENT_CATEGORY_NAME,
   isBalanceAdjustmentCategory,
 } from './balanceAdjustment'
+export {
+  DEBT_PAYMENT_CATEGORY_NAME,
+  isDebtPaymentCategory,
+} from './debtPaymentCategory'
 export { parseMoMoText, type MoMoProvider, type ParsedMoMo } from './momoParser'
 export {
   projectCashflow,

@@ -66,6 +66,7 @@ export function useSmsIngest() {
         });
 
         void queryClient.invalidateQueries({ queryKey: ['transactions', activeWalletId] });
+        void queryClient.invalidateQueries({ queryKey: ['budgetProgress', activeWalletId] });
         if (!opts?.silent) {
           Alert.alert(
             'Transaction logged',

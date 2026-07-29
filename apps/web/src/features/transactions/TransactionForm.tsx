@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { isBalanceAdjustmentCategory } from '@penda/money-core'
+import { isBalanceAdjustmentCategory, isDebtPaymentCategory } from '@penda/money-core'
 import type { Category } from '@/features/categories/types'
 import type { Account } from '@/features/accounts/types'
 import { upsertCategorizationRule } from '@/features/categories/rulesApi'
@@ -447,7 +447,8 @@ export function TransactionForm({
                         {categories
                           .filter(
                             (category) =>
-                              !isBalanceAdjustmentCategory(category.name) ||
+                              (!isBalanceAdjustmentCategory(category.name) &&
+                                !isDebtPaymentCategory(category.name)) ||
                               category.id === line.categoryId,
                           )
                           .map((category) => (
@@ -531,7 +532,9 @@ export function TransactionForm({
                     {categories
                       .filter(
                         (category) =>
-                          !isBalanceAdjustmentCategory(category.name) || category.id === categoryId,
+                          (!isBalanceAdjustmentCategory(category.name) &&
+                            !isDebtPaymentCategory(category.name)) ||
+                          category.id === categoryId,
                       )
                       .map((category) => (
                         <SelectItem key={category.id} value={category.id}>

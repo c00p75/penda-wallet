@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { HeroCard } from '@/components/ui/hero-card'
 import { DateChip } from '@/components/ui/date-chip'
 import { SectionHeader } from '@/components/ui/section-header'
@@ -42,6 +42,25 @@ export function CashflowPage() {
   const { data: recurring = [] } = useRecurringTransactions(wallet?.id)
   const [horizon, setHorizon] = useState<Horizon>('30')
   const horizonDays = Number(horizon)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const [highlightDate] = useState(() => searchParams.get('date'))
+  const highlightRef = useRef<HTMLLIElement | null>(null)
+
+  // A bill-reminder notification landed here with ?date= pointing at the day
+  // it's due; scroll that row into view once, then drop the param.
+  useEffect(() => {
+    if (!searchParams.get('date')) return
+    const params = new URLSearchParams(searchParams)
+    params.delete('date')
+    const search = params.toString()
+    navigate({ search: search ? `?${search}` : '' }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (highlightDate) highlightRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [highlightDate])
 
   const projection = useMemo(() => {
     const from = new Date()
@@ -152,7 +171,14 @@ export function CashflowPage() {
         <SectionHeader title="Timeline" />
         <ol className="relative flex flex-col gap-0 border-l border-border/60 pl-4">
           {projection.days.map((day) => (
-            <TimelineRow key={day.date} day={day} currency={currency} isLowest={day.date === lowestBalance.date} />
+            <TimelineRow
+              key={day.date}
+              day={day}
+              currency={currency}
+              isLowest={day.date === lowestBalance.date}
+              highlighted={day.date === highlightDate}
+              innerRef={day.date === highlightDate ? (el) => (highlightRef.current = el) : undefined}
+            />
           ))}
         </ol>
       </section>
@@ -162,12 +188,30 @@ export function CashflowPage() {
   )
 }
 
-function TimelineRow({ day, currency, isLowest }: { day: ProjectedDay; currency: string; isLowest: boolean }) {
+function TimelineRow({
+  day,
+  currency,
+  isLowest,
+  highlighted,
+  innerRef,
+}: {
+  day: ProjectedDay
+  currency: string
+  isLowest: boolean
+  highlighted?: boolean
+  innerRef?: (el: HTMLLIElement | null) => void
+}) {
   const hasEvents = day.events.some((e) => e.kind !== 'spending')
   const negative = day.balanceMinor < 0
 
   return (
-    <li className="relative flex items-start justify-between gap-3 rounded-[1.35rem] py-2.5">
+    <li
+      ref={innerRef}
+      className={cn(
+        'relative flex items-start justify-between gap-3 rounded-[1.35rem] py-2.5',
+        highlighted && 'ring-2 ring-[var(--iris)] ring-offset-2 ring-offset-background',
+      )}
+    >
       <span
         className={cn(
           'absolute -left-[1.3rem] top-3.5 size-2.5 rounded-full border-2 border-background',

@@ -53,6 +53,7 @@ export default function HomeScreen() {
     mutationFn: (id: string) => deleteTransaction(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
     },
     onError: (err) => {
       Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete transaction');

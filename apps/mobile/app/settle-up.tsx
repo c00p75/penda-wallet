@@ -56,6 +56,7 @@ export default function SettleUpScreen() {
     onSuccess: () => {
       invalidate();
       void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
       Alert.alert('Done', 'Settlement recorded.');
     },
     onError: (err) => Alert.alert('Error', err instanceof Error ? err.message : 'Could not record'),

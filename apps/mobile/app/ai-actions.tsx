@@ -8,6 +8,24 @@ import { colors, spacing } from '@/src/lib/theme';
 import { canUndoAiAction, fetchAiPendingActions, undoAiAction } from '@/src/api/audit';
 import { useAuthStore } from '@/src/store/authStore';
 
+// Mirrors AI_MUTATED_QUERY_DOMAINS in ChatSheet.tsx: undoAiAction can reverse any staged
+// domain (debt, budget, goal, category, recurring, pact), not just a transaction, so every
+// domain needs busting here too. No walletId is available on this screen, so these match
+// every wallet's cached data for that key, same as the existing unscoped 'transactions' key.
+const AI_MUTATED_QUERY_DOMAINS = [
+  'transactions',
+  'accounts',
+  'budgets',
+  'budgetProgress',
+  'goals',
+  'goals-archived',
+  'debts',
+  'categories',
+  'recurring',
+  'missions',
+  'missions-archived',
+];
+
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(ms / 60_000);
@@ -33,7 +51,9 @@ export default function AiActionsScreen() {
     mutationFn: (action: (typeof actions)[number]) => undoAiAction(action, session!.user.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-pending-actions', session?.user.id] });
-      void queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      AI_MUTATED_QUERY_DOMAINS.forEach((domain) =>
+        void queryClient.invalidateQueries({ queryKey: [domain] }),
+      );
       void queryClient.invalidateQueries({ queryKey: ['profile', session?.user.id] });
       Alert.alert('Undone', 'AI confirmations are required again.');
     },

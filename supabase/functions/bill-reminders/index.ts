@@ -92,7 +92,7 @@ async function remindForBill(supabase: SupabaseClient, bill: RecurringRow, today
       kind: 'reminder',
       title,
       body,
-      href: '/cashflow',
+      href: `/cashflow?date=${bill.next_run_date}`,
       dedupeKey: `bill:${bill.id}:${bill.next_run_date}`,
       payload: { recurring_id: bill.id, next_run_date: bill.next_run_date },
     })

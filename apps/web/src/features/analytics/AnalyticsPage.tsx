@@ -1,7 +1,11 @@
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Bell, BellRinging, Sparkle } from '@/components/icons/product'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DateChip } from '@/components/ui/date-chip'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { BottomNav } from '@/components/BottomNav'
 import { AppHeader } from '@/components/AppHeader'
 import { useAuthStore } from '@/store/authStore'
@@ -16,9 +20,13 @@ import { formatMoney } from '@/lib/money'
 import { AiInsight } from '@/components/AiInsight'
 import { useDismissInsight, useInsights } from './hooks'
 import { CategoryBarChart } from './CategoryBarChart'
+import { CashflowSummary } from './CashflowSummary'
+import { CashflowTrendChart } from './CashflowTrendChart'
 import { SpendingCalendar } from './SpendingCalendar'
 import { InsightsList } from './InsightsList'
 import { CONFIDENCE_LABEL_COPY, computeConfidenceScore } from './confidenceScore'
+import { bucketCashflow, filterByRange, sumByType } from './aggregate'
+import { type AnalyticsPeriod, PERIOD_OPTIONS, bucketGranularityFor, periodRange, previousPeriodRange } from './period'
 
 export function AnalyticsPage() {
   return (
@@ -46,6 +54,20 @@ export function AnalyticsContent() {
   const { data: isSubscribed } = usePushSubscriptionStatus()
   const subscribeToPush = useSubscribeToPush()
   const { isPremium } = useEntitlement(session?.user.id)
+  const [period, setPeriod] = useState<AnalyticsPeriod>('6m')
+  const [categoryType, setCategoryType] = useState<'expense' | 'income'>('expense')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [highlightInsightId] = useState(() => searchParams.get('insight'))
+
+  // A recap notification landed here with ?insight= pointing at the card to
+  // show; drop the param once captured so it doesn't linger in the URL.
+  useEffect(() => {
+    if (!searchParams.get('insight')) return
+    const params = new URLSearchParams(searchParams)
+    params.delete('insight')
+    setSearchParams(params, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const now = new Date()
   const monthTransactions = transactions.filter((tx) => {
@@ -85,6 +107,16 @@ export function AnalyticsContent() {
     goalProgressAvg,
     budgetAdherence,
   })
+
+  const range = periodRange(period, now)
+  const previousRange = previousPeriodRange(period, now)
+  const periodTransactions = filterByRange(transactions, range)
+  const previousPeriodTransactions = filterByRange(transactions, previousRange)
+  const periodIncomeMinor = sumByType(periodTransactions, 'income')
+  const periodExpenseMinor = sumByType(periodTransactions, 'expense')
+  const previousIncomeMinor = sumByType(previousPeriodTransactions, 'income')
+  const previousExpenseMinor = sumByType(previousPeriodTransactions, 'expense')
+  const trendBuckets = bucketCashflow(periodTransactions, range, bucketGranularityFor(period))
 
   async function handleEnableNotifications() {
     if (!session) return
@@ -151,18 +183,55 @@ export function AnalyticsContent() {
         </CardContent>
       </Card>
 
+      <DateChip value={period} onChange={(v) => setPeriod(v as AnalyticsPeriod)} options={PERIOD_OPTIONS} />
+
+      <CashflowSummary
+        currency={wallet.base_currency}
+        incomeMinor={periodIncomeMinor}
+        expenseMinor={periodExpenseMinor}
+        previousIncomeMinor={previousIncomeMinor}
+        previousExpenseMinor={previousExpenseMinor}
+      />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold tracking-tight">This month by category</CardTitle>
+          <CardTitle className="text-lg font-semibold tracking-tight">Income vs. expenses</CardTitle>
         </CardHeader>
         <CardContent>
-          <CategoryBarChart transactions={monthTransactions} currency={wallet.base_currency} />
+          <CashflowTrendChart buckets={trendBuckets} currency={wallet.base_currency} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg font-semibold tracking-tight">By category</CardTitle>
+          <ToggleGroup
+            type="single"
+            value={categoryType}
+            onValueChange={(v) => v && setCategoryType(v as 'expense' | 'income')}
+          >
+            <ToggleGroupItem value="expense" size="sm">
+              Expenses
+            </ToggleGroupItem>
+            <ToggleGroupItem value="income" size="sm">
+              Income
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </CardHeader>
+        <CardContent>
+          <CategoryBarChart
+            transactions={periodTransactions}
+            currency={wallet.base_currency}
+            type={categoryType}
+            color={categoryType === 'expense' ? 'var(--viz-expense)' : 'var(--viz-income)'}
+          />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-lg font-semibold tracking-tight">Daily spending</CardTitle>
+          <CardDescription>This calendar always shows the current month.</CardDescription>
         </CardHeader>
         <CardContent>
           <SpendingCalendar
@@ -196,7 +265,11 @@ export function AnalyticsContent() {
         </CardHeader>
         <CardContent>
           {isPremium ? (
-            <InsightsList insights={insights} onDismiss={(id) => dismissInsight.mutate(id)} />
+            <InsightsList
+              insights={insights}
+              onDismiss={(id) => dismissInsight.mutate(id)}
+              highlightId={highlightInsightId}
+            />
           ) : (
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <Sparkle className="size-6 text-primary" weight="duotone" />

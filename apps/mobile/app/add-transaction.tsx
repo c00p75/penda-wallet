@@ -74,6 +74,7 @@ export default function AddTransactionScreen() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['transactions', wallet?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['budgetProgress', wallet?.id] });
       router.back();
     },
     onError: (err) => {
