@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from './database.types.ts'
 
 export interface RateLimitWindow {
   maxRequests: number
@@ -27,7 +28,7 @@ export function rateLimitExceededMessage(_windowLabel: string): string {
  * never take down the feature it's protecting, but logs so it's visible.
  */
 async function underLimit(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   endpoint: string,
   window: RateLimitWindow,
@@ -51,7 +52,7 @@ async function underLimit(
  * user-facing message to return as a 429 if any window is exceeded.
  */
 export async function checkRateLimits(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   endpoint: string,
   windows: Record<string, RateLimitWindow>,

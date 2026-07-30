@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from '../_shared/database.types.ts'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -37,7 +38,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   let job = 'daily'
   try {
     const body = await req.json().catch(() => ({}))
@@ -59,7 +60,7 @@ Deno.serve(async (req) => {
   }
 })
 
-async function runDailyRituals(supabase: SupabaseClient) {
+async function runDailyRituals(supabase: SupabaseClient<Database>) {
   const { data: profiles, error } = await supabase
     .from('profiles')
     .select('id, ai_personality, mode, companion_prefs, notification_opt_in, engagement_stats')
@@ -79,7 +80,7 @@ async function runDailyRituals(supabase: SupabaseClient) {
 }
 
 async function ritualForUser(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   profile: {
     id: string
     ai_personality: string | null
@@ -147,7 +148,7 @@ async function ritualForUser(
 }
 
 async function sendPactFollowUps(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   walletId: string,
   today: string,
@@ -220,7 +221,7 @@ async function sendPactFollowUps(
 }
 
 async function sendPaydayCompanion(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   walletId: string,
   currency: string,
@@ -299,7 +300,7 @@ async function sendPaydayCompanion(
 }
 
 async function sendFamilyNudge(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   walletId: string,
   currency: string,
@@ -341,7 +342,7 @@ async function sendFamilyNudge(
   return true
 }
 
-async function runWeeklyLetters(supabase: SupabaseClient) {
+async function runWeeklyLetters(supabase: SupabaseClient<Database>) {
   const { data: wallets, error } = await supabase.from('wallets').select('id, base_currency')
   if (error) throw error
 
@@ -359,7 +360,7 @@ async function runWeeklyLetters(supabase: SupabaseClient) {
 }
 
 async function letterForWallet(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
   currency: string,
   periodStart: string,
@@ -571,7 +572,7 @@ async function letterForWallet(
 }
 
 async function insertCheckin(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   opts: {
     userId: string
     walletId: string
@@ -591,7 +592,7 @@ async function insertCheckin(
     status: 'pending',
     due_at: new Date().toISOString(),
     dedupe_key: opts.dedupeKey,
-    payload: opts.payload,
+    payload: opts.payload as unknown as Json,
   })
   if (error) {
     if (error.code === '23505') return false

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -23,7 +24,7 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return json({ error: 'Unauthorized' }, 401)
 
-  const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const authed = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   })
   const token = authHeader.replace('Bearer ', '')
@@ -33,7 +34,7 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: 'Unauthorized' }, 401)
 
   const userId = user.id
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const admin = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     await handleWallets(admin, userId)
@@ -62,14 +63,14 @@ Deno.serve(async (req) => {
 // Every wallet-scoped table with a created_by FK to profiles that would
 // otherwise block the auth-user delete. Kept in sync with `grep 'references
 // profiles'` across migrations, miss one and deleteUser fails on its FK.
-const AUTHORED_WALLET_TABLES = [
+const AUTHORED_WALLET_TABLES: (keyof Database['public']['Tables'])[] = [
   'transactions',
   'recurring_transactions',
   'spending_plans',
   'commitment_pacts',
 ]
 
-async function handleWallets(admin: SupabaseClient, userId: string) {
+async function handleWallets(admin: SupabaseClient<Database>, userId: string) {
   const { data: memberships } = await admin
     .from('wallet_members')
     .select('wallet_id')
@@ -105,13 +106,18 @@ async function handleWallets(admin: SupabaseClient, userId: string) {
     // Hand off authorship of everything the departing user created here, then leave.
     await admin.from('wallets').update({ created_by: heir }).eq('id', walletId).eq('created_by', userId)
     for (const table of AUTHORED_WALLET_TABLES) {
-      await admin.from(table).update({ created_by: heir }).eq('wallet_id', walletId).eq('created_by', userId)
+      // Dynamic, allowlist-bounded target table (see AUTHORED_WALLET_TABLES comment above).
+      await (admin as SupabaseClient)
+        .from(table)
+        .update({ created_by: heir })
+        .eq('wallet_id', walletId)
+        .eq('created_by', userId)
     }
     await admin.from('wallet_members').delete().eq('wallet_id', walletId).eq('user_id', userId)
   }
 }
 
-async function deleteReceipts(admin: SupabaseClient, userId: string) {
+async function deleteReceipts(admin: SupabaseClient<Database>, userId: string) {
   // All of a user's receipt files live under the single {userId}/ prefix.
   // Page through until the prefix is empty (list caps at 100 per call); the
   // bounded loop is a guard against an unexpected non-empty list.

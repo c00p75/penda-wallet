@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from '../_shared/database.types.ts'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import { checkRateLimits } from '../_shared/rateLimit.ts'
@@ -102,7 +103,7 @@ Deno.serve(async (req) => {
       return respond({ error: 'Missing Authorization header' }, 401)
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
 
@@ -199,7 +200,7 @@ Deno.serve(async (req) => {
         transaction_date: transactionDate,
         source: 'receipt',
         receipt_storage_path: body.storagePath,
-        ai_extraction: extraction,
+        ai_extraction: extraction as unknown as Json,
         user_confirmed: false,
       })
       .select('*, category:categories(id, name)')
@@ -344,7 +345,7 @@ function jsonResponse(body: unknown, cors: Record<string, string>, status = 200)
   })
 }
 
-async function fetchCategories(supabase: SupabaseClient, walletId: string): Promise<Category[]> {
+async function fetchCategories(supabase: SupabaseClient<Database>, walletId: string): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
     .select('id, name')
@@ -353,11 +354,13 @@ async function fetchCategories(supabase: SupabaseClient, walletId: string): Prom
   return data ?? []
 }
 
-async function fetchCategorizationRules(supabase: SupabaseClient, walletId: string): Promise<CategorizationRule[]> {
+async function fetchCategorizationRules(supabase: SupabaseClient<Database>, walletId: string): Promise<CategorizationRule[]> {
   const { data, error } = await supabase
     .from('categorization_rules')
     .select('match_type, match_value, category_id')
     .eq('wallet_id', walletId)
   if (error) throw error
-  return data ?? []
+  // match_type is a DB check-constrained text column (not a Postgres enum),
+  // so generated types widen it to string; narrow it back per the constraint.
+  return (data ?? []).map((row) => ({ ...row, match_type: row.match_type as CategorizationRule['match_type'] }))
 }

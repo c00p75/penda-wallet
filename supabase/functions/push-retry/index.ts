@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { processPushOutbox } from '../_shared/pushDeliver.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
@@ -13,7 +14,7 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Forbidden' }, { status: 403, headers: corsHeaders })
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     const result = await processPushOutbox(supabase, 75)

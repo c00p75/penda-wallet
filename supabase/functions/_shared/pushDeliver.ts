@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from './database.types.ts'
 import { sendPush } from './push.ts'
 
 export type PushPayload = { title: string; body: string; url?: string; tag?: string; notificationId?: string }
@@ -12,7 +13,7 @@ function backoffMinutes(attempts: number): number {
 }
 
 export async function deliverPushToUser(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   opts: {
     userId: string
     notificationId: string | null
@@ -28,7 +29,7 @@ export async function deliverPushToUser(
   let pushed = false
   for (const sub of subscriptions ?? []) {
     const result = await sendPush(
-      { endpoint: sub.endpoint, keys: sub.keys },
+      { endpoint: sub.endpoint, keys: sub.keys as { p256dh: string; auth: string } },
       {
         title: opts.payload.title,
         body: opts.payload.body,
@@ -110,7 +111,7 @@ export async function deliverPushToUser(
 }
 
 export async function processPushOutbox(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   limit = 50,
 ): Promise<{ processed: number; sent: number; dropped: number }> {
   const nowIso = new Date().toISOString()
@@ -144,7 +145,7 @@ export async function processPushOutbox(
 
     const payload = row.payload as PushPayload
     const result = await sendPush(
-      { endpoint: sub.endpoint, keys: sub.keys },
+      { endpoint: sub.endpoint, keys: sub.keys as { p256dh: string; auth: string } },
       {
         title: payload.title,
         body: payload.body,

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import { escapeHtml } from '../_shared/html.ts'
 import { notifyUser } from '../_shared/notify.ts'
@@ -37,12 +38,12 @@ Deno.serve(async (req) => {
 
     // User-scoped client: RLS enforces the invitee/owner-only visibility on
     // wallet_invites/wallets, so most authorization here is "free" via RLS.
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const userClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
     // Service-role client only for the one thing RLS can't do for us:
     // inserting into `notifications` (no client insert policy on that table).
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const serviceClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const token = authHeader.replace('Bearer ', '')
     const {
