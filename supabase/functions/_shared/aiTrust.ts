@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from './database.types.ts'
 
 export interface AiTrust {
   confirmed_ok: number
@@ -134,7 +135,7 @@ export function withUndo(trust: AiTrust): AiTrust {
 }
 
 export async function loadConsentAndTrust(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<{ consent: AiConsent; trust: AiTrust }> {
   const { data } = await supabase
@@ -149,22 +150,22 @@ export async function loadConsentAndTrust(
 }
 
 export async function persistTrustAfterConfirm(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   consent: AiConsent,
   trust: AiTrust,
 ): Promise<void> {
   const { trust: next, graduated } = withSuccessfulConfirm(trust)
-  const patch: Record<string, unknown> = { ai_trust: next }
+  const patch: { ai_trust: Json; ai_consent?: Json } = { ai_trust: next as unknown as Json }
   if (graduated) {
-    patch.ai_consent = { ...consent, act_without_confirm: true }
+    patch.ai_consent = { ...consent, act_without_confirm: true } as unknown as Json
   }
   const { error } = await supabase.from('profiles').update(patch).eq('id', userId)
   if (error) console.error('persistTrustAfterConfirm', error.message)
 }
 
 export async function persistTrustAfterUndo(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   consent: AiConsent,
   trust: AiTrust,
@@ -173,8 +174,8 @@ export async function persistTrustAfterUndo(
   const { error } = await supabase
     .from('profiles')
     .update({
-      ai_trust: next,
-      ai_consent: { ...consent, act_without_confirm: false },
+      ai_trust: next as unknown as Json,
+      ai_consent: { ...consent, act_without_confirm: false } as unknown as Json,
     })
     .eq('id', userId)
   if (error) console.error('persistTrustAfterUndo', error.message)

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from '../_shared/database.types.ts'
 import { fetchBalanceAdjustmentCategoryId } from '../_shared/balanceAdjustment.ts'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -196,7 +197,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     const { data: wallets, error: walletsError } = await supabase
@@ -225,7 +226,7 @@ Deno.serve(async (req) => {
   }
 })
 
-async function nudgeForWallet(supabase: SupabaseClient, walletId: string, currency: string) {
+async function nudgeForWallet(supabase: SupabaseClient<Database>, walletId: string, currency: string) {
   // Premium members first (parity with the weekly digest, proactive coaching
   // is a Premium surface): an all-free wallet skips the pace computation and
   // coaching scan entirely. One entitlements query instead of an is_premium
@@ -265,12 +266,14 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
         budget_id: string
         category_id: string | null
         effective_amount_minor: number
-        period: Period
+        period: string
       }) => ({
         id: row.budget_id,
         category_id: row.category_id,
         amount_minor: Number(row.effective_amount_minor),
-        period: row.period,
+        // get_budget_progress returns period as plain text; narrow to the
+        // budgets_period_check constraint's literal union (see migration 0059).
+        period: row.period as Period,
       }),
     )
 
@@ -375,7 +378,7 @@ async function nudgeForWallet(supabase: SupabaseClient, walletId: string, curren
       wallet_id: walletId,
       user_id: userId,
       type: 'recommendation',
-      content,
+      content: content as unknown as Json,
       period_start: day,
       period_end: day,
     })

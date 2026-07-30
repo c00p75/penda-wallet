@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from '../_shared/database.types.ts'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     const { data: wallets, error: walletsError } = await supabase.from('wallets').select('id, base_currency')
@@ -91,7 +92,7 @@ Deno.serve(async (req) => {
 })
 
 async function generateForWallet(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
   currency: string,
   periodStart: string,
@@ -187,7 +188,7 @@ async function generateForWallet(
           total_spent_minor: totalSpentMinor,
           total_income_minor: totalIncomeMinor,
           top_categories: topCategories,
-        },
+        } as unknown as Json,
         period_start: periodStart,
         period_end: periodEnd,
       })
@@ -211,7 +212,7 @@ async function generateForWallet(
 }
 
 async function generateAnnualRecap(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
   currency: string,
   year: number,
@@ -307,7 +308,7 @@ async function generateAnnualRecap(
           total_spent_minor: spent,
           total_income_minor: income,
           top_categories: topCategories,
-        },
+        } as unknown as Json,
         period_start: periodStart,
         period_end: periodEnd,
       })
@@ -429,7 +430,7 @@ interface InsightProfileContext {
   gender: string
 }
 
-async function fetchProfileContext(supabase: SupabaseClient, userId: string): Promise<InsightProfileContext> {
+async function fetchProfileContext(supabase: SupabaseClient<Database>, userId: string): Promise<InsightProfileContext> {
   const { data } = await supabase
     .from('profiles')
     .select('ai_personality, primary_goal, primary_goals, gender')

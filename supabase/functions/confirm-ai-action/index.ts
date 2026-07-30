@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import {
   loadConsentAndTrust,
@@ -28,7 +29,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return respond({ error: 'Missing Authorization header' }, 401)
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
 
@@ -124,7 +125,7 @@ Deno.serve(async (req) => {
 })
 
 async function claim(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   id: string,
   status: 'confirmed' | 'cancelled',
 ): Promise<boolean> {

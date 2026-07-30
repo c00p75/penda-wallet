@@ -1,8 +1,9 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from './database.types.ts'
 
 /** Sum of income minus expense for a money account (transfers ignored). */
 export async function computeWalletBalanceMinor(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
 ): Promise<number> {
   const { data: rows, error } = await supabase
@@ -22,7 +23,7 @@ export async function computeWalletBalanceMinor(
 
 /** Balance for one pocket. Transfer legs use signed converted_amount_minor. */
 export async function computeAccountBalanceMinor(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   accountId: string,
 ): Promise<number> {
   const { data: rows, error } = await supabase
@@ -42,7 +43,7 @@ export async function computeAccountBalanceMinor(
 }
 
 export async function defaultAccountId(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase.rpc('default_account_id', { p_wallet_id: walletId })

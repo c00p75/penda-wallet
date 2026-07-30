@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import { checkRateLimits } from '../_shared/rateLimit.ts'
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
 
     // Anon key + the caller's JWT, so every read below runs under the user's
     // RLS: they only ever see their own wallet's transactions, goals, missions.
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
 
@@ -151,7 +152,7 @@ Deno.serve(async (req) => {
 
 // --- Data ------------------------------------------------------------------
 
-async function fetchWalletStats(supabase: SupabaseClient, walletId: string): Promise<WalletStats> {
+async function fetchWalletStats(supabase: SupabaseClient<Database>, walletId: string): Promise<WalletStats> {
   const currency = await fetchWalletCurrency(supabase, walletId)
   const since = daysAgo(HISTORY_DAYS)
 
@@ -190,12 +191,12 @@ async function fetchWalletStats(supabase: SupabaseClient, walletId: string): Pro
   return { currency, totalSpentMinor, totalIncomeMinor, topCategories, txCount: transactions.length }
 }
 
-async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): Promise<string> {
+async function fetchWalletCurrency(supabase: SupabaseClient<Database>, walletId: string): Promise<string> {
   const { data } = await supabase.from('wallets').select('base_currency').eq('id', walletId).maybeSingle()
   return data?.base_currency ?? 'USD'
 }
 
-async function fetchGoals(supabase: SupabaseClient, walletId: string): Promise<GoalContext[]> {
+async function fetchGoals(supabase: SupabaseClient<Database>, walletId: string): Promise<GoalContext[]> {
   const { data, error } = await supabase
     .from('savings_goals')
     .select('name, target_amount_minor, current_amount_minor, target_date, motivation')
@@ -212,7 +213,7 @@ async function fetchGoals(supabase: SupabaseClient, walletId: string): Promise<G
   }))
 }
 
-async function fetchActiveMissionTitles(supabase: SupabaseClient, walletId: string): Promise<string[]> {
+async function fetchActiveMissionTitles(supabase: SupabaseClient<Database>, walletId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from('financial_missions')
     .select('title')
@@ -223,7 +224,7 @@ async function fetchActiveMissionTitles(supabase: SupabaseClient, walletId: stri
   return (data ?? []).map((m) => m.title as string)
 }
 
-async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<ProfileContext> {
+async function fetchProfile(supabase: SupabaseClient<Database>, userId: string): Promise<ProfileContext> {
   const { data } = await supabase
     .from('profiles')
     .select('ai_personality, mode, primary_goal, primary_goals, gender')

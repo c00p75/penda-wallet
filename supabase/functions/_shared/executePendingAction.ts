@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from './database.types.ts'
 import { fetchBalanceAdjustmentCategoryId } from './balanceAdjustment.ts'
 import { computeAccountBalanceMinor, computeWalletBalanceMinor } from './walletBalance.ts'
 
@@ -6,7 +7,7 @@ import { computeAccountBalanceMinor, computeWalletBalanceMinor } from './walletB
 export const DOMAIN_TABLES: Record<
   string,
   {
-    table: string
+    table: keyof Database['public']['Tables']
     softDelete: boolean
     deletable: boolean
     /** Columns executePendingAction may write on update. */
@@ -148,7 +149,7 @@ export interface PendingActionRow {
 }
 
 export async function executePendingAction(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   action: PendingActionRow,
 ): Promise<{ targetId?: string } | void> {
   if (action.kind === 'reconcile') {
@@ -168,26 +169,31 @@ export async function executePendingAction(
       Object.entries(patch).filter(([column]) => target.columns.includes(column)),
     )
     if (Object.keys(safePatch).length === 0) throw new Error('Nothing to update.')
-    const { error } = await supabase.from(target.table).update(safePatch).eq('id', action.target_id)
+    // Dynamic, allowlist-bounded target table: real column safety comes from
+    // the columns.includes() filter above, not from a single static Row shape.
+    const { error } = await (supabase as SupabaseClient).from(target.table)
+      .update(safePatch)
+      .eq('id', action.target_id)
     if (error) throw error
     return
   }
 
   if (!target.deletable) throw new Error(`Deleting a ${action.domain} isn't allowed.`)
   if (target.softDelete) {
-    const { error } = await supabase
-      .from(target.table)
+    const { error } = await (supabase as SupabaseClient).from(target.table)
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', action.target_id)
     if (error) throw error
   } else {
-    const { error } = await supabase.from(target.table).delete().eq('id', action.target_id)
+    const { error } = await (supabase as SupabaseClient).from(target.table)
+      .delete()
+      .eq('id', action.target_id)
     if (error) throw error
   }
 }
 
 async function executeCreate(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   action: PendingActionRow,
   target: (typeof DOMAIN_TABLES)[string],
 ): Promise<{ targetId: string }> {
@@ -202,7 +208,11 @@ async function executeCreate(
   )
   if (Object.keys(safePatch).length === 0) throw new Error('Nothing to create.')
 
-  const { data, error } = await supabase.from(target.table).insert(safePatch).select('id').single()
+  const { data, error } = await (supabase as SupabaseClient)
+    .from(target.table)
+    .insert(safePatch)
+    .select('id')
+    .single()
   if (error) throw error
 
   const { error: updateError } = await supabase
@@ -223,7 +233,7 @@ async function executeCreate(
  * `patch.amount` is already in minor units (staged by set_balance).
  */
 async function executeReconcile(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   action: PendingActionRow,
 ): Promise<{ targetId?: string }> {
   const amount = Number(action.patch?.amount)

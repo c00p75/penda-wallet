@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from './database.types.ts'
 import { deliverPushToUser } from './pushDeliver.ts'
 import {
   isKindEnabled,
@@ -44,7 +45,7 @@ const PUSH_RATE_WINDOW_MINUTES = 60
  * then optionally Web-Push when the user opted in.
  */
 export async function notifyUser(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   input: NotifyUserInput,
 ): Promise<NotifyUserResult> {
   const { data: profile } = await supabase
@@ -90,7 +91,7 @@ export async function notifyUser(
     title: input.title,
     body: input.body,
     href,
-    payload: input.payload ?? {},
+    payload: (input.payload ?? {}) as unknown as Json,
     dedupe_key: input.dedupeKey ?? null,
   }
 

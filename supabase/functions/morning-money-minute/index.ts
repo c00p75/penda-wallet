@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { GoogleGenAI } from 'npm:@google/genai@2.11.0'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     const { data: profiles, error } = await supabase
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
 })
 
 async function sendMorningMinute(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   profile: {
     id: string
     notification_prefs: unknown
@@ -377,7 +378,7 @@ function joinGoalPhrases(phrases: string[]): string {
 }
 
 /** Set of user ids on the premium plan (one query for the whole batch). */
-async function fetchPremiumIds(supabase: SupabaseClient, ids: string[]): Promise<Set<string>> {
+async function fetchPremiumIds(supabase: SupabaseClient<Database>, ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set()
   const { data, error } = await supabase
     .from('entitlements')

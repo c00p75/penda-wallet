@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from './database.types.ts'
 
 export interface EngagementStats {
   nudge_opens: number
@@ -27,7 +28,7 @@ export function shouldSkipSoftNudge(stats: EngagementStats): boolean {
 }
 
 export async function loadEngagement(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<EngagementStats> {
   const { data } = await supabase

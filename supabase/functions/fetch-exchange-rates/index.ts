@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
       throw new Error('Unexpected rates payload')
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const fetchedAt = new Date().toISOString()
     const rows = Object.entries(body.rates).map(([quote, rate]) => ({
       base_currency: 'USD',

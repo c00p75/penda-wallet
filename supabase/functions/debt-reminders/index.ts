@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database } from '../_shared/database.types.ts'
 import { notifyUser } from '../_shared/notify.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { mapLimit } from '../_shared/concurrency.ts'
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403)
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   try {
     const today = utcDateStr(new Date())
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
   }
 })
 
-async function remindForDebt(supabase: SupabaseClient, debt: DebtRow, today: string) {
+async function remindForDebt(supabase: SupabaseClient<Database>, debt: DebtRow, today: string) {
   const { data: members, error: membersError } = await supabase
     .from('wallet_members')
     .select('user_id')

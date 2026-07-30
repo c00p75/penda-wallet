@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { Database, Json } from '../_shared/database.types.ts'
 import { GoogleGenAI, type Content, type Part } from 'npm:@google/genai@2.11.0'
 import { corsHeadersFor } from '../_shared/cors.ts'
 import { checkRateLimits } from '../_shared/rateLimit.ts'
@@ -277,7 +278,7 @@ Deno.serve(async (req) => {
       return respond({ error: 'Missing Authorization header' }, 401)
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
 
@@ -848,7 +849,7 @@ function jsonResponse(body: unknown, cors: Record<string, string>, status = 200)
 const CONVERSATION_IDLE_MS = 6 * 60 * 60 * 1000
 
 async function getOrCreateConversation(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string,
   walletId: string,
   conversationId: string | undefined,
@@ -885,7 +886,7 @@ async function getOrCreateConversation(
   return data.id
 }
 
-async function fetchHistory(supabase: SupabaseClient, conversationId: string): Promise<NeutralMessage[]> {
+async function fetchHistory(supabase: SupabaseClient<Database>, conversationId: string): Promise<NeutralMessage[]> {
   // Newest 40 first, then reverse to chronological order for the model.
   const { data, error } = await supabase
     .from('chat_messages')
@@ -916,14 +917,14 @@ function trimHistoryToSafeStart(messages: NeutralMessage[]): NeutralMessage[] {
   return messages.slice(start)
 }
 
-async function insertMessage(supabase: SupabaseClient, conversationId: string, message: NeutralMessage) {
+async function insertMessage(supabase: SupabaseClient<Database>, conversationId: string, message: NeutralMessage) {
   const { error } = await supabase
     .from('chat_messages')
-    .insert({ conversation_id: conversationId, role: message.role, content: message.parts })
+    .insert({ conversation_id: conversationId, role: message.role, content: message.parts as unknown as Json })
   if (error) throw error
 }
 
-async function fetchCategories(supabase: SupabaseClient, walletId: string): Promise<Category[]> {
+async function fetchCategories(supabase: SupabaseClient<Database>, walletId: string): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
     .select('id, name')
@@ -932,7 +933,7 @@ async function fetchCategories(supabase: SupabaseClient, walletId: string): Prom
   return data ?? []
 }
 
-async function fetchAccounts(supabase: SupabaseClient, walletId: string): Promise<PocketAccount[]> {
+async function fetchAccounts(supabase: SupabaseClient<Database>, walletId: string): Promise<PocketAccount[]> {
   // accounts.kind/provider were dropped for kind_id/provider_id (see migration
   // 0062); embed the lookup tables to keep PocketAccount's flat name shape.
   const { data, error } = await supabase
@@ -942,13 +943,10 @@ async function fetchAccounts(supabase: SupabaseClient, walletId: string): Promis
     .is('archived_at', null)
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return ((data ?? []) as unknown as Array<{
-    id: string
-    name: string
-    kind: { name: string } | null
-    provider: { name: string } | null
-    is_default: boolean
-  }>).map((row) => ({
+  // No intermediate cast: mapping straight off the inferred row shape means a
+  // future select() typo (like the kind/provider one this replaced) fails
+  // deno check instead of 500ing every chat turn in production.
+  return (data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
     kind: row.kind?.name ?? 'Other',
@@ -974,13 +972,15 @@ function resolveAccountId(
   return fallbackId ?? accounts.find((a) => a.is_default)?.id ?? accounts[0]?.id ?? null
 }
 
-async function fetchCategorizationRules(supabase: SupabaseClient, walletId: string): Promise<CategorizationRule[]> {
+async function fetchCategorizationRules(supabase: SupabaseClient<Database>, walletId: string): Promise<CategorizationRule[]> {
   const { data, error } = await supabase
     .from('categorization_rules')
     .select('match_type, match_value, category_id')
     .eq('wallet_id', walletId)
   if (error) throw error
-  return data ?? []
+  // match_type is a DB check-constrained text column (not a Postgres enum),
+  // so generated types widen it to string; narrow it back per the constraint.
+  return (data ?? []).map((row) => ({ ...row, match_type: row.match_type as CategorizationRule['match_type'] }))
 }
 
 interface ChatLifeEvent {
@@ -1040,7 +1040,7 @@ function lifeEventPromptLine(event: ChatLifeEvent): string {
   }
 }
 
-async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<ChatProfile> {
+async function fetchProfile(supabase: SupabaseClient<Database>, userId: string): Promise<ChatProfile> {
   const { data } = await supabase
     .from('profiles')
     .select(
@@ -1061,7 +1061,7 @@ async function fetchProfile(supabase: SupabaseClient, userId: string): Promise<C
 
 /** Load spend / goals / debts signals and rank life-milestone suggestions for the prompt. */
 async function fetchMilestoneSuggestions(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
   profile: ChatProfile,
 ): Promise<MilestoneSuggestion[]> {
@@ -1196,7 +1196,7 @@ const MAX_MEMORIES_IN_PROMPT = 20
 const MAX_DURABLE_MEMORIES = 12
 const MEMORY_FETCH_WINDOW = 60
 
-async function fetchMemories(supabase: SupabaseClient, userId: string): Promise<Memory[]> {
+async function fetchMemories(supabase: SupabaseClient<Database>, userId: string): Promise<Memory[]> {
   const { data } = await supabase
     .from('ai_memories')
     .select('kind, content, mood, created_at')
@@ -1215,7 +1215,7 @@ async function fetchMemories(supabase: SupabaseClient, userId: string): Promise<
     .map(({ kind, content, mood }) => ({ kind, content, mood }))
 }
 
-async function fetchWalletCurrency(supabase: SupabaseClient, walletId: string): Promise<string> {
+async function fetchWalletCurrency(supabase: SupabaseClient<Database>, walletId: string): Promise<string> {
   const { data } = await supabase.from('wallets').select('base_currency').eq('id', walletId).maybeSingle()
   return data?.base_currency ?? 'USD'
 }
@@ -2171,7 +2171,7 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
 }
 
 async function handleCreateTransaction(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   walletId: string,
   userId: string,
   currency: string,
@@ -2191,6 +2191,8 @@ async function handleCreateTransaction(
 
   const merchant = typeof input.merchant === 'string' ? input.merchant : null
   const description = typeof input.description === 'string' ? input.description : null
+  const type = input.type === 'income' ? 'income' : 'expense'
+  const transactionDate = typeof input.transaction_date === 'string' ? input.transaction_date : today()
 
   let categoryId = findCategory(categories, input.category)?.id ?? null
   let matchedRule: CategorizationRule | null = null
@@ -2215,10 +2217,10 @@ async function handleCreateTransaction(
       category_id: categoryId,
       amount_minor: Math.round(amount * 100),
       currency,
-      type: input.type,
+      type,
       merchant,
       description,
-      transaction_date: input.transaction_date,
+      transaction_date: transactionDate,
       source: 'chat',
     })
     .select('*, category:categories(id, name)')
