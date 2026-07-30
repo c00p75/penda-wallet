@@ -18,6 +18,7 @@ requirement — a PR with a red check cannot be merged.
 
 ```bash
 npm run typecheck
+npm run typecheck:edge
 npm run lint
 npm run test
 ```

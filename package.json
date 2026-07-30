@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
-    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:edge",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test:web && npm run test:mobile && npm run test:money-core && npm run test:edge",
     "supabase": "supabase",
