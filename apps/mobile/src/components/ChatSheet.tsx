@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import Animated, { SlideInDown } from 'react-native-reanimated';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Text, Input, Button } from '@/src/components/ui';
 import { AnimatedPressable } from '@/src/components/AnimatedPressable';
 import { colors, radius, spacing } from '@/src/lib/theme';
@@ -20,9 +20,11 @@ import { useChatStore } from '@/src/store/chatStore';
 import { useAuthStore } from '@/src/store/authStore';
 import { confirmAiAction, sendChatMessageStream } from '@/src/api/chat';
 import { fetchAiPendingAction, undoAiAction } from '@/src/api/audit';
+import { fetchProfile } from '@/src/api/profile';
 import type { ChatMessage, PendingAction } from '@/src/api/types';
 import { parseMoMoText } from '@/src/lib/momoParser';
 import { useVoiceRecorder } from '@/src/hooks/useVoiceRecorder';
+import { useSpeechPlayback } from '@/src/hooks/useSpeechPlayback';
 import {
   assistantAskedQuestion,
   shouldContinueListening,
@@ -64,6 +66,13 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
   const session = useAuthStore((s) => s.session);
+  const userId = session?.user.id;
+  const { data: profile } = useQuery({
+    queryKey: ['profile', userId],
+    queryFn: () => fetchProfile(userId!),
+    enabled: !!userId,
+  });
+  const speech = useSpeechPlayback();
 
   const messages = useChatStore((s) => s.messages);
   const conversationId = useChatStore((s) => s.conversationId);
@@ -228,7 +237,16 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
                 void queryClient.invalidateQueries({ queryKey: [domain, walletId] }),
               );
               scrollToEnd();
-              maybeRelisten(payload.reply, payload.pendingActions);
+              if (voiceTurnRef.current) {
+                // Penda speaks voice-turn replies back automatically, wait
+                // for playback to finish before reopening the mic so it
+                // isn't picked up as input.
+                void speech
+                  .speak(assistantId, payload.reply, profile?.ai_personality ?? 'balanced_coach')
+                  .finally(() => maybeRelisten(payload.reply, payload.pendingActions));
+              } else {
+                maybeRelisten(payload.reply, payload.pendingActions);
+              }
             },
             onError: ({ error: errMsg }) => {
               setError(errMsg);
@@ -261,6 +279,8 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
       queryClient,
       scrollToEnd,
       maybeRelisten,
+      speech,
+      profile?.ai_personality,
     ],
   );
 
@@ -420,6 +440,27 @@ export function ChatSheet({ walletId, currency, onClose }: ChatSheetProps) {
             {item.streaming ? ' ▍' : ''}
           </Text>
         </View>
+        {!isUser && item.text && !item.streaming ? (
+          <Pressable
+            onPress={() =>
+              speech.speakingId === item.id
+                ? void speech.stop()
+                : void speech.speak(item.id, item.text, profile?.ai_personality ?? 'balanced_coach')
+            }
+            hitSlop={8}
+            style={styles.speakBtn}
+          >
+            {speech.loadingId === item.id ? (
+              <ActivityIndicator size="small" color={colors.iris} />
+            ) : (
+              <Ionicons
+                name={speech.speakingId === item.id ? 'volume-mute' : 'volume-high'}
+                size={16}
+                color={colors.iris}
+              />
+            )}
+          </Pressable>
+        ) : null}
         {!isUser && item.actions?.length ? (
           <View style={styles.trail}>
             {item.actions.map((a) => (
@@ -688,6 +729,13 @@ const styles = StyleSheet.create({
   assistantBubble: {
     backgroundColor: colors.surfaceMuted,
     borderBottomLeftRadius: spacing.xs,
+  },
+  speakBtn: {
+    marginTop: spacing.xs,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   trail: {
     marginTop: spacing.sm,
