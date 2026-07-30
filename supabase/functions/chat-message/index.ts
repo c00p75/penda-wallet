@@ -933,14 +933,28 @@ async function fetchCategories(supabase: SupabaseClient, walletId: string): Prom
 }
 
 async function fetchAccounts(supabase: SupabaseClient, walletId: string): Promise<PocketAccount[]> {
+  // accounts.kind/provider were dropped for kind_id/provider_id (see migration
+  // 0062); embed the lookup tables to keep PocketAccount's flat name shape.
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, name, kind, provider, is_default')
+    .select('id, name, kind:account_kinds(name), provider:account_providers(name), is_default')
     .eq('wallet_id', walletId)
     .is('archived_at', null)
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return (data ?? []) as PocketAccount[]
+  return ((data ?? []) as unknown as Array<{
+    id: string
+    name: string
+    kind: { name: string } | null
+    provider: { name: string } | null
+    is_default: boolean
+  }>).map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind?.name ?? 'Other',
+    provider: row.provider?.name ?? null,
+    is_default: row.is_default,
+  }))
 }
 
 function resolveAccountId(
