@@ -1,19 +1,15 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import type { Database } from '../_shared/database.types.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+import { hardDeleteAccount } from '../_shared/hardDeleteAccount.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000
-
-// Self-serve account deletion (compliance): schedules the wipe rather than
-// performing it. The account (and everything in it) is untouched until
-// either the grace period elapses (see the purge-deleted-accounts cron) or
-// the user confirms immediate deletion (see confirm-account-deletion). This
-// window is what makes restore-account trivial: nothing destructive has
-// happened yet, so restoring is just clearing the timestamp.
+// User-initiated override for someone already in the grace period (see
+// delete-account) who doesn't want to wait: performs the same wipe the purge
+// cron would run later, immediately instead.
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -31,15 +27,14 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: 'Unauthorized' }, 401)
 
   const admin = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  const scheduledDeletionAt = new Date(Date.now() + GRACE_PERIOD_MS).toISOString()
 
-  const { error } = await admin
-    .from('profiles')
-    .update({ scheduled_deletion_at: scheduledDeletionAt })
-    .eq('id', user.id)
-  if (error) return json({ error: error.message }, 500)
-
-  return json({ ok: true, scheduledDeletionAt })
+  try {
+    await hardDeleteAccount(admin, user.id)
+    return json({ ok: true })
+  } catch (error) {
+    console.error('confirm-account-deletion failed for', user.id, error)
+    return json({ error: error instanceof Error ? error.message : 'Deletion failed' }, 500)
+  }
 })
 
 function json(body: unknown, status = 200) {

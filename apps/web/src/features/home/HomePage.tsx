@@ -19,6 +19,7 @@ import { useCurrentWallet } from '@/features/wallets/hooks'
 import { useWalletRealtime } from '@/features/wallets/useWalletRealtime'
 import { OnboardingScreen } from '@/features/wallets/OnboardingScreen'
 import { CreateMoneyAccountScreen } from '@/features/wallets/CreateMoneyAccountScreen'
+import { RestoreAccountScreen } from '@/features/account/RestoreAccountScreen'
 import {
   shouldShowCreateMoneyAccountLite,
   shouldShowFirstRunOnboarding,
@@ -498,6 +499,7 @@ export function HomePage() {
   if (isAuthLoading) return null
   if (!session) return <Navigate to="/login" replace />
   if (isWalletLoading) return null
+  if (profile?.scheduled_deletion_at) return <RestoreAccountScreen profile={profile} />
 
   if (
     shouldShowFirstRunOnboarding({

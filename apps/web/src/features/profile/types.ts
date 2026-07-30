@@ -120,6 +120,8 @@ export interface Profile {
   home_card_order: string[]
   /** Custom hex color per home-card id, keyed the same way as `home_card_order`. Pockets keep their own `color` column instead. */
   home_card_colors: Record<string, string>
+  /** Set by deleteAccount() during the grace period; cleared by restoreAccount(). */
+  scheduled_deletion_at: string | null
   created_at: string
 }
 

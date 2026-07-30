@@ -1387,6 +1387,7 @@ export type Database = {
           primary_goal: string | null
           primary_goals: string[] | null
           round_up_enabled: boolean
+          scheduled_deletion_at: string | null
           tax_reserve_pct: number
           timezone: string | null
         }
@@ -1417,6 +1418,7 @@ export type Database = {
           primary_goal?: string | null
           primary_goals?: string[] | null
           round_up_enabled?: boolean
+          scheduled_deletion_at?: string | null
           tax_reserve_pct?: number
           timezone?: string | null
         }
@@ -1447,6 +1449,7 @@ export type Database = {
           primary_goal?: string | null
           primary_goals?: string[] | null
           round_up_enabled?: boolean
+          scheduled_deletion_at?: string | null
           tax_reserve_pct?: number
           timezone?: string | null
         }

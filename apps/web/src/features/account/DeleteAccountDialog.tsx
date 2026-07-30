@@ -27,7 +27,8 @@ export function DeleteAccountDialog() {
     setBusy(true)
     try {
       await deleteAccount()
-      // Account's gone, clear the local session and send them to login.
+      // Deletion is scheduled, not immediate. Sign out now; logging back in
+      // before the grace period ends offers a restore instead of the app.
       await supabase.auth.signOut()
       window.location.href = '/login'
     } catch (error) {
@@ -53,8 +54,9 @@ export function DeleteAccountDialog() {
         <DialogHeader>
           <DialogTitle className="text-[var(--rose)]">Delete your account?</DialogTitle>
           <DialogDescription>
-            This permanently erases your profile, wallets you solely own, and all their transactions,
-            budgets, goals and history. Wallets you share with others stay with them. This cannot be undone.
+            Your profile, wallets you solely own, and all their transactions, budgets, goals and
+            history will be permanently erased in 30 days. Wallets you share with others stay with
+            them. Log back in before then to restore your account instead.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--rose)]/20 bg-[var(--rose-soft)]/50 p-4 shadow-[var(--shadow-soft)]">
@@ -76,7 +78,7 @@ export function DeleteAccountDialog() {
             disabled={confirmText !== CONFIRM_WORD || busy}
             onClick={handleDelete}
           >
-            {busy ? 'Deleting…' : 'Permanently delete'}
+            {busy ? 'Scheduling…' : 'Delete in 30 days'}
           </Button>
         </DialogFooter>
       </DialogContent>

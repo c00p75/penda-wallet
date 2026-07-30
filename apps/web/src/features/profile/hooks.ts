@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchProfile, updateProfile } from './api'
 import type { ProfileInput } from './types'
 
-function profileKey(userId: string | undefined) {
+export function profileKey(userId: string | undefined) {
   return ['profile', userId] as const
 }
 
