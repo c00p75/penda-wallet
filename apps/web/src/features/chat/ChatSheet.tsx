@@ -688,16 +688,22 @@ export function ChatSheet({
     }
   }, [])
 
-  function applyChatResult(result: import('./types').ChatResponse, bubbleId: string) {
+  function applyChatResult(result: import('./types').ChatResponse, bubbleId: string, userText: string) {
     const rotated =
       !!sentConversationIdRef.current && sentConversationIdRef.current !== result.conversationId
     setConversationId(result.conversationId)
     if (rotated) {
-      pushMessage({
-        id: nextId(),
-        role: 'assistant',
-        text: '(new session)',
-      })
+      // Backend started a fresh conversation (e.g. the old one expired after an
+      // error). Treat it as a new topic: reset the visible thread instead of
+      // appending the marker to the stale one, but keep the turn that caused
+      // the rotation, the user's message and not just Penda's reply, so it
+      // isn't lost. The old thread stays reachable from Chat history.
+      setMessages([
+        { id: nextId(), role: 'user', text: userText },
+        { id: nextId(), role: 'assistant', text: '(new session)' },
+      ])
+      setActionStatus({})
+      setLiveActions([])
     }
     const actions =
       result.actions && result.actions.length > 0
@@ -811,7 +817,7 @@ export function ChatSheet({
           pageContext,
           uiEdits,
         })
-        applyChatResult(result, bubbleId)
+        applyChatResult(result, bubbleId, text)
       } catch (fallbackError) {
         if (uiEdits.length) {
           pendingUiEditsRef.current = [...uiEdits, ...pendingUiEditsRef.current]
@@ -845,7 +851,7 @@ export function ChatSheet({
         },
         onDone: (result) => {
           finished = true
-          applyChatResult(result, bubbleId)
+          applyChatResult(result, bubbleId, text)
         },
       },
       abort.signal,
