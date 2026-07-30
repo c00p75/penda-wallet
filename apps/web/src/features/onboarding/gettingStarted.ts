@@ -15,7 +15,7 @@ const DEFAULT_STATE: GettingStartedState = {
   planPeeked: false,
 }
 
-export type WalkthroughPhase = 'log' | 'balance' | 'plan' | 'done'
+export type WalkthroughPhase = 'pockets' | 'goal' | 'log' | 'balance' | 'plan' | 'done'
 
 export type WalkthroughState = {
   phase: WalkthroughPhase
@@ -68,7 +68,8 @@ export function loadWalkthrough(walletId: string): WalkthroughState | null {
     const raw = localStorage.getItem(walkthroughKey(walletId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<WalkthroughState>
-    if (parsed.phase !== 'log' && parsed.phase !== 'balance' && parsed.phase !== 'plan' && parsed.phase !== 'done') {
+    const validPhases: WalkthroughPhase[] = ['pockets', 'goal', 'log', 'balance', 'plan', 'done']
+    if (!parsed.phase || !validPhases.includes(parsed.phase)) {
       return null
     }
     return {

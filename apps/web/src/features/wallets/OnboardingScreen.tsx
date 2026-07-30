@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check } from 'lucide-react'
+import { Check, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,14 +37,16 @@ import { useTransactions } from '@/features/transactions/hooks'
 import { useProfile } from '@/features/profile/hooks'
 import { personaFromGoals } from '@/features/profile/personaFromGoals'
 import { resolveAiPersonality, type ActiveAiPersonality } from '@/features/profile/types'
+import { AccountForm } from '@/features/accounts/AccountForm'
+import { useAccounts, useCreateAccount } from '@/features/accounts/hooks'
 import { useCreateWallet, useCurrentWallet } from './hooks'
 
-const STEPS = ['wallet', 'goal', 'log', 'balance', 'plan'] as const
+const STEPS = ['wallet', 'pockets', 'goal', 'log', 'balance', 'plan'] as const
 type Step = (typeof STEPS)[number]
 type ChatStep = 'log' | 'balance' | 'plan'
 
-/** Wallet + goal are the form-based "onboarding" phase; the rest is the chat phase that follows it. */
-const ONBOARDING_STEPS: readonly Step[] = ['wallet', 'goal']
+/** Wallet + pockets + goal are the form-based "onboarding" phase; the rest is the chat phase that follows it. */
+const ONBOARDING_STEPS: readonly Step[] = ['wallet', 'pockets', 'goal']
 const CHAT_PHASE_STEPS: readonly Step[] = ['log', 'balance', 'plan']
 
 /** Delay so the sheet can mount after the step card paints. */
@@ -68,6 +70,23 @@ function stepIndexFor(step: Step) {
 
 function isChatStep(step: Step): step is ChatStep {
   return step === 'log' || step === 'balance' || step === 'plan'
+}
+
+// Supabase throws raw PostgrestError objects (not Error instances), so
+// `error instanceof Error` misses them, masking the real DB message behind a
+// generic fallback right when it matters most for diagnosing a failure.
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string' &&
+    (error as { message: string }).message
+  ) {
+    return (error as { message: string }).message
+  }
+  return 'Could not finish setting up your wallet.'
 }
 
 export function OnboardingScreen() {
@@ -120,6 +139,9 @@ export function OnboardingScreen() {
   const { data: budgets = [] } = useBudgets(activeWalletId)
   const { data: categories = [] } = useCategories(activeWalletId)
   const { data: latestReconciliation } = useLatestReconciliation(activeWalletId, userId)
+  const { data: accounts } = useAccounts(activeWalletId)
+  const createAccount = useCreateAccount(activeWalletId)
+  const [addPocketOpen, setAddPocketOpen] = useState(false)
   const hasLogged = transactions.length > 0
   const hasBalanceSet = !!latestReconciliation || (balanceChatOpened && balanceChatReturned)
 
@@ -231,9 +253,6 @@ export function OnboardingScreen() {
     )
   }
 
-  function goNext() {
-    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1))
-  }
   function goBack() {
     setStepIndex((i) => Math.max(i - 1, 0))
   }
@@ -299,17 +318,47 @@ export function OnboardingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, hasLogged, latestReconciliation])
 
-  async function provisionWalletAndStartWalkthrough() {
+  // Wallet needs to exist before the pockets step can attach accounts to it,
+  // so creation happens here rather than waiting for the goal step like the
+  // rest of provisioning does.
+  async function createWalletAndAdvance() {
     if (!userId) return
     setSubmitting(true)
     try {
-      const personalityPick = personaFromGoals(primaryGoals)
-      setWalkthroughPersonality(personalityPick)
-
       const wallet = await createWallet.mutateAsync({
         name: name.trim() || 'My Wallet',
         baseCurrency: currency,
       })
+
+      // Persisted from wallet creation onward (not just from 'log') so a
+      // refresh mid pockets/goal step resumes here instead of the gate
+      // seeing an existing money account with no active walkthrough and
+      // dropping the user straight into Home. See shouldShowFirstRunOnboarding.
+      const next: WalkthroughState = {
+        phase: 'pockets',
+        skippedLog: false,
+        skippedBalance: false,
+      }
+      saveWalkthrough(wallet.id, next)
+      setWalkthrough(next)
+      setWalletId(wallet.id)
+      setCurrentWalletId(wallet.id)
+      setWalkthroughActive(true)
+      setStepIndex(stepIndexFor('pockets'))
+    } catch (error) {
+      console.error('Onboarding wallet creation failed:', error)
+      toast.error(errorMessage(error))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function finishGoalsAndSeed() {
+    if (!userId || !activeWalletId) return
+    setSubmitting(true)
+    try {
+      const personalityPick = personaFromGoals(primaryGoals)
+      setWalkthroughPersonality(personalityPick)
 
       await updateProfile.mutateAsync({
         mode: 'individual',
@@ -332,7 +381,7 @@ export function OnboardingScreen() {
             incomeRange: null,
             gender: 'prefer_not_to_say',
           },
-          wallet.id,
+          activeWalletId,
         )
         await Promise.all(memories.map((m) => createMemory(userId, m)))
       } catch {
@@ -341,32 +390,24 @@ export function OnboardingScreen() {
 
       try {
         await seedWalletFromOnboarding({
-          walletId: wallet.id,
+          walletId: activeWalletId,
           userId,
           primaryGoals,
           incomeRange: null,
           persona: personalityPick,
         })
-        await queryClient.invalidateQueries({ queryKey: ['budgets', wallet.id] })
+        await queryClient.invalidateQueries({ queryKey: ['budgets', activeWalletId] })
       } catch {
         // Starter plan is optional.
       }
 
-      const next: WalkthroughState = {
-        phase: 'log',
-        skippedLog: false,
-        skippedBalance: false,
-      }
-      saveWalkthrough(wallet.id, next)
-      setWalkthrough(next)
-      setWalletId(wallet.id)
-      setCurrentWalletId(wallet.id)
-      setWalkthroughActive(true)
+      persistWalkthrough({ phase: 'log', skippedLog: false, skippedBalance: false })
       openedChatForStepRef.current = null
       autoAdvancedRef.current = null
       setStepIndex(stepIndexFor('log'))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not finish setting up your wallet.')
+      console.error('Onboarding goal/plan seeding failed:', error)
+      toast.error(errorMessage(error))
     } finally {
       setSubmitting(false)
     }
@@ -444,9 +485,54 @@ export function OnboardingScreen() {
             <Label htmlFor="onboarding-currency">Currency</Label>
             <CurrencyCombobox id="onboarding-currency" value={currency} onChange={setCurrency} />
           </div>
-          <Button onClick={goNext} disabled={!name.trim()} className="rounded-full">
-            Next
+          <Button
+            onClick={() => void createWalletAndAdvance()}
+            disabled={!name.trim() || submitting}
+            className="rounded-full"
+          >
+            {submitting ? 'Setting up…' : 'Next'}
           </Button>
+        </div>
+      )}
+
+      {step === 'pockets' && (
+        <div className="relative flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <StepHeading bold="Add your" light="money pockets" />
+            <p className="text-sm text-muted-foreground">
+              Cash, mobile money, bank, whatever you actually hold money in. We started you off with
+              Cash, add more or move on.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {(accounts ?? []).map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background p-3"
+              >
+                <span aria-hidden>{a.icon ?? '💵'}</span>
+                <span className="text-sm font-medium">{a.name}</span>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-full"
+            onClick={() => setAddPocketOpen(true)}
+            disabled={!activeWalletId}
+          >
+            <Plus className="size-4" />
+            Add a pocket
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={goBack} className="flex-1 rounded-full">
+              Back
+            </Button>
+            <Button onClick={() => advanceTo('goal')} className="flex-1 rounded-full">
+              Continue
+            </Button>
+          </div>
         </div>
       )}
 
@@ -497,7 +583,7 @@ export function OnboardingScreen() {
               Back
             </Button>
             <Button
-              onClick={provisionWalletAndStartWalkthrough}
+              onClick={() => void finishGoalsAndSeed()}
               className="flex-1 rounded-full"
               disabled={submitting}
             >
@@ -632,6 +718,17 @@ export function OnboardingScreen() {
           </Button>
         </div>
       )}
+
+      <AccountForm
+        open={addPocketOpen}
+        onOpenChange={setAddPocketOpen}
+        walletId={activeWalletId}
+        existingNames={(accounts ?? []).map((a) => a.name)}
+        isSubmitting={createAccount.isPending}
+        onSubmit={async (input) => {
+          await createAccount.mutateAsync(input)
+        }}
+      />
     </main>
   )
 }
