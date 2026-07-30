@@ -2,8 +2,10 @@
 
 ## Branching model (GitHub Flow)
 
-`main` is always deployable — web deploys to Vercel and Edge Functions deploy
-to Supabase automatically on every merge to `main`.
+`main` is always deployable, but nothing actually deploys on its own: there's no
+CI/CD job wired up yet for Vercel or Supabase (checked directly — no Vercel check
+run appears on merge commits, and `ci.yml` has no deploy step). Every deploy below
+is a manual step after merging.
 
 1. Branch off `main`: `feat/short-description`, `fix/short-description`, or `chore/short-description`.
 2. Commit and push. Open a PR into `main`.
@@ -33,11 +35,13 @@ rounding" not "Fixed" or "Fixes"). No enforced prefix convention.
 
 ## Deploys
 
-- **Web**: Vercel deploys `main` automatically on merge.
-- **Database migrations**, **Supabase Edge Functions**, and **mobile builds** (EAS)
-  are all manual — run `supabase db push`, `supabase functions deploy <name>`, or
-  `npm run build:ios` / `npm run build:android` from your machine after merging.
-  See `apps/mobile/README.md` for the mobile release checklist.
+Everything below is manual — run it from your machine after merging to `main`:
+
+- **Web**: `vercel --prod` (repo root; builds `apps/web`).
+- **Database migrations**: `supabase db push`.
+- **Supabase Edge Functions**: `supabase functions deploy <name>`.
+- **Mobile builds** (EAS): `npm run build:ios` / `npm run build:android`. See
+  `apps/mobile/README.md` for the full release checklist.
 
 ## Edge functions: typed Supabase client (required)
 
