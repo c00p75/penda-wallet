@@ -190,6 +190,25 @@ export async function sendChatMessageStream(
   }
 }
 
+export interface SynthesizeSpeechResult {
+  audio: string;
+  mimeType: string;
+}
+
+export async function synthesizeSpeech(
+  text: string,
+  personality?: string,
+): Promise<SynthesizeSpeechResult> {
+  const { data, error } = await supabase.functions.invoke<SynthesizeSpeechResult>(
+    'synthesize-speech',
+    { body: { text, personality } },
+  );
+
+  if (error) throw await unwrapFunctionError(error);
+  if (!data) throw new Error('Empty response from synthesize-speech function');
+  return data;
+}
+
 export async function confirmAiAction(
   actionId: string,
   decision: 'confirm' | 'cancel',

@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, History, Maximize2, NotebookText, Send, SquarePen, X } from 'lucide-react'
+import {
+  ChevronRight,
+  History,
+  Loader2,
+  Maximize2,
+  NotebookText,
+  Send,
+  SquarePen,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide-react'
 import { Camera, Microphone, Stop } from '@/components/icons/product'
 import { toast } from 'sonner'
 import {
@@ -52,6 +63,7 @@ import {
 } from '@/features/transactions/hooks'
 import type { ReceiptItemsConfirmInput, Transaction, TransactionInput } from '@/features/transactions/types'
 import { fetchChatConversationMessages, sendChatMessageStream } from './api'
+import { useSpeechPlayback } from './useSpeechPlayback'
 import { ActionTrail } from './ActionTrail'
 import { ChatHistorySheet } from './ChatHistorySheet'
 import {
@@ -247,6 +259,7 @@ export function ChatSheet({
   const session = useAuthStore((s) => s.session)
   const { data: profile } = useProfile(session?.user.id)
   const persona = personalityMeta(profile?.ai_personality)
+  const speech = useSpeechPlayback()
   const { data: memories = [] } = useMemories(session?.user.id)
   const { data: pacts = [] } = usePacts(walletId)
   const deferredList = useDeferredStore((s) =>
@@ -568,6 +581,7 @@ export function ChatSheet({
     if (newTopicNonce === lastTopicNonce.current) return
     lastTopicNonce.current = newTopicNonce
     streamAbortRef.current?.abort()
+    speech.reset()
     setMessages([])
     setConversationId(undefined)
     sentConversationIdRef.current = undefined
@@ -575,7 +589,7 @@ export function ChatSheet({
     setLiveActions([])
     setStreamingId(null)
     setInput('')
-  }, [newTopicNonce])
+  }, [newTopicNonce, speech])
 
   // Multi-step tool work needs the full surface, promote quick → full.
   useEffect(() => {
@@ -733,14 +747,15 @@ export function ChatSheet({
 
     // Multi-turn voice: re-listen only when the assistant asked a question.
     const hasPending = (result.pendingActions ?? []).some((a) => !actionStatus[a.id])
-    if (
-      shouldContinueListening({
-        voiceConversationEnabled: true,
-        wasVoiceTurn: voiceTurnRef.current,
-        hasPendingConfirm: hasPending,
-        assistantAskedQuestion: assistantAskedQuestion(result.reply),
-      })
-    ) {
+    const wasVoiceTurn = voiceTurnRef.current
+    const continueListening = shouldContinueListening({
+      voiceConversationEnabled: true,
+      wasVoiceTurn,
+      hasPendingConfirm: hasPending,
+      assistantAskedQuestion: assistantAskedQuestion(result.reply),
+    })
+
+    function scheduleRelisten() {
       if (relistenTimeoutRef.current != null) clearTimeout(relistenTimeoutRef.current)
       relistenTimeoutRef.current = setTimeout(() => {
         relistenTimeoutRef.current = null
@@ -755,6 +770,18 @@ export function ChatSheet({
         silenceSinceRef.current = null
         void voice.start().catch(() => setRecordMode('idle'))
       }, 400)
+    }
+
+    if (wasVoiceTurn) {
+      // Penda speaks voice-turn replies back automatically, wait for that
+      // playback to finish before reopening the mic so it isn't picked up as
+      // input (the relisten timeout has no gate against Penda's own voice).
+      void speech.speak(bubbleId, result.reply, persona.value).finally(() => {
+        if (continueListening) scheduleRelisten()
+        else voiceTurnRef.current = false
+      })
+    } else if (continueListening) {
+      scheduleRelisten()
     } else {
       voiceTurnRef.current = false
     }
@@ -1686,6 +1713,33 @@ export function ChatSheet({
                           Retry
                         </Button>
                       )}
+                      {m.role === 'assistant' &&
+                        m.text &&
+                        m.text !== '(new session)' &&
+                        m.id !== streamingId && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              speech.speakingId === m.id
+                                ? speech.stop()
+                                : void speech.speak(m.id, m.text, persona.value)
+                            }
+                            className="mt-1.5 flex size-6 items-center justify-center rounded-full text-muted-foreground transition-opacity hover:opacity-80 active:opacity-70"
+                            aria-label={
+                              speech.speakingId === m.id
+                                ? `Stop ${persona.name}`
+                                : `Play ${persona.name}'s reply aloud`
+                            }
+                          >
+                            {speech.loadingId === m.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : speech.speakingId === m.id ? (
+                              <VolumeX className="size-3.5" />
+                            ) : (
+                              <Volume2 className="size-3.5" />
+                            )}
+                          </button>
+                        )}
                     </div>
                     {(() => {
                       const trail = mergeTrailActions(m.actions, m.pendingActions, actionStatus)

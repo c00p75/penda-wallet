@@ -65,6 +65,31 @@ export const PERSONALITY_NAMES: Record<string, string> = {
   gogo: 'Gogo',
 }
 
+/**
+ * Per-persona TTS voice, one entry per active persona (legacy keys always
+ * resolve to one of these six via resolvePersonality, so no separate legacy
+ * entries are needed). Keyed by provider so synthesize-speech's fallback
+ * chain (Gemini -> Groq -> ElevenLabs) can pick a matching voice at each tier.
+ *
+ * Gemini voice characteristics per Google's docs: Fenrir=excitable,
+ * Sulafat=warm, Charon=informative, Gacrux=mature, Orus=firm, Puck=upbeat.
+ * Groq/Orpheus (canopylabs/orpheus-v1-english) only ships six English voices
+ * total, so this happens to be a clean 1:1 map with no doubling up.
+ * ElevenLabs voice IDs are well-known premade defaults, placeholders until
+ * ELEVENLABS_API_KEY is actually configured (that tier is a no-op until then).
+ */
+export const PERSONALITY_VOICES: Record<
+  string,
+  { gemini: string; groq: string; elevenlabs: string }
+> = {
+  hustler: { gemini: 'Fenrir', groq: 'Daniel', elevenlabs: 'TxGEqnHWrfWFTfGW9XjX' },
+  balanced_coach: { gemini: 'Sulafat', groq: 'Hannah', elevenlabs: 'EXAVITQu4vr4xnSDxMaL' },
+  analyst: { gemini: 'Charon', groq: 'Autumn', elevenlabs: 'pNInz6obpgDQGcFmaJgB' },
+  angry_mom: { gemini: 'Gacrux', groq: 'Diana', elevenlabs: 'AZnzlk1XvdvUeBnXmlld' },
+  drill_sergeant: { gemini: 'Orus', groq: 'Troy', elevenlabs: 'VR6AewLTigWG4xSOukaG' },
+  funny_comedian: { gemini: 'Puck', groq: 'Austin', elevenlabs: 'ErXwobaYiN019PkySvjV' },
+}
+
 // Profile Modes (roadmap bet #3), mirrors apps/web/src/features/profile/modes.ts'
 // MODE_CONFIG[mode].aiContext. Individual/Family/Business is a context layer
 // over the same engine: it changes how the AI frames things, not what it can do.
