@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Check, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -7,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CurrencyCombobox } from '@/components/CurrencyCombobox'
 import { cn } from '@/lib/utils'
-import { formatMoney } from '@/lib/money'
 import { useAuthStore } from '@/store/authStore'
 import { useWalletStore } from '@/store/walletStore'
 import { createMemory } from '@/features/memory/api'
@@ -23,15 +21,8 @@ import {
   type WalkthroughState,
 } from '@/features/onboarding/gettingStarted'
 import { useOnboardingStore } from '@/features/onboarding/onboardingStore'
-import { seedWalletFromOnboarding } from '@/features/onboarding/seedWallet'
-import {
-  buildBalanceOpener,
-  buildLogOpener,
-  buildPlanOpener,
-} from '@/features/onboarding/walkthroughChat'
+import { buildBalanceOpener, buildLogOpener } from '@/features/onboarding/walkthroughChat'
 import { useChatStore } from '@/features/chat/chatStore'
-import { useBudgets } from '@/features/budgets/hooks'
-import { useCategories } from '@/features/categories/hooks'
 import { useLatestReconciliation } from '@/features/reconciliation/hooks'
 import { useTransactions } from '@/features/transactions/hooks'
 import { useProfile } from '@/features/profile/hooks'
@@ -41,18 +32,16 @@ import { AccountForm } from '@/features/accounts/AccountForm'
 import { useAccounts, useCreateAccount } from '@/features/accounts/hooks'
 import { useCreateWallet, useCurrentWallet } from './hooks'
 
-const STEPS = ['wallet', 'pockets', 'goal', 'log', 'balance', 'plan'] as const
+const STEPS = ['wallet', 'pockets', 'goal', 'log', 'balance'] as const
 type Step = (typeof STEPS)[number]
-type ChatStep = 'log' | 'balance' | 'plan'
+type ChatStep = 'log' | 'balance'
 
 /** Wallet + pockets + goal are the form-based "onboarding" phase; the rest is the chat phase that follows it. */
 const ONBOARDING_STEPS: readonly Step[] = ['wallet', 'pockets', 'goal']
-const CHAT_PHASE_STEPS: readonly Step[] = ['log', 'balance', 'plan']
+const CHAT_PHASE_STEPS: readonly Step[] = ['log', 'balance']
 
 /** Delay so the sheet can mount after the step card paints. */
 const CHAT_OPEN_DELAY_MS = 400
-/** Max wait for seeded budgets before the plan step auto-sends a generic draft. */
-const PLAN_BUDGET_WAIT_MS = 2500
 
 function StepHeading({ bold, light }: { bold: string; light: string }) {
   return (
@@ -69,7 +58,7 @@ function stepIndexFor(step: Step) {
 }
 
 function isChatStep(step: Step): step is ChatStep {
-  return step === 'log' || step === 'balance' || step === 'plan'
+  return step === 'log' || step === 'balance'
 }
 
 // Supabase throws raw PostgrestError objects (not Error instances), so
@@ -91,7 +80,6 @@ function errorMessage(error: unknown): string {
 
 export function OnboardingScreen() {
   const userId = useAuthStore((s) => s.session?.user.id)
-  const queryClient = useQueryClient()
   const createWallet = useCreateWallet()
   const updateProfile = useUpdateProfile(userId)
   const setCurrentWalletId = useWalletStore((s) => s.setCurrentWalletId)
@@ -136,24 +124,11 @@ export function OnboardingScreen() {
 
   const activeWalletId = walletId ?? currentWallet?.id
   const { data: transactions = [] } = useTransactions(activeWalletId)
-  const { data: budgets = [] } = useBudgets(activeWalletId)
-  const { data: categories = [] } = useCategories(activeWalletId)
   const { data: latestReconciliation } = useLatestReconciliation(activeWalletId, userId)
   const { data: accounts } = useAccounts(activeWalletId)
   const createAccount = useCreateAccount(activeWalletId)
   const [addPocketOpen, setAddPocketOpen] = useState(false)
   const hasLogged = transactions.length > 0
-  const hasBalanceSet = !!latestReconciliation || (balanceChatOpened && balanceChatReturned)
-
-  const budgetPreview = budgets.slice(0, 4).map((b) => {
-    const cat = categories.find((c) => c.id === b.category_id)
-    return {
-      id: b.id,
-      label: cat?.name ?? 'Budget',
-      icon: cat?.icon ?? '💰',
-      amount: b.amount_minor,
-    }
-  })
 
   // Resume interactive walkthrough after refresh / remount once a wallet exists.
   useEffect(() => {
@@ -208,25 +183,27 @@ export function OnboardingScreen() {
             goals: openerGoals,
             currency,
           }),
+          onboardingSkip: {
+            label: "I'll do this later",
+            onSkip: () => advanceTo('balance', { skippedLog: true }),
+          },
         })
-      } else if (target === 'balance') {
-        setBalanceChatOpened(true)
-        openChat('', { mode: 'full', assistantSeed: buildBalanceOpener(currency) })
       } else {
-        openChat('', { mode: 'full', assistantSeed: buildPlanOpener(budgetPreview, currency) })
+        setBalanceChatOpened(true)
+        openChat('', {
+          mode: 'full',
+          assistantSeed: buildBalanceOpener(currency),
+          onboardingSkip: {
+            label: 'Skip for now',
+            onSkip: () => advanceTo('done', { skippedBalance: true }),
+          },
+        })
       }
-    }
-
-    // Plan: wait for seeded budgets so Penda's draft lists real amounts.
-    // If budgets never arrive (seed failed), still open with the Plan-tab draft.
-    if (step === 'plan' && budgets.length === 0) {
-      const timer = window.setTimeout(() => openForStep('plan'), PLAN_BUDGET_WAIT_MS)
-      return () => window.clearTimeout(timer)
     }
 
     const timer = window.setTimeout(() => openForStep(step), CHAT_OPEN_DELAY_MS)
     return () => window.clearTimeout(timer)
-    // buildPlanOpener reads the latest budgetPreview via closure when the timer fires.
+    // advanceTo closes over latest walkthrough; intentional, see the auto-advance effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     step,
@@ -235,7 +212,6 @@ export function OnboardingScreen() {
     openChat,
     personality,
     openerGoals,
-    budgets.length,
     currency,
     walkthroughPersonality,
     profile,
@@ -310,7 +286,7 @@ export function OnboardingScreen() {
       const key = 'balance-done'
       if (autoAdvancedRef.current === key) return
       autoAdvancedRef.current = key
-      const t = window.setTimeout(() => advanceTo('plan', { skippedBalance: false }), 700)
+      const t = window.setTimeout(() => advanceTo('done', { skippedBalance: false }), 700)
       return () => window.clearTimeout(t)
     }
     return undefined
@@ -353,7 +329,7 @@ export function OnboardingScreen() {
     }
   }
 
-  async function finishGoalsAndSeed() {
+  async function finishGoals() {
     if (!userId || !activeWalletId) return
     setSubmitting(true)
     try {
@@ -388,25 +364,12 @@ export function OnboardingScreen() {
         // Best-effort enrichment.
       }
 
-      try {
-        await seedWalletFromOnboarding({
-          walletId: activeWalletId,
-          userId,
-          primaryGoals,
-          incomeRange: null,
-          persona: personalityPick,
-        })
-        await queryClient.invalidateQueries({ queryKey: ['budgets', activeWalletId] })
-      } catch {
-        // Starter plan is optional.
-      }
-
       persistWalkthrough({ phase: 'log', skippedLog: false, skippedBalance: false })
       openedChatForStepRef.current = null
       autoAdvancedRef.current = null
       setStepIndex(stepIndexFor('log'))
     } catch (error) {
-      console.error('Onboarding goal/plan seeding failed:', error)
+      console.error('Onboarding persona pick failed:', error)
       toast.error(errorMessage(error))
     } finally {
       setSubmitting(false)
@@ -425,12 +388,21 @@ export function OnboardingScreen() {
           goals: openerGoals,
           currency,
         }),
+        onboardingSkip: {
+          label: "I'll do this later",
+          onSkip: () => advanceTo('balance', { skippedLog: true }),
+        },
       })
-    } else if (step === 'balance') {
-      setBalanceChatOpened(true)
-      openChat('', { mode: 'full', assistantSeed: buildBalanceOpener(currency) })
     } else {
-      openChat('', { mode: 'full', assistantSeed: buildPlanOpener(budgetPreview, currency) })
+      setBalanceChatOpened(true)
+      openChat('', {
+        mode: 'full',
+        assistantSeed: buildBalanceOpener(currency),
+        onboardingSkip: {
+          label: 'Skip for now',
+          onSkip: () => advanceTo('done', { skippedBalance: true }),
+        },
+      })
     }
   }
 
@@ -583,7 +555,7 @@ export function OnboardingScreen() {
               Back
             </Button>
             <Button
-              onClick={() => void finishGoalsAndSeed()}
+              onClick={() => void finishGoals()}
               className="flex-1 rounded-full"
               disabled={submitting}
             >
@@ -660,62 +632,31 @@ export function OnboardingScreen() {
             </Button>
           )}
           {latestReconciliation || balanceChatReturned ? (
-            <Button className="rounded-full" onClick={() => advanceTo('plan', { skippedBalance: false })}>
-              Continue
+            <Button
+              className="rounded-full"
+              onClick={() =>
+                advanceTo('done', {
+                  skippedLog: walkthrough?.skippedLog ?? !hasLogged,
+                  skippedBalance: false,
+                })
+              }
+            >
+              Finish
             </Button>
           ) : (
             <button
               type="button"
               className="text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onClick={() => advanceTo('plan', { skippedBalance: true })}
+              onClick={() =>
+                advanceTo('done', {
+                  skippedLog: walkthrough?.skippedLog ?? !hasLogged,
+                  skippedBalance: true,
+                })
+              }
             >
               Skip for now
             </button>
           )}
-        </div>
-      )}
-
-      {step === 'plan' && (
-        <div className="relative flex flex-col gap-3 rounded-3xl bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-border/50">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <StepHeading bold="Your starter" light="plan" />
-            <p className="text-sm text-muted-foreground">
-              Penda drafted this from your goals and messaged you in chat. Tell it what you earn to
-              tune it, tweak any line, or finish when it looks right.
-            </p>
-          </div>
-          {budgetPreview.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
-              {budgetPreview.map((b) => (
-                <li
-                  key={b.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-muted/40 px-3 py-2 text-sm"
-                >
-                  <span className="flex min-w-0 items-center gap-2 truncate">
-                    <span aria-hidden>{b.icon}</span>
-                    <span className="truncate font-medium">{b.label}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {formatMoney(b.amount, currency)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Button className="rounded-full" variant="outline" onClick={reopenChat}>
-            {chatOpen ? 'Keep chatting' : 'Talk to Penda about it'}
-          </Button>
-          <Button
-            className="rounded-full"
-            onClick={() =>
-              advanceTo('done', {
-                skippedLog: walkthrough?.skippedLog ?? !hasLogged,
-                skippedBalance: walkthrough?.skippedBalance ?? !hasBalanceSet,
-              })
-            }
-          >
-            Looks good
-          </Button>
         </div>
       )}
 

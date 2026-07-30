@@ -22,14 +22,13 @@ describe('gettingStarted helpers', () => {
 
   it('marks log done from transactions and balance from reconcile', () => {
     const steps = buildGettingStartedSteps({
-      state: { dismissed: false, balanceTouched: false, planPeeked: false },
+      state: { dismissed: false, balanceTouched: false },
       hasTransactions: true,
       hasReconciled: true,
     })
     expect(steps.find((s) => s.id === 'log')?.done).toBe(true)
     expect(steps.find((s) => s.id === 'balance')?.done).toBe(true)
-    expect(steps.find((s) => s.id === 'plan')?.done).toBe(false)
-    expect(isGettingStartedComplete(steps)).toBe(false)
+    expect(isGettingStartedComplete(steps)).toBe(true)
   })
 
   it('tracks an active walkthrough until done', () => {
@@ -49,7 +48,6 @@ describe('gettingStarted helpers', () => {
       hasTransactions: true,
     })
     expect(state.dismissed).toBe(true)
-    expect(state.planPeeked).toBe(true)
   })
 
   it('keeps residual checklist when log or balance was skipped', () => {
@@ -79,19 +77,18 @@ describe('gettingStarted helpers', () => {
     })
     expect(state.dismissed).toBe(false)
     expect(state.balanceTouched).toBe(false)
-    expect(state.planPeeked).toBe(true)
   })
 
   it('marks complete only when every step is done', () => {
     const incomplete = buildGettingStartedSteps({
-      state: { dismissed: false, balanceTouched: true, planPeeked: true },
+      state: { dismissed: false, balanceTouched: false },
       hasTransactions: false,
       hasReconciled: false,
     })
     expect(isGettingStartedComplete(incomplete)).toBe(false)
 
     const complete = buildGettingStartedSteps({
-      state: { dismissed: false, balanceTouched: true, planPeeked: true },
+      state: { dismissed: false, balanceTouched: true },
       hasTransactions: true,
       hasReconciled: false,
     })
@@ -100,14 +97,14 @@ describe('gettingStarted helpers', () => {
 
   it('treats balanceTouched or reconcile as balance done', () => {
     const viaTouch = buildGettingStartedSteps({
-      state: { dismissed: false, balanceTouched: true, planPeeked: false },
+      state: { dismissed: false, balanceTouched: true },
       hasTransactions: false,
       hasReconciled: false,
     })
     expect(viaTouch.find((s) => s.id === 'balance')?.done).toBe(true)
 
     const viaReconcile = buildGettingStartedSteps({
-      state: { dismissed: false, balanceTouched: false, planPeeked: false },
+      state: { dismissed: false, balanceTouched: false },
       hasTransactions: false,
       hasReconciled: true,
     })

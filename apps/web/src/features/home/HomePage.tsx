@@ -604,7 +604,7 @@ export function HomePage() {
   }
 
   const gettingStartedSteps = buildGettingStartedSteps({
-    state: gettingStarted ?? { dismissed: false, balanceTouched: false, planPeeked: false },
+    state: gettingStarted ?? { dismissed: false, balanceTouched: false },
     hasTransactions: transactions.length > 0,
     hasReconciled: !!latestReconciliation,
   })
@@ -621,13 +621,8 @@ export function HomePage() {
       openChat(`I spent ${sym}`, { mode: 'quick' })
       return
     }
-    if (id === 'balance') {
-      setGettingStarted(patchGettingStarted(wallet.id, { balanceTouched: true }))
-      openChat(`My balance is ${sym}`, { mode: 'full' })
-      return
-    }
-    setGettingStarted(patchGettingStarted(wallet.id, { planPeeked: true }))
-    navigate('/budgets')
+    setGettingStarted(patchGettingStarted(wallet.id, { balanceTouched: true }))
+    openChat(`My balance is ${sym}`, { mode: 'full' })
   }
 
   function runInsightAction(insightText: string, action: CoachingAction) {

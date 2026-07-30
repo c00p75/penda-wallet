@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBalanceOpener, buildLogOpener, buildPlanOpener } from './walkthroughChat'
+import { buildBalanceOpener, buildLogOpener } from './walkthroughChat'
 
 const NO_EM_DASH = /^[^—]*$/
 
@@ -56,37 +56,6 @@ describe('walkthrough openers', () => {
 
     it('never uses an em dash', () => {
       expect(buildBalanceOpener('USD')).toMatch(NO_EM_DASH)
-    })
-  })
-
-  describe('buildPlanOpener', () => {
-    it('lists the drafted budgets and invites tweaks', () => {
-      const opener = buildPlanOpener(
-        [
-          { label: 'Food', amount: 20_000 },
-          { label: 'Transport', amount: 10_000 },
-        ],
-        'USD',
-      )
-      expect(opener).toContain('Food')
-      expect(opener).toContain('Transport')
-      expect(opener).toMatch(/looks good/)
-    })
-
-    it('asks for income and payday so Penda can plan around it', () => {
-      const opener = buildPlanOpener([{ label: 'Food', amount: 20_000 }], 'USD')
-      expect(opener.toLowerCase()).toContain('earn')
-      expect(opener.toLowerCase()).toContain('paid')
-    })
-
-    it('falls back to the Plan tab when budgets are not seeded yet', () => {
-      const opener = buildPlanOpener([], 'USD')
-      expect(opener).toMatch(/Plan tab/)
-      expect(opener.toLowerCase()).toContain('paid')
-    })
-
-    it('never uses an em dash', () => {
-      expect(buildPlanOpener([{ label: 'Food', amount: 20_000 }], 'USD')).toMatch(NO_EM_DASH)
     })
   })
 })

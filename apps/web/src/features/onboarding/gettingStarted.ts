@@ -5,17 +5,14 @@ export type GettingStartedState = {
   dismissed: boolean
   /** Completed balance step (or reconciled). */
   balanceTouched: boolean
-  /** Completed plan step in onboarding. */
-  planPeeked: boolean
 }
 
 const DEFAULT_STATE: GettingStartedState = {
   dismissed: false,
   balanceTouched: false,
-  planPeeked: false,
 }
 
-export type WalkthroughPhase = 'pockets' | 'goal' | 'log' | 'balance' | 'plan' | 'done'
+export type WalkthroughPhase = 'pockets' | 'goal' | 'log' | 'balance' | 'done'
 
 export type WalkthroughState = {
   phase: WalkthroughPhase
@@ -39,7 +36,6 @@ export function loadGettingStarted(walletId: string): GettingStartedState {
     return {
       dismissed: !!parsed.dismissed,
       balanceTouched: !!parsed.balanceTouched,
-      planPeeked: !!parsed.planPeeked,
     }
   } catch {
     return { ...DEFAULT_STATE }
@@ -68,7 +64,7 @@ export function loadWalkthrough(walletId: string): WalkthroughState | null {
     const raw = localStorage.getItem(walkthroughKey(walletId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<WalkthroughState>
-    const validPhases: WalkthroughPhase[] = ['pockets', 'goal', 'log', 'balance', 'plan', 'done']
+    const validPhases: WalkthroughPhase[] = ['pockets', 'goal', 'log', 'balance', 'done']
     if (!parsed.phase || !validPhases.includes(parsed.phase)) {
       return null
     }
@@ -116,11 +112,10 @@ export function finalizeWalkthroughChecklist(
   return patchGettingStarted(walletId, {
     dismissed: !needsResidual,
     balanceTouched: !input.skippedBalance,
-    planPeeked: true,
   })
 }
 
-export type GettingStartedStepId = 'log' | 'balance' | 'plan'
+export type GettingStartedStepId = 'log' | 'balance'
 
 export type GettingStartedStep = {
   id: GettingStartedStepId
@@ -147,12 +142,6 @@ export function buildGettingStartedSteps(input: {
       title: 'Set your balance',
       detail: 'Share what you actually have so the numbers stay honest.',
       done: balanceDone,
-    },
-    {
-      id: 'plan',
-      title: 'Peek at your plan',
-      detail: 'Starter budgets are ready. Tweak them anytime.',
-      done: input.state.planPeeked,
     },
   ]
 }

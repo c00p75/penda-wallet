@@ -21,7 +21,16 @@ export type OpenChatOpts = {
    * the text opener (onboarding log-step intro).
    */
   assistantPortrait?: ActiveAiPersonality
+  /**
+   * Shows a Skip control inside the chat sheet for onboarding steps that
+   * already have a skip path on the wizard screen behind it (invisible once
+   * the sheet is full-screen). Tapping it runs the callback and closes the
+   * sheet.
+   */
+  onboardingSkip?: OnboardingSkip
 }
+
+export type OnboardingSkip = { label: string; onSkip: () => void }
 
 interface ChatUiState {
   open: boolean
@@ -33,6 +42,8 @@ interface ChatUiState {
   assistantSeed: string
   /** Optional portrait injected above the assistant seed. */
   assistantPortrait: ActiveAiPersonality | null
+  /** Set only while an onboarding step with a skip path is open. */
+  onboardingSkip: OnboardingSkip | null
   /** Bumped to ask ChatSheet to start a fresh conversation (clear local thread). */
   newTopicNonce: number
   /**
@@ -60,6 +71,7 @@ export const useChatStore = create<ChatUiState>((set) => ({
   startRecording: false,
   assistantSeed: '',
   assistantPortrait: null,
+  onboardingSkip: null,
   newTopicNonce: 0,
   openChat: (prefill = '', opts) =>
     set({
@@ -70,6 +82,7 @@ export const useChatStore = create<ChatUiState>((set) => ({
       startRecording: opts?.startRecording ?? false,
       assistantSeed: opts?.assistantSeed ?? '',
       assistantPortrait: opts?.assistantPortrait ?? null,
+      onboardingSkip: opts?.onboardingSkip ?? null,
     }),
   setOpen: (open) =>
     set({
@@ -83,6 +96,7 @@ export const useChatStore = create<ChatUiState>((set) => ({
             prefill: '',
             assistantSeed: '',
             assistantPortrait: null,
+            onboardingSkip: null,
             mode: 'full' as ChatMode,
           }),
     }),

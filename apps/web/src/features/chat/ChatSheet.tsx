@@ -76,7 +76,7 @@ import {
   viewHrefFor,
   withViewHrefs,
 } from './actionMeta'
-import type { ChatMode } from './chatStore'
+import type { ChatMode, OnboardingSkip } from './chatStore'
 import { invalidateAfterChatResponse, useConfirmAiAction, useSendChatMessage } from './hooks'
 import { suggestedPromptsFor } from './suggestedPrompts'
 import { useSpeechInterim } from './useSpeechInterim'
@@ -130,6 +130,8 @@ interface ChatSheetProps {
   pageContext?: PageContext
   /** Zero-history wallet: setup-oriented empty prompts and copy. */
   isFirstRun?: boolean
+  /** Onboarding steps only: skip path that would otherwise be hidden behind the full-screen sheet. */
+  onboardingSkip?: OnboardingSkip | null
 }
 
 // A press shorter than this counts as a tap (hands-free record); longer counts
@@ -202,6 +204,7 @@ export function ChatSheet({
   currency = 'USD',
   pageContext,
   isFirstRun = false,
+  onboardingSkip = null,
 }: ChatSheetProps) {
   const navigate = useNavigate()
   const sym = currencySymbol(currency)
@@ -1622,6 +1625,22 @@ export function ChatSheet({
               </SheetClose>
             </div>
           </SheetHeader>
+
+          {onboardingSkip && (
+            <div className="flex items-center justify-between gap-2 px-5 pb-1">
+              <p className="text-xs text-muted-foreground">Setting up your account</p>
+              <button
+                type="button"
+                onClick={() => {
+                  onboardingSkip.onSkip()
+                  onOpenChange(false)
+                }}
+                className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+              >
+                {onboardingSkip.label}
+              </button>
+            </div>
+          )}
 
           {dueDeferred[0] && walletId && !busy && (
             <DeferredQuestionBanner

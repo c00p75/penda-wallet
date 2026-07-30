@@ -1,5 +1,4 @@
 import { currencySymbol } from '@/lib/currencies'
-import { formatMoney } from '@/lib/money'
 import { GOAL_OPTIONS, type PrimaryGoal } from '@/features/profile/onboardingOptions'
 import {
   personalityMeta,
@@ -16,11 +15,6 @@ import {
  *
  * Keep the voice warm and plain. Never use the em dash character.
  */
-
-export interface WalkthroughBudgetLine {
-  label: string
-  amount: number
-}
 
 export interface LogOpenerInput {
   personality: AiPersonality | string
@@ -87,28 +81,5 @@ export function buildBalanceOpener(currency: string): string {
     `have right now, across cash, bank, and mobile money together? ` +
     `Just tell me the total, like "${sym}1,200" or "about 350". ` +
     `I'll lock it in as your starting balance so your safe-to-spend is always real, not a guess.`
-  )
-}
-
-/** Step 3 of the chat: present the seeded plan, invite tweaks, ask for income + payday. */
-export function buildPlanOpener(budgets: WalkthroughBudgetLine[], currency: string): string {
-  const askIncome =
-    `If you tell me roughly what you earn in a typical month and what day you usually get paid, ` +
-    `I'll shape the plan around your payday.`
-
-  if (budgets.length === 0) {
-    return (
-      `I've set up a starter plan for you on the Plan tab. It's just a starting point, ` +
-      `and I'll keep reshaping it as I learn how you really spend. ${askIncome} ` +
-      `When it looks right, just say "looks good".`
-    )
-  }
-
-  const list = budgets.map((b) => `${b.label} ${formatMoney(b.amount, currency)}`).join(', ')
-  return (
-    `Based on your goals, I drafted you a starter plan: ${list}. ` +
-    `It's a starting point, and I'll reshape it as I learn how you really spend. ` +
-    `Want to change any of these? ${askIncome} ` +
-    `When it looks right, just say "looks good".`
   )
 }
