@@ -24,6 +24,7 @@ export function AmbientChat() {
   const startRecording = useChatStore((s) => s.startRecording)
   const assistantSeed = useChatStore((s) => s.assistantSeed)
   const assistantPortrait = useChatStore((s) => s.assistantPortrait)
+  const onboardingSkip = useChatStore((s) => s.onboardingSkip)
   const newTopicNonce = useChatStore((s) => s.newTopicNonce)
   const setOpen = useChatStore((s) => s.setOpen)
   const setMode = useChatStore((s) => s.setMode)
@@ -54,6 +55,7 @@ export function AmbientChat() {
       assistantSeed={assistantSeed}
       assistantPortrait={assistantPortrait}
       onAssistantSeedConsumed={consumeAssistantSeed}
+      onboardingSkip={onboardingSkip}
       newTopicNonce={newTopicNonce}
       onNewTopic={startNewTopic}
       currency={wallet.base_currency}

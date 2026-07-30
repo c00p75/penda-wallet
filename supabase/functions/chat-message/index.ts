@@ -244,6 +244,11 @@ interface PocketAccount {
   is_default: boolean
 }
 
+interface AccountKind {
+  id: string
+  name: string
+}
+
 interface ToolContext {
   supabase: SupabaseClient
   walletId: string
@@ -253,6 +258,7 @@ interface ToolContext {
   symbol: string
   categories: Category[]
   accounts: PocketAccount[]
+  kinds: AccountKind[]
   rules: CategorizationRule[]
   createdTransaction: Record<string, unknown> | null
   pendingActions: PendingAction[]
@@ -316,10 +322,11 @@ Deno.serve(async (req) => {
 
     const conversationId = await getOrCreateConversation(supabase, user.id, body.walletId, body.conversationId)
     // History needs the conversation id; the rest are independent reads, fan out.
-    const [history, categories, accounts, rules, profile, memories, currency] = await Promise.all([
+    const [history, categories, accounts, kinds, rules, profile, memories, currency] = await Promise.all([
       fetchHistory(supabase, conversationId),
       fetchCategories(supabase, body.walletId),
       fetchAccounts(supabase, body.walletId),
+      fetchAccountKinds(supabase, body.walletId),
       fetchCategorizationRules(supabase, body.walletId),
       fetchProfile(supabase, user.id),
       fetchMemories(supabase, user.id),
@@ -354,6 +361,7 @@ Deno.serve(async (req) => {
       symbol: CURRENCY_SYMBOLS[currency] ?? currency,
       categories,
       accounts,
+      kinds,
       rules,
       createdTransaction: null,
       pendingActions: [],
@@ -395,7 +403,7 @@ Deno.serve(async (req) => {
           // Rebuilt per iteration because the category enum is baked into the
           // schema: create_category mid-turn has to widen it, or the model can't
           // name the category it just made on the follow-up call.
-          const tools = buildTools(ctx.categories, ctx.accounts)
+          const tools = buildTools(ctx.categories, ctx.accounts, ctx.kinds)
           const turn = await callModel(neutralHistory, systemInstruction, tools, hooks?.onToken)
 
           const assistantParts: NeutralPart[] = []
@@ -955,6 +963,16 @@ async function fetchAccounts(supabase: SupabaseClient<Database>, walletId: strin
   }))
 }
 
+async function fetchAccountKinds(supabase: SupabaseClient<Database>, walletId: string): Promise<AccountKind[]> {
+  const { data, error } = await supabase
+    .from('account_kinds')
+    .select('id, name')
+    .eq('wallet_id', walletId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 function resolveAccountId(
   accounts: PocketAccount[],
   raw: unknown,
@@ -1327,6 +1345,11 @@ reconciles the running total to reality and posts any balancing entry for you. I
 account to that pocket so only it gets reconciled. Only omit account when they mean their whole
 money account total, since omitting it reconciles everything, not just one pocket.
 
+If a balance message names a source that is NOT already one of their pockets (e.g. "K134 in Airtel
+Money, K577 in Zanaco Bank, K7 cash" when only Cash exists), call create_pocket once per new source
+instead of set_balance, passing the stated amount as opening_balance. Only fall back to set_balance
+for sources that already exist as a pocket.
+
 Tell apart a payment that just happened from a description of their situation. "Got paid 2000" is a
 real income event, log it with create_transaction. "I usually earn about 2000 a month" or "I get
 paid on the 25th" is a durable fact, not a transaction: save it with save_memory (kind "fact") so
@@ -1427,9 +1450,10 @@ function buildMemorySection(memories: Memory[]): string {
   return `\n\nWhat you remember about this user:\n${lines.join('\n')}`
 }
 
-function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefinition[] {
+function buildTools(categories: Category[], accounts: PocketAccount[], kinds: AccountKind[]): ToolDefinition[] {
   const categoryNames = categories.map((c) => c.name)
   const accountNames = accounts.map((a) => a.name)
+  const kindNames = kinds.map((k) => k.name)
 
   return [
     {
@@ -1639,6 +1663,30 @@ function buildTools(categories: Category[], accounts: PocketAccount[]): ToolDefi
           icon: { type: 'string', description: 'Optional emoji for the category.' },
         },
         required: ['name'],
+      },
+    },
+    {
+      name: 'create_pocket',
+      description:
+        'Create a new money pocket (Cash, a bank account, a mobile money wallet, etc.) when the ' +
+        'user names a source of money that is not already one of their pockets. Optionally set its ' +
+        'opening balance in the same call if the user stated an amount for it. Stages a confirmation ' +
+        'card; do not say it is done until the user confirms.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Pocket name, e.g. "Airtel Money" or "Zanaco Bank Account".' },
+          kind: {
+            type: 'string',
+            enum: kindNames,
+            description: "Closest matching pocket type from the wallet's existing types.",
+          },
+          opening_balance: {
+            type: 'number',
+            description: 'Amount currently held in this pocket, as a decimal, if the user stated one.',
+          },
+        },
+        required: ['name', 'kind'],
       },
     },
     {
@@ -1999,6 +2047,17 @@ function buildCompletedAction(
       if (name) details.Name = name
       break
     }
+    case 'create_pocket': {
+      const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim() : 'Pocket'
+      const opening = Number(args.opening_balance)
+      label = 'Created pocket'
+      summary = [name, Number.isFinite(opening) && opening > 0 ? fmtAmount(opening, ctx.symbol) : null]
+        .filter(Boolean)
+        .join(' · ')
+      details.Name = name
+      if (Number.isFinite(opening) && opening > 0) details.Balance = fmtAmount(opening, ctx.symbol)
+      break
+    }
     case 'teach_categorization': {
       const matchValue = typeof args.match_value === 'string' ? args.match_value.trim() : ''
       const category = typeof args.category === 'string' ? args.category.trim() : ''
@@ -2145,6 +2204,8 @@ async function dispatchTool(ctx: ToolContext, name: string, args: Record<string,
       return await stageCreateBudget(ctx, args)
     case 'create_goal':
       return await stageCreateGoal(ctx, args)
+    case 'create_pocket':
+      return await stageCreatePocket(ctx, args)
     case 'create_category':
       return await handleCreateCategory(ctx, args)
     case 'create_recurring_transaction':
@@ -3288,6 +3349,36 @@ async function stageCreateGoal(ctx: ToolContext, input: Record<string, unknown>)
       target_date: typeof input.target_date === 'string' ? input.target_date : null,
       icon,
       motivation,
+    },
+  })
+}
+
+async function stageCreatePocket(ctx: ToolContext, input: Record<string, unknown>): Promise<string> {
+  const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : null
+  if (!name) return 'Pocket name is required.'
+  if (ctx.accounts.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
+    return `"${name}" already exists as a pocket. Use set_balance to adjust it instead of creating a duplicate.`
+  }
+  const kindWanted = typeof input.kind === 'string' ? input.kind.trim().toLowerCase() : ''
+  const kind =
+    ctx.kinds.find((k) => k.name.toLowerCase() === kindWanted) ??
+    ctx.kinds.find((k) => k.name === 'Other') ??
+    ctx.kinds[0]
+  const opening = Number(input.opening_balance)
+  const openingMinor = isFinite(opening) && opening > 0 ? Math.round(opening * 100) : 0
+  const summary =
+    openingMinor > 0
+      ? `Create the pocket "${name}" with an opening balance of ${fmt(openingMinor, ctx.symbol)}.`
+      : `Create the pocket "${name}".`
+
+  return await stageCreate(ctx, {
+    domain: 'account',
+    summary,
+    patch: {
+      wallet_id: ctx.walletId,
+      name,
+      kind_id: kind?.id ?? null,
+      opening_balance_minor: openingMinor,
     },
   })
 }

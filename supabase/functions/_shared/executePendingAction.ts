@@ -93,6 +93,15 @@ export const DOMAIN_TABLES: Record<
     columns: ['name'],
     createColumns: [],
   },
+  account: {
+    table: 'accounts',
+    softDelete: false,
+    // Deleting a pocket has real cascading consequences for its transactions
+    // and isn't exposed via chat; renaming isn't either, only create.
+    deletable: false,
+    columns: [],
+    createColumns: ['wallet_id', 'name', 'kind_id', 'provider_id', 'icon'],
+  },
   recurring: {
     table: 'recurring_transactions',
     softDelete: false,
@@ -160,7 +169,11 @@ export async function executePendingAction(
   if (!target) throw new Error(`Unknown domain "${action.domain}".`)
 
   if (action.kind === 'create') {
-    return await executeCreate(supabase, action, target)
+    const created = await executeCreate(supabase, action, target)
+    if (action.domain === 'account') {
+      await maybePostOpeningBalance(supabase, action, created.targetId)
+    }
+    return created
   }
 
   if (action.kind === 'update') {
@@ -222,6 +235,44 @@ async function executeCreate(
   if (updateError) throw updateError
 
   return { targetId: data.id }
+}
+
+/**
+ * Pocket balances are computed from transactions, not stored on the row, so
+ * an opening balance staged with create_pocket (see chat-message) only
+ * becomes real spendable balance once posted as one, same as a reconciliation
+ * adjustment below.
+ */
+async function maybePostOpeningBalance(
+  supabase: SupabaseClient<Database>,
+  action: PendingActionRow,
+  accountId: string,
+): Promise<void> {
+  const openingMinor = Number(action.patch?.opening_balance_minor)
+  if (!Number.isFinite(openingMinor) || openingMinor <= 0) return
+
+  const { data: wallet, error: walletError } = await supabase
+    .from('wallets')
+    .select('base_currency')
+    .eq('id', action.wallet_id)
+    .single()
+  if (walletError) throw walletError
+
+  const categoryId = await fetchBalanceAdjustmentCategoryId(supabase)
+  const { error } = await supabase.from('transactions').insert({
+    wallet_id: action.wallet_id,
+    created_by: action.user_id,
+    account_id: accountId,
+    category_id: categoryId,
+    amount_minor: openingMinor,
+    currency: wallet.base_currency,
+    type: 'income',
+    merchant: null,
+    description: 'Opening balance',
+    transaction_date: new Date().toISOString().slice(0, 10),
+    source: 'chat',
+  })
+  if (error) throw error
 }
 
 /**
