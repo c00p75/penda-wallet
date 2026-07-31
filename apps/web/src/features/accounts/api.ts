@@ -1,15 +1,8 @@
 import { supabase } from '@/lib/supabase/client'
-import type {
-  Account,
-  AccountInput,
-  PocketProvider,
-  PocketProviderInput,
-  PocketType,
-  PocketTypeInput,
-} from './types'
+import type { Account, AccountInput, PocketType, PocketTypeInput } from './types'
 
 const SELECT_WITH_TYPES =
-  '*, kind:account_kinds(id, wallet_id, name, icon, sort_order, created_at), provider:account_providers(id, wallet_id, name, icon, sort_order, created_at)'
+  '*, kind:account_kinds(id, wallet_id, name, icon, sort_order, created_at)'
 
 export async function fetchAccounts(walletId: string): Promise<Account[]> {
   const { data, error } = await supabase
@@ -44,7 +37,6 @@ export async function createAccount(walletId: string, input: AccountInput): Prom
       wallet_id: walletId,
       name: input.name.trim(),
       kind_id: input.kind_id,
-      provider_id: input.provider_id ?? null,
       icon: input.icon ?? null,
       color: input.color ?? null,
       sort_order: input.sort_order ?? 0,
@@ -71,7 +63,6 @@ export async function updateAccount(id: string, input: Partial<AccountInput>): P
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (input.name != null) patch.name = input.name.trim()
   if (input.kind_id !== undefined) patch.kind_id = input.kind_id
-  if (input.provider_id !== undefined) patch.provider_id = input.provider_id
   if (input.icon !== undefined) patch.icon = input.icon
   if (input.color !== undefined) patch.color = input.color
   if (input.sort_order != null) patch.sort_order = input.sort_order
@@ -236,51 +227,5 @@ export async function updatePocketType(id: string, input: PocketTypeInput): Prom
 
 export async function deletePocketType(id: string): Promise<void> {
   const { error } = await supabase.from('account_kinds').delete().eq('id', id)
-  if (error) throw error
-}
-
-export async function fetchPocketProviders(walletId: string): Promise<PocketProvider[]> {
-  const { data, error } = await supabase
-    .from('account_providers')
-    .select('*')
-    .eq('wallet_id', walletId)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true })
-
-  if (error) throw error
-  return (data ?? []) as PocketProvider[]
-}
-
-export async function createPocketProvider(
-  walletId: string,
-  input: PocketProviderInput,
-): Promise<PocketProvider> {
-  const { data, error } = await supabase
-    .from('account_providers')
-    .insert({ wallet_id: walletId, ...input })
-    .select('*')
-    .single()
-
-  if (error) throw error
-  return data as PocketProvider
-}
-
-export async function updatePocketProvider(
-  id: string,
-  input: PocketProviderInput,
-): Promise<PocketProvider> {
-  const { data, error } = await supabase
-    .from('account_providers')
-    .update(input)
-    .eq('id', id)
-    .select('*')
-    .single()
-
-  if (error) throw error
-  return data as PocketProvider
-}
-
-export async function deletePocketProvider(id: string): Promise<void> {
-  const { error } = await supabase.from('account_providers').delete().eq('id', id)
   if (error) throw error
 }

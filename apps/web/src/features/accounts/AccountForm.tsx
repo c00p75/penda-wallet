@@ -18,16 +18,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import {
-  useCreatePocketProvider,
-  useCreatePocketType,
-  usePocketProviders,
-  usePocketTypes,
-} from './hooks'
+import { useCreatePocketType, usePocketTypes } from './hooks'
 import type { Account, AccountInput } from './types'
 
 const NEW_OPTION = '__new__'
-const NONE_OPTION = '__none__'
 
 interface AccountFormProps {
   open: boolean
@@ -51,48 +45,47 @@ export function AccountForm({
   isSubmitting,
 }: AccountFormProps) {
   const { data: types = [] } = usePocketTypes(walletId)
-  const { data: providers = [] } = usePocketProviders(walletId)
   const createType = useCreatePocketType(walletId)
-  const createProvider = useCreatePocketProvider(walletId)
 
   const [name, setName] = useState('')
   const [kindId, setKindId] = useState<string | null>(null)
-  const [providerId, setProviderId] = useState<string | null>(null)
   const [icon, setIcon] = useState('💵')
   const [color, setColor] = useState<string | null>(null)
   const [isDefault, setIsDefault] = useState(false)
   const [addingType, setAddingType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
-  const [addingProvider, setAddingProvider] = useState(false)
-  const [newProviderName, setNewProviderName] = useState('')
 
   useEffect(() => {
     if (!open) return
     setAddingType(false)
     setNewTypeName('')
-    setAddingProvider(false)
-    setNewProviderName('')
     if (account) {
       setName(account.name)
       setKindId(account.kind_id)
-      setProviderId(account.provider_id)
       setIcon(account.icon ?? '💵')
       setColor(account.color ?? null)
       setIsDefault(account.is_default)
     } else {
       setName('')
       setKindId(null)
-      setProviderId(null)
       setIcon('💵')
       setColor(null)
       setIsDefault(false)
     }
   }, [open, account])
 
+  // The icon defaults from whichever Type is picked (own icon, or 💵 if the
+  // type has none), so users don't have to pick one separately.
+  function selectKind(id: string) {
+    setKindId(id)
+    setIcon(types.find((t) => t.id === id)?.icon || '💵')
+  }
+
   // Default a new pocket to the wallet's first Type once the list loads.
   useEffect(() => {
     if (!open || account || kindId || types.length === 0) return
-    setKindId(types[0].id)
+    selectKind(types[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account, kindId, types])
 
   const cashType = types.find((t) => t.name.trim().toLowerCase() === 'cash')
@@ -102,25 +95,15 @@ export function AccountForm({
   function applyCashQuickAdd() {
     if (!cashType) return
     setName('Cash')
-    setKindId(cashType.id)
-    setIcon('💵')
-    setProviderId(null)
+    selectKind(cashType.id)
   }
 
   async function handleAddType() {
     if (!newTypeName.trim()) return
     const created = await createType.mutateAsync({ name: newTypeName.trim(), icon: null })
-    setKindId(created.id)
+    selectKind(created.id)
     setAddingType(false)
     setNewTypeName('')
-  }
-
-  async function handleAddProvider() {
-    if (!newProviderName.trim()) return
-    const created = await createProvider.mutateAsync({ name: newProviderName.trim(), icon: null })
-    setProviderId(created.id)
-    setAddingProvider(false)
-    setNewProviderName('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -129,7 +112,6 @@ export function AccountForm({
     await onSubmit({
       name: name.trim(),
       kind_id: kindId,
-      provider_id: providerId,
       icon,
       color,
       is_default: isDefault,
@@ -172,7 +154,7 @@ export function AccountForm({
             <Label>Type</Label>
             <Select
               value={kindId ?? ''}
-              onValueChange={(v) => (v === NEW_OPTION ? setAddingType(true) : setKindId(v))}
+              onValueChange={(v) => (v === NEW_OPTION ? setAddingType(true) : selectKind(v))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Pick a type" />
@@ -205,58 +187,6 @@ export function AccountForm({
                   Add
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setAddingType(false)}>
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label>Provider</Label>
-            <Select
-              value={providerId ?? NONE_OPTION}
-              onValueChange={(v) => {
-                if (v === NEW_OPTION) setAddingProvider(true)
-                else setProviderId(v === NONE_OPTION ? null : v)
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE_OPTION}>None</SelectItem>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.icon ? `${p.icon} ` : ''}
-                    {p.name}
-                  </SelectItem>
-                ))}
-                <SelectItem value={NEW_OPTION}>+ New provider…</SelectItem>
-              </SelectContent>
-            </Select>
-            {addingProvider && (
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  value={newProviderName}
-                  onChange={(e) => setNewProviderName(e.target.value)}
-                  placeholder="Revolut"
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!newProviderName.trim() || createProvider.isPending}
-                  onClick={() => void handleAddProvider()}
-                >
-                  Add
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setAddingProvider(false)}
-                >
                   Cancel
                 </Button>
               </div>

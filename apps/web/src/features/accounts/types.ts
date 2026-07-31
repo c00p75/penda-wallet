@@ -14,31 +14,13 @@ export interface PocketTypeInput {
   sort_order?: number
 }
 
-/** A user-defined pocket Provider (a bank, mobile money operator, …), scoped to a wallet. */
-export interface PocketProvider {
-  id: string
-  wallet_id: string
-  name: string
-  icon: string | null
-  sort_order: number
-  created_at: string
-}
-
-export interface PocketProviderInput {
-  name: string
-  icon?: string | null
-  sort_order?: number
-}
-
-/** A pocket under a money account (Cash, or any custom Type/Provider a user defines). */
+/** A pocket under a money account (Cash, or any custom Type a user defines). */
 export interface Account {
   id: string
   wallet_id: string
   name: string
   kind_id: string | null
   kind: PocketType | null
-  provider_id: string | null
-  provider: PocketProvider | null
   icon: string | null
   color: string | null
   sort_order: number
@@ -51,7 +33,6 @@ export interface Account {
 export interface AccountInput {
   name: string
   kind_id: string | null
-  provider_id?: string | null
   icon?: string | null
   color?: string | null
   sort_order?: number

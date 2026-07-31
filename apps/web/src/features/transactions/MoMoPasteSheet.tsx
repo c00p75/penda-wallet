@@ -10,13 +10,12 @@ interface MoMoAccount {
   id: string
   name: string
   kind: { name: string } | null
-  provider: { name: string } | null
 }
 
 /**
- * Map a MoMo provider hint onto a pocket id when the user has one. Pockets no
- * longer carry a fixed provider slug, so this matches loosely against
- * whatever the user named their pocket, Type, or Provider.
+ * Map a MoMo provider hint onto a pocket id when the user has one. Pockets
+ * don't carry a fixed provider slug, so this matches loosely against
+ * whatever the user named their pocket or its Type.
  */
 export function accountIdForMoMoProvider(
   provider: ParsedMoMo['provider'],
@@ -27,10 +26,7 @@ export function accountIdForMoMoProvider(
   const needle = provider === 'bank' ? ['bank'] : [provider]
   const hit = accounts.find((a) =>
     needle.some(
-      (word) =>
-        a.provider?.name.toLowerCase().includes(word) ||
-        a.kind?.name.toLowerCase().includes(word) ||
-        a.name.toLowerCase().includes(word),
+      (word) => a.kind?.name.toLowerCase().includes(word) || a.name.toLowerCase().includes(word),
     ),
   )
   return hit?.id ?? null

@@ -240,7 +240,6 @@ interface PocketAccount {
   id: string
   name: string
   kind: string
-  provider: string | null
   is_default: boolean
 }
 
@@ -942,23 +941,22 @@ async function fetchCategories(supabase: SupabaseClient<Database>, walletId: str
 }
 
 async function fetchAccounts(supabase: SupabaseClient<Database>, walletId: string): Promise<PocketAccount[]> {
-  // accounts.kind/provider were dropped for kind_id/provider_id (see migration
-  // 0062); embed the lookup tables to keep PocketAccount's flat name shape.
+  // accounts.kind was dropped for kind_id (see migration 0062); embed the
+  // lookup table to keep PocketAccount's flat name shape.
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, name, kind:account_kinds(name), provider:account_providers(name), is_default')
+    .select('id, name, kind:account_kinds(name), is_default')
     .eq('wallet_id', walletId)
     .is('archived_at', null)
     .order('sort_order', { ascending: true })
   if (error) throw error
   // No intermediate cast: mapping straight off the inferred row shape means a
-  // future select() typo (like the kind/provider one this replaced) fails
-  // deno check instead of 500ing every chat turn in production.
+  // future select() typo (like the kind one this replaced) fails deno check
+  // instead of 500ing every chat turn in production.
   return (data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
     kind: row.kind?.name ?? 'Other',
-    provider: row.provider?.name ?? null,
     is_default: row.is_default,
   }))
 }
@@ -983,7 +981,6 @@ function resolveAccountId(
     const hit =
       accounts.find((a) => a.id === raw) ??
       accounts.find((a) => a.name.toLowerCase() === wanted) ??
-      accounts.find((a) => (a.provider ?? '').toLowerCase() === wanted) ??
       accounts.find((a) => a.name.toLowerCase().includes(wanted))
     if (hit) return hit.id
   }
