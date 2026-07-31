@@ -14,16 +14,7 @@ import {
   SheetClose,
 } from '@/components/ui/sheet'
 import { EmojiPicker } from '@/components/EmojiPicker'
-import {
-  useCreatePocketProvider,
-  useCreatePocketType,
-  useDeletePocketProvider,
-  useDeletePocketType,
-  usePocketProviders,
-  usePocketTypes,
-  useUpdatePocketProvider,
-  useUpdatePocketType,
-} from './hooks'
+import { useCreatePocketType, useDeletePocketType, usePocketTypes, useUpdatePocketType } from './hooks'
 
 const ICON_CHOICES = ['💵', '📱', '🏦', '💳', '💰', '🪙', '🏧', '💼', '📈', '🌍', '🔖', '💠']
 
@@ -227,25 +218,6 @@ export function PocketTypeManager({ walletId }: { walletId: string | undefined }
       onUpdate={(id, input) => updateType.mutateAsync({ id, input })}
       onDelete={(id) => deleteType.mutateAsync(id)}
       isSubmitting={createType.isPending || updateType.isPending || deleteType.isPending}
-    />
-  )
-}
-
-export function PocketProviderManager({ walletId }: { walletId: string | undefined }) {
-  const { data: providers = [] } = usePocketProviders(walletId)
-  const createProvider = useCreatePocketProvider(walletId)
-  const updateProvider = useUpdatePocketProvider(walletId)
-  const deleteProvider = useDeletePocketProvider(walletId)
-
-  return (
-    <PocketAttributeManager
-      entityLabel="Provider"
-      namePlaceholder="Revolut"
-      items={providers}
-      onCreate={(input) => createProvider.mutateAsync(input)}
-      onUpdate={(id, input) => updateProvider.mutateAsync({ id, input })}
-      onDelete={(id) => deleteProvider.mutateAsync(id)}
-      isSubmitting={createProvider.isPending || updateProvider.isPending || deleteProvider.isPending}
     />
   )
 }

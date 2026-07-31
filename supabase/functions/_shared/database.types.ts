@@ -74,41 +74,6 @@ export type Database = {
           },
         ]
       }
-      account_providers: {
-        Row: {
-          created_at: string
-          icon: string | null
-          id: string
-          name: string
-          sort_order: number
-          wallet_id: string
-        }
-        Insert: {
-          created_at?: string
-          icon?: string | null
-          id?: string
-          name: string
-          sort_order?: number
-          wallet_id: string
-        }
-        Update: {
-          created_at?: string
-          icon?: string | null
-          id?: string
-          name?: string
-          sort_order?: number
-          wallet_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "account_providers_wallet_id_fkey"
-            columns: ["wallet_id"]
-            isOneToOne: false
-            referencedRelation: "wallets"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       accounts: {
         Row: {
           archived_at: string | null
@@ -119,7 +84,6 @@ export type Database = {
           is_default: boolean
           kind_id: string | null
           name: string
-          provider_id: string | null
           sort_order: number
           updated_at: string
           wallet_id: string
@@ -133,7 +97,6 @@ export type Database = {
           is_default?: boolean
           kind_id?: string | null
           name: string
-          provider_id?: string | null
           sort_order?: number
           updated_at?: string
           wallet_id: string
@@ -147,7 +110,6 @@ export type Database = {
           is_default?: boolean
           kind_id?: string | null
           name?: string
-          provider_id?: string | null
           sort_order?: number
           updated_at?: string
           wallet_id?: string
@@ -158,13 +120,6 @@ export type Database = {
             columns: ["kind_id"]
             isOneToOne: false
             referencedRelation: "account_kinds"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "accounts_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "account_providers"
             referencedColumns: ["id"]
           },
           {

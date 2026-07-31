@@ -24,7 +24,7 @@ import {
   useUpdateAccount,
 } from '@/features/accounts/hooks'
 import { AccountForm } from '@/features/accounts/AccountForm'
-import { PocketProviderManager, PocketTypeManager } from '@/features/accounts/PocketAttributeManager'
+import { PocketTypeManager } from '@/features/accounts/PocketAttributeManager'
 import type { Account, AccountInput } from '@/features/accounts/types'
 import {
   useCreateWallet,
@@ -312,14 +312,6 @@ export function WalletConfigPanel({ wallet }: WalletConfigPanelProps) {
             Add, rename, or delete the Types pockets can use (Cash, Mobile money, Bank…).
           </p>
           <PocketTypeManager walletId={wallet.id} />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label>Providers</Label>
-          <p className="text-xs text-muted-foreground">
-            Your banks, mobile money operators, or other providers — fully custom to you.
-          </p>
-          <PocketProviderManager walletId={wallet.id} />
         </div>
 
         <Separator />

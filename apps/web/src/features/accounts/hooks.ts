@@ -2,19 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   archiveAccount,
   createAccount,
-  createPocketProvider,
   createPocketType,
-  deletePocketProvider,
   deletePocketType,
   fetchAccounts,
-  fetchPocketProviders,
   fetchPocketTypes,
   transferBetweenAccounts,
   updateAccount,
-  updatePocketProvider,
   updatePocketType,
 } from './api'
-import type { AccountInput, PocketProviderInput, PocketTypeInput } from './types'
+import type { AccountInput, PocketTypeInput } from './types'
 
 export function accountsKey(walletId: string | undefined) {
   return ['accounts', walletId] as const
@@ -125,51 +121,6 @@ export function useDeletePocketType(walletId: string | undefined) {
     mutationFn: (id: string) => deletePocketType(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: pocketTypesKey(walletId) })
-      void queryClient.invalidateQueries({ queryKey: accountsKey(walletId) })
-    },
-  })
-}
-
-export function pocketProvidersKey(walletId: string | undefined) {
-  return ['pocket-providers', walletId] as const
-}
-
-export function usePocketProviders(walletId: string | undefined) {
-  return useQuery({
-    queryKey: pocketProvidersKey(walletId),
-    queryFn: () => fetchPocketProviders(walletId!),
-    enabled: !!walletId,
-  })
-}
-
-export function useCreatePocketProvider(walletId: string | undefined) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: PocketProviderInput) => createPocketProvider(walletId!, input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pocketProvidersKey(walletId) })
-    },
-  })
-}
-
-export function useUpdatePocketProvider(walletId: string | undefined) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: PocketProviderInput }) =>
-      updatePocketProvider(id, input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pocketProvidersKey(walletId) })
-      void queryClient.invalidateQueries({ queryKey: accountsKey(walletId) })
-    },
-  })
-}
-
-export function useDeletePocketProvider(walletId: string | undefined) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => deletePocketProvider(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pocketProvidersKey(walletId) })
       void queryClient.invalidateQueries({ queryKey: accountsKey(walletId) })
     },
   })
